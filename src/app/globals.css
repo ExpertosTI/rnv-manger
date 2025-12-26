@@ -1,0 +1,298 @@
+@import "tailwindcss";
+
+@theme {
+  --font-virgil: Virgil, Segoe UI, sans-serif;
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+
+    to {
+      height: 0;
+    }
+  }
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 262.1 83.3% 57.8%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 262.1 83.3% 57.8%;
+    --radius: 0.75rem;
+  }
+}
+
+/* Hand-drawn font for headers */
+@font-face {
+  font-family: 'Virgil';
+  src: url('/whiteboard-app/Virgil.woff2') format('woff2');
+}
+
+body {
+  font-family: var(--font-inter), 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+  min-height: 100vh;
+}
+
+/* RNV-style rounded elements */
+.rnv-card {
+  background: white;
+  border: 2px solid #e8e8e8;
+  border-radius: 12px;
+  box-shadow: 0 2px 0 0 rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
+}
+
+.rnv-card:hover {
+  border-color: #a78bfa;
+  box-shadow: 0 4px 12px rgba(167, 139, 250, 0.15);
+  transform: translateY(-2px);
+}
+
+/* Purple gradient button */
+.btn-rnv {
+  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 0 0 rgba(0, 0, 0, 0.1);
+}
+
+.btn-rnv:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+/* Status badges */
+.badge-running {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.badge-stopped {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.badge-warning {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+/* Table styling like Hostinger panel */
+.vps-table {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid #e8e8e8;
+}
+
+.vps-table-header {
+  background: #fafafa;
+  border-bottom: 2px solid #e8e8e8;
+  padding: 12px 16px;
+  font-weight: 600;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.vps-table-row {
+  border-bottom: 1px solid #f3f4f6;
+  padding: 16px;
+  transition: background 0.15s ease;
+}
+
+.vps-table-row:hover {
+  background: #faf5ff;
+}
+
+.vps-table-row:last-child {
+  border-bottom: none;
+}
+
+/* Sidebar styling */
+.sidebar-rnv {
+  background: white;
+  border-right: 2px solid #e8e8e8;
+}
+
+.sidebar-item {
+  padding: 10px 16px;
+  border-radius: 8px;
+  margin: 4px 8px;
+  color: #4b5563;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.sidebar-item:hover {
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+
+.sidebar-item.active {
+  background: #ede9fe;
+  color: #7c3aed;
+}
+
+/* Copy button */
+.copy-btn {
+  padding: 4px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: white;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.copy-btn:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c4c4c4;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a0a0a0;
+}
+
+/* Animation keyframes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* ============================================
+   RNV Whiteboard - Hide Excalidraw Branding
+   ============================================ */
+
+/* Hide welcome screen content */
+.excalidraw .welcome-screen-center,
+.excalidraw .welcome-screen-menu-hints,
+.excalidraw [data-testid="welcome-screen-menu-hints"],
+.excalidraw .welcome-screen-shortcuts-hints {
+  display: none !important;
+}
+
+/* Hide Excalidraw logo/plus button in top-right */
+.excalidraw .dropdown-menu-button[aria-label*="Excalidraw"],
+.excalidraw [data-testid="dropdown-menu-Excalidraw+"],
+.excalidraw button[title*="Excalidraw"] {
+  display: none !important;
+}
+
+/* Hide GitHub link */
+.excalidraw a[href*="github.com/excalidraw"] {
+  display: none !important;
+}
+
+/* Hide any external Excalidraw links */
+.excalidraw a[href*="excalidraw.com"],
+.excalidraw a[href*="plus.excalidraw"] {
+  display: none !important;
+}
+
+/* Hide footer brand links */
+.excalidraw .encrypted-icon,
+.excalidraw [data-testid="encrypted-icon"] {
+  display: none !important;
+}
+
+/* Hide social/promo links in menu */
+.excalidraw .HelpDialog__link[href*="twitter"],
+.excalidraw .HelpDialog__link[href*="github"],
+.excalidraw a[href*="discord.gg"] {
+  display: none !important;
+}

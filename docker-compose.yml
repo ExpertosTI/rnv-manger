@@ -1,0 +1,80 @@
+# RNV Manager - Docker Compose Configuration
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: rnv-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-rnvadmin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-rnv_secure_password_2025}
+      POSTGRES_DB: ${DB_NAME:-rnv_manager}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rnvadmin} -d ${DB_NAME:-rnv_manager}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RNV Manager App
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rnv-manager
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-rnvadmin}:${DB_PASSWORD:-rnv_secure_password_2025}@db:5432/${DB_NAME:-rnv_manager}?schema=public
+      MASTER_PASSWORD: ${MASTER_PASSWORD:-admin123}
+      HOSTINGER_API_TOKEN: ${HOSTINGER_API_TOKEN:-}
+      ODOO_URL: ${ODOO_URL:-}
+      ODOO_DB: ${ODOO_DB:-}
+      ODOO_USERNAME: ${ODOO_USERNAME:-}
+      ODOO_API_KEY: ${ODOO_API_KEY:-}
+      NODE_ENV: production
+    ports:
+      - "${APP_PORT:-4200}:3000"
+    volumes:
+      - app_data:/app/data
+
+  # Backup service (runs daily at 3am)
+  backup:
+    image: postgres:16-alpine
+    container_name: rnv-backup
+    depends_on:
+      - db
+    environment:
+      PGHOST: db
+      PGUSER: ${DB_USER:-rnvadmin}
+      PGPASSWORD: ${DB_PASSWORD:-rnv_secure_password_2025}
+      PGDATABASE: ${DB_NAME:-rnv_manager}
+    volumes:
+      - ./backups:/backups
+      - ./scripts:/scripts:ro
+    entrypoint: /bin/sh
+    command: >
+      -c "
+        while true; do
+          echo '[RNV Backup] Starting backup at $$(date)'
+          pg_dump -Fc > /backups/rnv_manager_$$(date +%Y%m%d_%H%M%S).dump
+          echo '[RNV Backup] Backup completed'
+          # Keep only last 7 backups
+          ls -t /backups/*.dump 2>/dev/null | tail -n +8 | xargs -r rm
+          # Sleep 24 hours
+          sleep 86400
+        done
+      "
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    name: rnv_postgres_data
+  app_data:
+    name: rnv_app_data
