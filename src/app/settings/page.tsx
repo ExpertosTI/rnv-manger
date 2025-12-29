@@ -1,215 +1,266 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useState, useEffect } from "react";
+import {
+    Settings, Save, Mail, Key, Bell, Server, RefreshCw,
+    CheckCircle, AlertTriangle, Eye, EyeOff, Shield
+} from "lucide-react";
 import { useToast } from "@/components/ui/toast";
-import { Settings, Key, Bell, Shield, Database, Globe, Save, Eye, EyeOff, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
-import { useState } from "react";
+
+interface SettingsSection {
+    id: string;
+    title: string;
+    icon: React.ElementType;
+    description: string;
+    fields: SettingsField[];
+}
+
+interface SettingsField {
+    key: string;
+    label: string;
+    type: "text" | "password" | "number" | "email";
+    placeholder?: string;
+    description?: string;
+}
+
+const SETTINGS_SECTIONS: SettingsSection[] = [
+    {
+        id: "smtp",
+        title: "Email (SMTP)",
+        icon: Mail,
+        description: "Configuración para enviar notificaciones por email",
+        fields: [
+            { key: "smtp_host", label: "Host SMTP", type: "text", placeholder: "smtp.gmail.com" },
+            { key: "smtp_port", label: "Puerto", type: "number", placeholder: "587" },
+            { key: "smtp_user", label: "Usuario", type: "email", placeholder: "tu@email.com" },
+            { key: "smtp_pass", label: "Contraseña", type: "password", placeholder: "••••••••" },
+            { key: "alert_email", label: "Email de alertas", type: "email", placeholder: "admin@tuempresa.com", description: "Recibe alertas de pagos y recursos" },
+        ],
+    },
+    {
+        id: "api",
+        title: "API Tokens",
+        icon: Key,
+        description: "Tokens de acceso para integraciones",
+        fields: [
+            { key: "hostinger_token", label: "Hostinger API Token", type: "password", placeholder: "Bearer token..." },
+            { key: "odoo_url", label: "Odoo URL", type: "text", placeholder: "https://odoo.tuempresa.com" },
+            { key: "odoo_db", label: "Odoo Database", type: "text", placeholder: "production" },
+            { key: "odoo_user", label: "Odoo Usuario", type: "text", placeholder: "admin" },
+            { key: "odoo_key", label: "Odoo API Key", type: "password", placeholder: "API key..." },
+        ],
+    },
+    {
+        id: "alerts",
+        title: "Umbrales de Alertas",
+        icon: Bell,
+        description: "Configurar cuándo se generan alertas de recursos",
+        fields: [
+            { key: "alert_cpu_warning", label: "CPU Warning (%)", type: "number", placeholder: "70" },
+            { key: "alert_cpu_critical", label: "CPU Critical (%)", type: "number", placeholder: "90" },
+            { key: "alert_ram_warning", label: "RAM Warning (%)", type: "number", placeholder: "80" },
+            { key: "alert_ram_critical", label: "RAM Critical (%)", type: "number", placeholder: "95" },
+            { key: "alert_disk_warning", label: "Disco Warning (%)", type: "number", placeholder: "85" },
+            { key: "alert_disk_critical", label: "Disco Critical (%)", type: "number", placeholder: "95" },
+        ],
+    },
+    {
+        id: "security",
+        title: "Seguridad",
+        icon: Shield,
+        description: "Configuración de seguridad de la aplicación",
+        fields: [
+            { key: "master_password", label: "Master Password", type: "password", placeholder: "Contraseña maestra" },
+            { key: "session_timeout", label: "Timeout de sesión (min)", type: "number", placeholder: "60" },
+        ],
+    },
+];
 
 export default function SettingsPage() {
-    const [showApiKey, setShowApiKey] = useState(false);
-    const [hostingerKey, setHostingerKey] = useState("");
-    const [testingConnection, setTestingConnection] = useState(false);
-    const [connectionStatus, setConnectionStatus] = useState<"idle" | "success" | "error">("idle");
-    const { addToast } = useToast();
+    const { toast } = useToast();
+    const [settings, setSettings] = useState<Record<string, string>>({});
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+    const [smtpStatus, setSmtpStatus] = useState<"unknown" | "ok" | "error">("unknown");
 
-    const testHostingerConnection = async () => {
-        setTestingConnection(true);
-        setConnectionStatus("idle");
+    useEffect(() => {
+        fetchSettings();
+        checkSmtpStatus();
+    }, []);
 
+    const fetchSettings = async () => {
         try {
-            const res = await fetch("/api/hostinger/vps?refresh=true");
+            const res = await fetch("/api/settings");
             const data = await res.json();
-
             if (data.success) {
-                setConnectionStatus("success");
-                addToast(`Conexión exitosa! ${data.count} servidores encontrados`, "success");
-            } else {
-                setConnectionStatus("error");
-                addToast(data.error || "Error de conexión", "error");
+                setSettings(data.data || {});
             }
-        } catch (err: any) {
-            setConnectionStatus("error");
-            addToast("Error de conexión con la API", "error");
+        } catch (err) {
+            console.error("Error fetching settings:", err);
         } finally {
-            setTestingConnection(false);
+            setLoading(false);
         }
     };
 
-    const handleSaveSettings = () => {
-        addToast("Configuración guardada correctamente", "success");
+    const checkSmtpStatus = async () => {
+        try {
+            const res = await fetch("/api/email");
+            const data = await res.json();
+            setSmtpStatus(data.success ? "ok" : "error");
+        } catch {
+            setSmtpStatus("error");
+        }
     };
 
+    const saveSettings = async () => {
+        setSaving(true);
+        try {
+            const res = await fetch("/api/settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ settings }),
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                toast({ title: "✅ Configuración guardada", description: "Los cambios se aplicarán inmediatamente" });
+                checkSmtpStatus();
+            } else {
+                toast({ title: "Error", description: data.error, variant: "destructive" });
+            }
+        } catch (err) {
+            toast({ title: "Error", description: "No se pudo guardar", variant: "destructive" });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const updateSetting = (key: string, value: string) => {
+        setSettings(prev => ({ ...prev, [key]: value }));
+    };
+
+    const togglePassword = (key: string) => {
+        setShowPasswords(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <RefreshCw className="w-8 h-8 text-violet-500 animate-spin" />
+            </div>
+        );
+    }
+
     return (
-        <div className="space-y-6 max-w-4xl">
-            <div>
-                <h1 className="text-2xl font-bold text-gray-900">Configuración</h1>
-                <p className="text-gray-500 mt-1">Configura tu RNV Manager</p>
+        <div className="space-y-8">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold text-white">Configuración</h1>
+                    <p className="text-gray-400 mt-1">Gestiona las preferencias y conexiones de la aplicación</p>
+                </div>
+                <button
+                    onClick={saveSettings}
+                    disabled={saving}
+                    className="px-6 py-3 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-600 text-white font-medium rounded-xl transition flex items-center gap-2"
+                >
+                    {saving ? (
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                    ) : (
+                        <Save className="w-5 h-5" />
+                    )}
+                    Guardar Cambios
+                </button>
             </div>
 
-            {/* Hostinger API */}
-            <div className="bg-white rounded-2xl border-2 border-gray-200 p-6">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="p-3 rounded-xl bg-violet-100">
-                        <Globe className="h-6 w-6 text-violet-600" />
-                    </div>
-                    <div>
-                        <h2 className="text-lg font-semibold text-gray-900">Integración con Hostinger</h2>
-                        <p className="text-sm text-gray-500">Conecta tu cuenta para sincronizar tus VPS automáticamente</p>
-                    </div>
-                    {connectionStatus === "success" && (
-                        <div className="ml-auto flex items-center gap-2 text-green-600 bg-green-50 px-3 py-1.5 rounded-full">
-                            <CheckCircle size={16} />
-                            <span className="text-sm font-medium">Conectado</span>
-                        </div>
+            {/* SMTP Status Banner */}
+            <div className={`p-4 rounded-xl border ${smtpStatus === "ok"
+                    ? "bg-green-900/30 border-green-700"
+                    : smtpStatus === "error"
+                        ? "bg-red-900/30 border-red-700"
+                        : "bg-gray-800 border-gray-700"
+                }`}>
+                <div className="flex items-center gap-3">
+                    {smtpStatus === "ok" ? (
+                        <CheckCircle className="w-5 h-5 text-green-400" />
+                    ) : smtpStatus === "error" ? (
+                        <AlertTriangle className="w-5 h-5 text-red-400" />
+                    ) : (
+                        <Mail className="w-5 h-5 text-gray-400" />
                     )}
-                </div>
-
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Token de API</label>
-                        <div className="flex gap-3">
-                            <div className="relative flex-1">
-                                <Input
-                                    type={showApiKey ? "text" : "password"}
-                                    placeholder="Ingresa tu Hostinger API token..."
-                                    value={hostingerKey}
-                                    onChange={(e) => setHostingerKey(e.target.value)}
-                                    className="pr-10"
-                                />
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
-                                    onClick={() => setShowApiKey(!showApiKey)}
-                                >
-                                    {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                                </Button>
-                            </div>
-                            <Button
-                                onClick={testHostingerConnection}
-                                disabled={testingConnection}
-                                className="bg-violet-500 hover:bg-violet-600"
-                            >
-                                {testingConnection ? (
-                                    <>
-                                        <Loader2 size={16} className="mr-2 animate-spin" />
-                                        Probando...
-                                    </>
-                                ) : (
-                                    "Probar Conexión"
-                                )}
-                            </Button>
-                        </div>
-                        <p className="text-xs text-gray-500">
-                            Obtén tu token desde el{" "}
-                            <a href="https://hpanel.hostinger.com/profile/api" target="_blank" className="text-violet-600 hover:underline">
-                                Panel de Hostinger
-                            </a>
+                    <div>
+                        <p className={`font-medium ${smtpStatus === "ok" ? "text-green-300" :
+                                smtpStatus === "error" ? "text-red-300" : "text-gray-300"
+                            }`}>
+                            {smtpStatus === "ok" ? "Email configurado y funcionando" :
+                                smtpStatus === "error" ? "Email no configurado o con errores" :
+                                    "Verificando configuración de email..."}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                            {smtpStatus === "error" && "Configura SMTP para recibir alertas por email"}
                         </p>
                     </div>
+                </div>
+            </div>
 
-                    {connectionStatus === "error" && (
-                        <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700">
-                            <AlertCircle size={16} />
-                            <span className="text-sm">Error de conexión. Verifica tu token.</span>
+            {/* Settings Sections */}
+            <div className="grid gap-6">
+                {SETTINGS_SECTIONS.map((section) => (
+                    <div key={section.id} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                        <div className="px-6 py-4 bg-gray-900 border-b border-gray-700 flex items-center gap-3">
+                            <section.icon className="w-5 h-5 text-violet-400" />
+                            <div>
+                                <h2 className="font-bold text-white">{section.title}</h2>
+                                <p className="text-sm text-gray-500">{section.description}</p>
+                            </div>
                         </div>
-                    )}
-                </div>
-            </div>
-
-            {/* SSH Configuration */}
-            <div className="bg-white rounded-2xl border-2 border-gray-200 p-6">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="p-3 rounded-xl bg-green-100">
-                        <Key className="h-6 w-6 text-green-600" />
-                    </div>
-                    <div>
-                        <h2 className="text-lg font-semibold text-gray-900">Configuración SSH</h2>
-                        <p className="text-sm text-gray-500">Ajustes por defecto para conexiones seguras</p>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Usuario SSH</label>
-                        <Input defaultValue="root" />
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Puerto SSH</label>
-                        <Input type="number" defaultValue="22" />
-                    </div>
-                    <div className="col-span-2 space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Clave Privada (.ssh/id_rsa)</label>
-                        <Input placeholder="~/.ssh/id_rsa" />
-                        <p className="text-xs text-gray-500">Ruta local a tu clave privada</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Notifications */}
-            <div className="bg-white rounded-2xl border-2 border-gray-200 p-6">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="p-3 rounded-xl bg-yellow-100">
-                        <Bell className="h-6 w-6 text-yellow-600" />
-                    </div>
-                    <div>
-                        <h2 className="text-lg font-semibold text-gray-900">Notificaciones</h2>
-                        <p className="text-sm text-gray-500">Configura alertas de sistema y pagos</p>
-                    </div>
-                </div>
-
-                <div className="space-y-3">
-                    <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 border border-gray-200">
-                        <div>
-                            <p className="font-medium text-gray-900">Recordatorios de Pago</p>
-                            <p className="text-sm text-gray-500">Avisar antes del vencimiento del servicio</p>
+                        <div className="p-6 grid gap-4 md:grid-cols-2">
+                            {section.fields.map((field) => (
+                                <div key={field.key} className="space-y-1">
+                                    <label className="text-sm font-medium text-gray-300">
+                                        {field.label}
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type={field.type === "password" && !showPasswords[field.key] ? "password" : field.type === "password" ? "text" : field.type}
+                                            value={settings[field.key] || ""}
+                                            onChange={(e) => updateSetting(field.key, e.target.value)}
+                                            placeholder={field.placeholder}
+                                            className="w-full px-4 py-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none pr-10"
+                                        />
+                                        {field.type === "password" && (
+                                            <button
+                                                type="button"
+                                                onClick={() => togglePassword(field.key)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                                            >
+                                                {showPasswords[field.key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        )}
+                                    </div>
+                                    {field.description && (
+                                        <p className="text-xs text-gray-500">{field.description}</p>
+                                    )}
+                                </div>
+                            ))}
                         </div>
-                        <Button variant="outline" size="sm">Configurar</Button>
                     </div>
-                    <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 border border-gray-200">
-                        <div>
-                            <p className="font-medium text-gray-900">Alertas de Caída</p>
-                            <p className="text-sm text-gray-500">Notificar cuando un servicio deja de responder</p>
-                        </div>
-                        <Button variant="outline" size="sm">Configurar</Button>
-                    </div>
-                </div>
+                ))}
             </div>
 
-            {/* Database */}
-            <div className="bg-white rounded-2xl border-2 border-gray-200 p-6">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="p-3 rounded-xl bg-blue-100">
-                        <Database className="h-6 w-6 text-blue-600" />
-                    </div>
+            {/* Info */}
+            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+                <div className="flex items-start gap-3">
+                    <Server className="w-5 h-5 text-cyan-400 mt-0.5" />
                     <div>
-                        <h2 className="text-lg font-semibold text-gray-900">Base de Datos</h2>
-                        <p className="text-sm text-gray-500">Gestión de datos locales</p>
+                        <p className="text-sm text-gray-300 font-medium">Configuración almacenada en base de datos</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                            Los cambios se guardan en la tabla <code className="bg-gray-700 px-1 rounded">AppSettings</code>
+                            y están disponibles para todas las instancias de la aplicación.
+                        </p>
                     </div>
                 </div>
-
-                <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 border border-gray-200">
-                    <div>
-                        <p className="font-medium text-gray-900">Base de Datos SQLite</p>
-                        <p className="text-sm text-gray-500">prisma/dev.db</p>
-                    </div>
-                    <div className="flex gap-2">
-                        <Button variant="outline" size="sm">Respaldo</Button>
-                        <Button variant="outline" size="sm">Exportar</Button>
-                    </div>
-                </div>
-            </div>
-
-            {/* Save Button */}
-            <div className="flex justify-end">
-                <Button
-                    onClick={handleSaveSettings}
-                    className="gap-2 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 shadow-lg shadow-purple-200"
-                >
-                    <Save size={16} />
-                    Guardar Todo
-                </Button>
             </div>
         </div>
     );

@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { Terminal } from "lucide-react";
+import { Terminal, Download, Activity } from "lucide-react";
 
 const SSHConsole = dynamic(() => import("@/components/SSHConsole"), { ssr: false });
+const ServerMonitor = dynamic(() => import("@/components/ServerMonitor"), { ssr: false });
+const BackupPanel = dynamic(() => import("@/components/BackupPanel"), { ssr: false });
 
 interface Service {
     id: string;
@@ -52,6 +54,17 @@ export default function VPSDetailPage() {
     const [editing, setEditing] = useState(false);
     const [showAddService, setShowAddService] = useState(false);
     const [showTerminal, setShowTerminal] = useState(false);
+    const [showMonitor, setShowMonitor] = useState(false);
+    const [showBackup, setShowBackup] = useState(false);
+    const [sshPassword, setSshPassword] = useState<string | null>(null);
+
+    // Password prompt for SSH operations
+    const requestPassword = async (): Promise<string | null> => {
+        if (sshPassword) return sshPassword;
+        const pwd = window.prompt("Contraseña SSH:");
+        if (pwd) setSshPassword(pwd);
+        return pwd;
+    };
 
     // Edit form state
     const [editForm, setEditForm] = useState({
@@ -178,13 +191,27 @@ export default function VPSDetailPage() {
                         {vps.status}
                     </span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <button
                         onClick={() => setShowTerminal(!showTerminal)}
                         className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition flex items-center gap-2"
                     >
                         <Terminal className="w-4 h-4" />
-                        {showTerminal ? "Cerrar Terminal" : "SSH Terminal"}
+                        {showTerminal ? "Cerrar" : "Terminal"}
+                    </button>
+                    <button
+                        onClick={() => setShowMonitor(!showMonitor)}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition flex items-center gap-2"
+                    >
+                        <Activity className="w-4 h-4" />
+                        {showMonitor ? "Cerrar" : "Monitor"}
+                    </button>
+                    <button
+                        onClick={() => setShowBackup(!showBackup)}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition flex items-center gap-2"
+                    >
+                        <Download className="w-4 h-4" />
+                        {showBackup ? "Cerrar" : "Backup"}
                     </button>
                     <button
                         onClick={() => setEditing(!editing)}
@@ -203,6 +230,30 @@ export default function VPSDetailPage() {
                         port={vps.sshPort || 22}
                         username={vps.sshUser || "root"}
                         onClose={() => setShowTerminal(false)}
+                    />
+                </div>
+            )}
+
+            {/* Server Monitor */}
+            {showMonitor && (
+                <div className="mb-6">
+                    <ServerMonitor
+                        host={vps.ipAddress}
+                        port={vps.sshPort || 22}
+                        username={vps.sshUser || "root"}
+                        onPasswordRequest={requestPassword}
+                    />
+                </div>
+            )}
+
+            {/* Backup Panel */}
+            {showBackup && (
+                <div className="mb-6">
+                    <BackupPanel
+                        host={vps.ipAddress}
+                        port={vps.sshPort || 22}
+                        username={vps.sshUser || "root"}
+                        onPasswordRequest={requestPassword}
                     />
                 </div>
             )}

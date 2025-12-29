@@ -111,3 +111,31 @@ model Payment {
   
   createdAt   DateTime @default(now())
 }
+
+// Monthly revenue history for charts
+model RevenueHistory {
+  id        String   @id @default(cuid())
+  year      Int
+  month     Int
+  revenue   Float    @default(0)
+  expenses  Float    @default(0)
+  clients   Int      @default(0)
+  vps       Int      @default(0)
+  services  Int      @default(0)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([year, month])
+}
+
+// App settings stored in DB
+model AppSettings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  category  String   @default("general")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

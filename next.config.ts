@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   compress: true,
   // Exclude native modules from webpack bundling
-  serverExternalPackages: ["ssh2", "cpu-features"],
+  serverExternalPackages: ["ssh2", "cpu-features", "nodemailer"],
 };
 
 export default nextConfig;
