@@ -1,0 +1,9 @@
+# Ignore backup files
+*.dump
+*.sql
+*.tar
+*.gz
+
+# Ignore sensitive data
+*.pem
+*.key

@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id          String   @id @default(cuid())
+  name        String
+  email       String?
+  phone       String?
+  companyName String?
+  notes       String?
+  isActive    Boolean  @default(true)
+  monthlyFee  Float    @default(0)
+  currency    String   @default("USD")
+  paymentDay  Int      @default(1)
+  
+  // Odoo Integration
+  odooPartnerId Int?
+  odooLastSync  DateTime?
+  odooData      Json?      // Cached data from Odoo (name, vat, address, etc.)
+  
+  // Calculated fields (updated on service changes)
+  totalMonthlyCost Float @default(0)
+  
+  vpsList     VPS[]
+  services    Service[]
+  payments    Payment[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model VPS {
+  id          String   @id @default(cuid())
+  name        String
+  ipAddress   String
+  provider    String   @default("Hostinger")
+  hostingerId String?
+  status      String   @default("unknown")
+  
+  // SSH Configuration
+  sshUser     String   @default("root")
+  sshPort     Int      @default(22)
+  sshKeyPath  String?
+  
+  // Costs
+  monthlyCost Float    @default(0)
+  
+  // Config files for service detection
+  configFiles String[] @default([])
+  
+  clientId    String?
+  client      Client?  @relation(fields: [clientId], references: [id])
+  
+  services    Service[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // "odoo", "postgres", "nginx", "redis", "docker", etc.
+  port        Int?
+  configFile  String?
+  url         String?
+  
+  // Resource usage (JSON: {cpu: %, memory: MB, disk: MB})
+  resourceUsage Json?
+  
+  // Costs
+  monthlyCost   Float    @default(0)
+  
+  // Status
+  status      String   @default("unknown")
+  lastChecked DateTime?
+  
+  // Relations
+  vpsId       String?
+  vps         VPS?     @relation(fields: [vpsId], references: [id], onDelete: Cascade)
+  
+  clientId    String?
+  client      Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  amount      Float
+  currency    String   @default("USD")
+  date        DateTime @default(now())
+  status      String   @default("completed")
+  
+  // Odoo Invoice Reference
+  odooInvoiceId Int?
+  odooInvoiceName String?
+  
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  notes       String?
+  
+  createdAt   DateTime @default(now())
+}
+
+// Monthly revenue history for charts
+model RevenueHistory {
+  id        String   @id @default(cuid())
+  year      Int
+  month     Int
+  revenue   Float    @default(0)
+  expenses  Float    @default(0)
+  clients   Int      @default(0)
+  vps       Int      @default(0)
+  services  Int      @default(0)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([year, month])
+}
+
+// App settings stored in DB
+model AppSettings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  category  String   @default("general")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

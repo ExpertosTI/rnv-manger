@@ -1,0 +1,27 @@
+{
+    "name": "rnv-manager-desktop",
+    "version": "1.0.0",
+    "description": "RNV Manager - Desktop App for Windows",
+    "main": "main.js",
+    "author": "Renace Tech",
+    "license": "MIT",
+    "scripts": {
+        "start": "electron .",
+        "build": "electron-builder --win --dir",
+        "pack": "electron-builder --dir"
+    },
+    "build": {
+        "appId": "tech.renace.rnv-manager",
+        "productName": "RNV Manager",
+        "directories": {
+            "output": "dist"
+        },
+        "win": {
+            "target": "dir"
+        }
+    },
+    "devDependencies": {
+        "electron": "^28.0.0",
+        "electron-builder": "^24.9.1"
+    }
+}
