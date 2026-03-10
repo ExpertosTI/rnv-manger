@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AppSidebar } from "@/components/AppSidebar";
+import AIAssistant from "@/components/AIAssistant";
 import { ToastProvider } from "@/components/ui/toast";
 
 const inter = Inter({
@@ -12,11 +13,6 @@ const inter = Inter({
 export const metadata: Metadata = {
     title: "RNV Manager",
     description: "Advanced VPS and Service Management",
-    icons: {
-        icon: "/renace-cone.png",
-        shortcut: "/renace-cone.png",
-        apple: "/renace-cone.png",
-    },
 };
 
 export default function RootLayout({
@@ -34,6 +30,7 @@ export default function RootLayout({
                             {children}
                         </div>
                     </main>
+                    <AIAssistant />
                 </ToastProvider>
             </body>
         </html>

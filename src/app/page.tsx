@@ -117,7 +117,7 @@ function Tooltip({ children, content }: { children: React.ReactNode; content: st
 }
 
 export default function Home() {
-    const { addToast } = useToast();
+    const { toast } = useToast();
     const [statusFilter, setStatusFilter] = useState<"all" | "running" | "stopped">("all");
     const [showFilterMenu, setShowFilterMenu] = useState(false);
     const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -191,7 +191,10 @@ export default function Home() {
 
     // Manual refresh
     const handleRefresh = useCallback(async () => {
-        addToast("Actualizando datos...", "info");
+        toast({
+            title: "Actualizando...",
+            description: "Obteniendo datos más recientes",
+        });
 
         await Promise.all([
             mutateStats(),
@@ -202,15 +205,22 @@ export default function Home() {
 
         setLastRefresh(new Date());
 
-        addToast("Todos los datos están al día", "success");
-    }, [mutateStats, mutateVps, mutateClients, mutateBilling, addToast]);
+        toast({
+            title: "✅ Actualizado",
+            description: "Todos los datos están al día",
+        });
+    }, [mutateStats, mutateVps, mutateClients, mutateBilling, toast]);
 
     // Show errors
     useEffect(() => {
         if (statsError || vpsError || clientsError || billingError) {
-            addToast("No se pudieron cargar algunos datos", "error");
+            toast({
+                title: "Error de conexión",
+                description: "No se pudieron cargar algunos datos",
+                variant: "destructive",
+            });
         }
-    }, [statsError, vpsError, clientsError, billingError, addToast]);
+    }, [statsError, vpsError, clientsError, billingError, toast]);
 
     const isLoading = statsLoading || vpsLoading;
     const hasError = statsError || vpsError;

@@ -308,11 +308,11 @@ function ConeMascot({ state, size = 56 }: { state: MascotState; size?: number })
         <div className={`relative ${stateClass}`} style={{ width: size, height: size }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <motion.img
-                src="/renace-cone.png"
+                src="/renace-cone.svg"
                 alt="Asistente RNV"
                 width={size}
                 height={size}
-                className="drop-shadow-[0_8px_16px_rgba(0,0,0,0.2)]"
+                className="drop-shadow-[0_0_12px_rgba(139,92,246,0.5)]"
                 draggable={false}
                 animate={
                     state === "barrel-roll" ? { rotate: [0, 360, 360], scale: [1, 1.2, 1] } :
