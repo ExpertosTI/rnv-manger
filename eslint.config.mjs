@@ -19,7 +19,7 @@ const eslintConfig = [
     },
   },
   {
-    ignores: [".next/**", "out/**", "build/**", "public/whiteboard-app/**"],
+    ignores: [".next/**", "out/**", "build/**", "public/whiteboard-app/**", "OpenUpgrade/**", "electron-app/**", "eslint-report.json"],
   },
 ];
 

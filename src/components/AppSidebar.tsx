@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Server, Users, Settings, Database, FileCode, Zap, Palette, Menu, X, DollarSign } from "lucide-react";
+import { LayoutDashboard, Server, Users, Settings, Database, FileCode, Palette, Menu, X, DollarSign } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const sidebarItems = [
@@ -13,6 +13,7 @@ const sidebarItems = [
     { icon: Users, label: "Clientes", href: "/clients" },
     { icon: DollarSign, label: "Facturación", href: "/billing" },
     { icon: Palette, label: "Pizarra Blanca", href: "/whiteboard" },
+    { icon: FileCode, label: "Upgrader", href: "/upgrader" },
     { icon: FileCode, label: "Editor Config", href: "/config-editor" },
     { icon: Settings, label: "Configuración", href: "/settings" },
 ];
@@ -39,15 +40,19 @@ export function AppSidebar() {
 
     const SidebarContent = () => (
         <>
-            {/* Logo */}
             <div className="p-5 border-b border-gray-100">
                 <Link href="/" className="flex items-center gap-3 group" onClick={() => setIsOpen(false)}>
-                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-200 group-hover:shadow-purple-300 transition-shadow">
-                        <Zap className="w-6 h-6 text-white" />
+                    <div className="w-12 h-12 flex items-center justify-center group-hover:scale-105 transition-transform">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src="/renace-logo-icon.svg"
+                            alt="Renace Logo"
+                            className="w-full h-full object-contain"
+                        />
                     </div>
                     <div>
-                        <h1 className="text-lg font-bold text-gray-900">RNV Manager</h1>
-                        <p className="text-xs text-gray-500">Panel de Control</p>
+                        <h1 className="text-lg font-bold text-gray-900 tracking-tight">RENACE Tech</h1>
+                        <p className="text-[10px] text-gray-500 font-medium uppercase tracking-widest">Digital Solutions</p>
                     </div>
                 </Link>
             </div>

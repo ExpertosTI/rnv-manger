@@ -12,6 +12,11 @@ const inter = Inter({
 export const metadata: Metadata = {
     title: "RNV Manager",
     description: "Advanced VPS and Service Management",
+    icons: {
+        icon: "/renace-cone.png",
+        shortcut: "/renace-cone.png",
+        apple: "/renace-cone.png",
+    },
 };
 
 export default function RootLayout({

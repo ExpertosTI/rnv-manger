@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, dialog, Tray, globalShortcut, nativeImage } = require("electron");
+const { app, BrowserWindow, Menu, shell, dialog, Tray, globalShortcut, nativeImage, session } = require("electron");
 const { spawn, exec } = require("child_process");
 const http = require("http");
 const net = require("net");
@@ -19,7 +19,7 @@ function parseEnvValue(raw) {
     return trimmed;
 }
 
-function loadEnvFile(filePath) {
+function loadEnvFile(filePath, force = false) {
     if (!filePath || !fs.existsSync(filePath)) {
         return;
     }
@@ -38,12 +38,13 @@ function loadEnvFile(filePath) {
         if (!key) {
             return;
         }
-        if (process.env[key] === undefined) {
+        if (force || process.env[key] === undefined) {
             process.env[key] = value;
         }
     });
 }
 
+let userEnvPath = "";
 const envCandidates = [
     path.join(process.cwd(), ".env"),
     path.join(__dirname, "..", ".env"),
@@ -52,26 +53,139 @@ const envCandidates = [
 ];
 
 try {
-    envCandidates.unshift(path.join(app.getPath("userData"), ".env"));
+    userEnvPath = path.join(app.getPath("userData"), ".env");
 } catch { }
 
-envCandidates.forEach(loadEnvFile);
+envCandidates.forEach((candidate) => loadEnvFile(candidate, true));
+if (userEnvPath) {
+    loadEnvFile(userEnvPath, false);
+}
+
+function buildDatabaseUrlFromParts() {
+    const dbUser = process.env.DB_USER;
+    const dbPassword = process.env.DB_PASSWORD;
+    const dbName = process.env.DB_NAME;
+    if (!dbUser || !dbPassword || !dbName) {
+        return "";
+    }
+    const dbHost = process.env.DB_HOST || "localhost";
+    const dbPort = process.env.DB_PORT || "5432";
+    return `postgresql://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbName}?schema=public`;
+}
+
+const rebuiltDatabaseUrl = buildDatabaseUrlFromParts();
+if (rebuiltDatabaseUrl) {
+    process.env.DATABASE_URL = rebuiltDatabaseUrl;
+}
+
+function setDatabasePort(port) {
+    applyDatabasePortFallback(port);
+    process.env.DB_PORT = String(port);
+    const rebuilt = buildDatabaseUrlFromParts();
+    if (rebuilt) {
+        process.env.DATABASE_URL = rebuilt;
+    }
+}
 
 // Configuration
-const DEFAULT_APP_PORT = 4200;
-const parsedAppPort = parseInt(process.env.APP_PORT || "", 10);
-const APP_PORT = Number.isFinite(parsedAppPort) ? parsedAppPort : DEFAULT_APP_PORT;
-const APP_URL = `http://127.0.0.1:${APP_PORT}`;
+const DEFAULT_APP_PORT = app.isPackaged ? 4210 : 4200;
+const portFromEnv = app.isPackaged ? process.env.DESKTOP_APP_PORT : process.env.APP_PORT;
+const parsedAppPort = parseInt(portFromEnv || "", 10);
+let APP_PORT = Number.isFinite(parsedAppPort) ? parsedAppPort : DEFAULT_APP_PORT;
+let APP_URL = `http://127.0.0.1:${APP_PORT}`;
 const APP_NAME = "RNV Manager";
+const APP_VERSION = app.getVersion();
 const PROJECT_ROOT = app.isPackaged ? path.join(process.resourcesPath, "app") : path.join(__dirname, "..");
 const MAX_RETRIES = 60; // 60 seconds max wait
 const RETRY_INTERVAL = 1000; // 1 second
+
+function setRuntimePort(port) {
+    APP_PORT = port;
+    APP_URL = `http://127.0.0.1:${APP_PORT}`;
+}
+
+function isPortFree(port) {
+    return new Promise((resolve) => {
+        const tester = net.createServer();
+        tester.once("error", () => resolve(false));
+        tester.once("listening", () => {
+            tester.close(() => resolve(true));
+        });
+        tester.listen(port, "127.0.0.1");
+    });
+}
+
+async function resolveRuntimePort() {
+    if (!app.isPackaged) {
+        return;
+    }
+    if (await isPortFree(APP_PORT)) {
+        return;
+    }
+    for (let port = APP_PORT + 1; port <= APP_PORT + 30; port++) {
+        if (await isPortFree(port)) {
+            setRuntimePort(port);
+            process.env.DESKTOP_APP_PORT = String(port);
+            return;
+        }
+    }
+}
+
+function getAppIconPath() {
+    if (app.isPackaged) {
+        const packagedIcon = path.join(process.resourcesPath, "assets", "renace-cone.png");
+        if (fs.existsSync(packagedIcon)) {
+            return packagedIcon;
+        }
+    }
+    const devIcon = path.join(__dirname, "..", "public", "renace-cone.png");
+    if (fs.existsSync(devIcon)) {
+        return devIcon;
+    }
+    return path.join(__dirname, "icon.png");
+}
+
+function getSplashLogoDataUrl() {
+    const logoPath = getAppIconPath();
+    try {
+        const buffer = fs.readFileSync(logoPath);
+        return `data:image/png;base64,${buffer.toString("base64")}`;
+    } catch {
+        return "";
+    }
+}
+
+function formatDatabaseInfo() {
+    const urlText = parseDatabaseUrl();
+    if (!urlText) {
+        return "No definido";
+    }
+    try {
+        const parsed = new URL(urlText);
+        const dbName = parsed.pathname.replace(/^\//, "") || "(sin nombre)";
+        return `${parsed.hostname}:${parsed.port || "5432"}/${dbName}`;
+    } catch {
+        return "Formato inválido";
+    }
+}
+
+function getRuntimeInfo() {
+    return [
+        `Versión app: ${APP_VERSION}`,
+        `Producto: ${app.getName()}`,
+        `Modo: ${app.isPackaged ? "Producción" : "Desarrollo"}`,
+        `APP_URL: ${APP_URL}`,
+        `DB destino: ${formatDatabaseInfo()}`,
+        `Exec path: ${process.execPath}`,
+        `Resources: ${process.resourcesPath}`,
+        `UserData: ${app.getPath("userData")}`,
+    ].join("\n");
+}
 
 let mainWindow;
 let splashWindow;
 let serverProcess = null;
 let tray = null;
-let miniAssistantWindow = null;
 
 // Check if server is already running
 function checkServer(url) {
@@ -133,6 +247,25 @@ function parseDatabaseUrl() {
     return `postgresql://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbName}?schema=public`;
 }
 
+function applyDatabasePortFallback(targetPort) {
+    const urlText = parseDatabaseUrl();
+    if (!urlText) {
+        return false;
+    }
+    try {
+        const parsed = new URL(urlText);
+        const currentPort = parseInt(parsed.port || "5432", 10);
+        if (currentPort === targetPort) {
+            return false;
+        }
+        parsed.port = String(targetPort);
+        process.env.DATABASE_URL = parsed.toString();
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 function getDatabaseTarget() {
     const urlText = parseDatabaseUrl();
     if (!urlText) {
@@ -191,17 +324,15 @@ async function ensureLocalDatabase() {
     if (!isLocalHost(target.host)) {
         return true;
     }
-    const reachable = await canConnectTcp(target.host, target.port);
-    if (reachable) {
-        return true;
-    }
     const composePath = path.join(PROJECT_ROOT, "docker-compose.yml");
     if (!fs.existsSync(composePath)) {
-        return false;
+        setDatabasePort(target.port);
+        return await canConnectTcp(target.host, target.port);
     }
     const hasDocker = await isDockerAvailable();
     if (!hasDocker) {
-        return false;
+        setDatabasePort(target.port);
+        return await canConnectTcp(target.host, target.port);
     }
     const daemonRunning = await isDockerDaemonRunning();
     if (!daemonRunning) {
@@ -223,7 +354,43 @@ async function ensureLocalDatabase() {
             break;
         }
     }
+    const detectedPort = await detectRunningContainerPort("rnv-postgres");
+    if (detectedPort) {
+        setDatabasePort(detectedPort);
+        return await waitForPort(target.host, detectedPort, 45);
+    }
+    setDatabasePort(target.port);
     return await waitForPort(target.host, target.port, 45);
+}
+
+async function startUpgraderIntegration() {
+    const upgraderRoot = path.join(PROJECT_ROOT, "OpenUpgrade", "upgradernc");
+    const composeFile = path.join(upgraderRoot, "docker-compose.yml");
+    if (!fs.existsSync(composeFile)) {
+        return;
+    }
+    const hasDocker = await isDockerAvailable();
+    if (!hasDocker) {
+        return;
+    }
+    const daemonRunning = await isDockerDaemonRunning();
+    if (!daemonRunning) {
+        const launched = tryStartDockerDesktop();
+        if (launched) {
+            await waitForDockerDaemon();
+        }
+    }
+    const commands = [
+        { command: "docker", args: ["compose", "up", "-d"] },
+        { command: "docker-compose", args: ["up", "-d"] },
+    ];
+    for (const entry of commands) {
+        const ok = await runDockerComposeAt(upgraderRoot, entry.command, entry.args);
+        if (ok) {
+            await waitForPort("127.0.0.1", 3005, 90);
+            break;
+        }
+    }
 }
 
 // Check if Docker is available
@@ -276,9 +443,13 @@ async function waitForDockerDaemon(maxRetries = 90) {
 }
 
 function runDockerCompose(command, args) {
+    return runDockerComposeAt(PROJECT_ROOT, command, args);
+}
+
+function runDockerComposeAt(cwdPath, command, args) {
     return new Promise((resolve) => {
         const dockerProcess = spawn(command, args, {
-            cwd: PROJECT_ROOT,
+            cwd: cwdPath,
             shell: true,
         });
 
@@ -292,6 +463,25 @@ function runDockerCompose(command, args) {
 
         dockerProcess.on("close", (code) => {
             resolve(code === 0);
+        });
+    });
+}
+
+function detectRunningContainerPort(containerName) {
+    return new Promise((resolve) => {
+        exec(`docker port ${containerName} 5432/tcp`, (error, stdout) => {
+            if (error || !stdout) {
+                resolve(null);
+                return;
+            }
+            const output = String(stdout).trim();
+            const match = output.match(/:(\d+)\s*$/m);
+            if (!match) {
+                resolve(null);
+                return;
+            }
+            const parsed = parseInt(match[1], 10);
+            resolve(Number.isFinite(parsed) ? parsed : null);
         });
     });
 }
@@ -366,13 +556,23 @@ async function startServices() {
 
 // Start local npm dev server
 async function startLocalServer() {
+    await resolveRuntimePort();
     return new Promise((resolve) => {
         const isPackaged = app.isPackaged;
+        let resolved = false;
+        let exitedEarly = false;
+        const finish = (value) => {
+            if (resolved) {
+                return;
+            }
+            resolved = true;
+            resolve(value);
+        };
         if (isPackaged) {
             const packagedRoot = path.join(process.resourcesPath, "app");
             const serverEntry = path.join(packagedRoot, "server.js");
             if (!fs.existsSync(serverEntry)) {
-                resolve(false);
+                finish(false);
                 return;
             }
 
@@ -440,7 +640,15 @@ async function startLocalServer() {
 
         serverProcess.on("error", (error) => {
             console.error("Failed to start server:", error);
-            resolve(false);
+            finish(false);
+        });
+
+        serverProcess.on("close", (code) => {
+            if (!resolved) {
+                exitedEarly = true;
+                console.error(`Server process exited early with code: ${code}`);
+                finish(false);
+            }
         });
 
         // Start checking immediately, but with a longer total timeout if needed
@@ -452,8 +660,11 @@ async function startLocalServer() {
                 const hasBuild = fs.existsSync(buildIdPath);
                 updateSplash(hasBuild ? "Iniciando servidor de producción..." : "Iniciando servidor de desarrollo...");
             }
+            if (exitedEarly) {
+                return;
+            }
             const isReady = await waitForServer(APP_URL);
-            resolve(isReady);
+            finish(isReady);
         }, 2000);
     });
 }
@@ -475,6 +686,7 @@ function createSplashWindow() {
         frame: false,
         transparent: true,
         alwaysOnTop: true,
+        icon: getAppIconPath(),
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -511,8 +723,15 @@ function createSplashWindow() {
                 }
                 h1 {
                     font-size: 2em;
-                    margin-bottom: 20px;
+                    margin-bottom: 14px;
                     font-weight: 300;
+                }
+                .logo {
+                    width: 72px;
+                    height: 72px;
+                    object-fit: contain;
+                    margin-bottom: 14px;
+                    filter: drop-shadow(0 6px 12px rgba(0,0,0,0.25));
                 }
                 .spinner {
                     border: 4px solid rgba(255,255,255,0.3);
@@ -536,9 +755,10 @@ function createSplashWindow() {
         </head>
         <body>
             <div class="splash">
-                <h1>RNV Manager</h1>
+                <img class="logo" src="${getSplashLogoDataUrl()}" alt="Renace" />
+                <h1>${APP_NAME}</h1>
                 <div class="spinner"></div>
-                <div class="status">Iniciando...</div>
+                <div class="status">v${APP_VERSION} · Iniciando...</div>
             </div>
         </body>
         </html>
@@ -554,7 +774,7 @@ function createWindow() {
         minWidth: 1024,
         minHeight: 768,
         title: APP_NAME,
-        icon: path.join(__dirname, "icon.png"),
+        icon: getAppIconPath(),
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -591,6 +811,15 @@ function createWindow() {
 
     loadWithRetry();
 
+    mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+        if (level >= 2) {
+            console.log(`[Renderer ${level}] ${message} (${sourceId}:${line})`);
+        }
+    });
+    mainWindow.webContents.on("render-process-gone", (_event, details) => {
+        dialog.showErrorBox("Render Error", `El proceso de la interfaz se cerró: ${details.reason}`);
+    });
+
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
         if (url.startsWith("http")) {
             shell.openExternal(url);
@@ -606,6 +835,19 @@ function createWindow() {
                     label: "Refresh",
                     accelerator: "F5",
                     click: () => mainWindow.reload(),
+                },
+                {
+                    label: "Reset UI",
+                    click: async () => {
+                        try {
+                            await session.defaultSession.clearStorageData({
+                                storages: ["caches", "serviceworkers"],
+                            });
+                            mainWindow.reload();
+                        } catch (error) {
+                            dialog.showErrorBox("Reset UI", error instanceof Error ? error.message : "No se pudo resetear la UI");
+                        }
+                    },
                 },
                 { type: "separator" },
                 {
@@ -656,8 +898,19 @@ function createWindow() {
                         dialog.showMessageBox(mainWindow, {
                             type: "info",
                             title: "About RNV Manager",
-                            message: "RNV Manager v1.0.0",
+                            message: `${APP_NAME} v${APP_VERSION}`,
                             detail: "Desktop application for managing VPS, clients, and Odoo integration.\n\nBy Renace Tech",
+                        });
+                    },
+                },
+                {
+                    label: "Diagnóstico",
+                    click: () => {
+                        dialog.showMessageBox(mainWindow, {
+                            type: "info",
+                            title: "Diagnóstico de ejecución",
+                            message: `${APP_NAME} v${APP_VERSION}`,
+                            detail: getRuntimeInfo(),
                         });
                     },
                 },
@@ -696,17 +949,22 @@ app.on("second-instance", () => {
 
 // Initialize app
 app.whenReady().then(async () => {
+    app.setAppUserModelId("tech.renace.rnv-manager");
     createSplashWindow();
+    try {
+        await session.defaultSession.clearCache();
+        await session.defaultSession.clearStorageData({
+            storages: ["serviceworkers", "caches"],
+        });
+    } catch { }
 
     const serverReady = await startServices();
+
 
     if (serverReady) {
         createWindow();
         createTray();
-        // Global shortcut: Ctrl+Shift+A to toggle the mini floating assistant
-        globalShortcut.register('Ctrl+Shift+A', () => {
-            toggleMiniAssistant();
-        });
+        startUpgraderIntegration();
     } else {
         if (splashWindow && !splashWindow.isDestroyed()) {
             splashWindow.close();
@@ -734,7 +992,7 @@ app.on("activate", () => {
 
 // Create system tray
 function createTray() {
-    const iconPath = path.join(__dirname, "icon.png");
+    const iconPath = getAppIconPath();
     let trayIcon;
     try {
         trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
@@ -742,7 +1000,7 @@ function createTray() {
         trayIcon = nativeImage.createEmpty();
     }
     tray = new Tray(trayIcon);
-    tray.setToolTip("RNV Manager - Asistente activo");
+    tray.setToolTip("RNV Manager");
 
     const contextMenu = Menu.buildFromTemplate([
         {
@@ -755,9 +1013,18 @@ function createTray() {
             }
         },
         {
-            label: "Abrir Asistente AI (Ctrl+Shift+A)",
-            click: () => {
-                toggleMiniAssistant();
+            label: "Reset UI",
+            click: async () => {
+                try {
+                    await session.defaultSession.clearStorageData({
+                        storages: ["caches", "serviceworkers"],
+                    });
+                    if (mainWindow) {
+                        mainWindow.reload();
+                    }
+                } catch (error) {
+                    dialog.showErrorBox("Reset UI", error instanceof Error ? error.message : "No se pudo resetear la UI");
+                }
             }
         },
         { type: "separator" },
@@ -793,72 +1060,6 @@ function createTray() {
             }
         }
     });
-}
-
-// Show the main window and activate the AI Assistant overlay
-function createMiniAssistantWindow() {
-    const { screen } = require('electron');
-    // Get cursor position so the widget pops up where the user's mouse is
-    const cursor = screen.getCursorScreenPoint();
-
-    // Default size
-    const width = 400;
-    const height = 650;
-
-    // Calculate position: center the widget horizontally around the cursor,
-    // and vertically offset so the top of the widget is near the mouse.
-    // Adjust boundaries so it doesn't overflow screen edges.
-    const activeDisplay = screen.getDisplayNearestPoint(cursor);
-    const workArea = activeDisplay.workArea;
-
-    let x = cursor.x - (width / 2);
-    let y = cursor.y - 20;
-
-    // Boundary checks
-    if (x < workArea.x) x = workArea.x;
-    if (x + width > workArea.x + workArea.width) x = workArea.x + workArea.width - width;
-    if (y < workArea.y) y = workArea.y;
-    if (y + height > workArea.y + workArea.height) y = workArea.y + workArea.height - height;
-
-    miniAssistantWindow = new BrowserWindow({
-        width,
-        height,
-        x,
-        y,
-        frame: false,
-        transparent: true,
-        alwaysOnTop: true,
-        skipTaskbar: true,
-        resizable: true,
-        webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-        },
-    });
-
-    miniAssistantWindow.loadURL(`${APP_URL}/widget`);
-
-    miniAssistantWindow.once('ready-to-show', () => {
-        miniAssistantWindow.show();
-    });
-
-    miniAssistantWindow.on('closed', () => {
-        miniAssistantWindow = null;
-    });
-}
-
-function toggleMiniAssistant() {
-    if (miniAssistantWindow && !miniAssistantWindow.isDestroyed()) {
-        if (miniAssistantWindow.isVisible()) {
-            miniAssistantWindow.hide();
-        } else {
-            miniAssistantWindow.show();
-            // Sometimes it doesn't get focus back properly in Windows
-            miniAssistantWindow.focus();
-        }
-    } else {
-        createMiniAssistantWindow();
-    }
 }
 
 // Cleanup on quit

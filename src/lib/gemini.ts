@@ -535,18 +535,6 @@ const functionDeclarations = [
                 days: { type: SchemaType.NUMBER, description: "Días a futuro para buscar (default: 7)" }
             }
         }
-    },
-    {
-        name: "link_service_to_vps",
-        description: "Vincula un servicio existente a un servidor VPS específico. Úsalo cuando el usuario quiera mover un servicio o asignarlo a un host.",
-        parameters: {
-            type: SchemaType.OBJECT,
-            properties: {
-                serviceName: { type: SchemaType.STRING, description: "Nombre del servicio a vincular" },
-                vpsName: { type: SchemaType.STRING, description: "Nombre del VPS destino" }
-            },
-            required: ["serviceName", "vpsName"]
-        }
     }
 ];
 

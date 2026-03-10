@@ -46,7 +46,6 @@ export async function GET(request: NextRequest) {
         }
 
         let vpsList: HostingerVPS[] = [];
-        let fromCache = false;
 
         try {
             vpsList = await getHostingerVPSList(forceRefresh);

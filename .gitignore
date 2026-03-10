@@ -42,13 +42,7 @@ next-env.d.ts
 
 /src/generated/prisma
 
-# Desktop Builds
-/electron-app/dist/
-/electron-app/dist2/
-/electron-app/out/
-/electron-app/.next-desktop/
-/electron-app/unpacked/
-
 # Electron builds
+electron-app/dist/
 electron-app/node_modules/
 *.exe

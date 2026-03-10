@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import {
     Settings, Save, Mail, Key, Bell, Server, RefreshCw,
-    CheckCircle, AlertTriangle, Eye, EyeOff, Shield
+    CheckCircle, AlertTriangle, Eye, EyeOff, Shield, Database, Download, Upload, HardDrive
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
+import BackupPanel from "@/components/BackupPanel";
 
 interface SettingsSection {
     id: string;
@@ -74,15 +75,29 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
             { key: "session_timeout", label: "Timeout de sesión (min)", type: "number", placeholder: "60" },
         ],
     },
+    {
+        id: "backup",
+        title: "Backups",
+        icon: Database,
+        description: "Credenciales SSH para respaldos de datos",
+        fields: [
+            { key: "backup_host", label: "Host", type: "text", placeholder: "127.0.0.1" },
+            { key: "backup_port", label: "Puerto", type: "number", placeholder: "22" },
+            { key: "backup_user", label: "Usuario SSH", type: "text", placeholder: "root" },
+        ],
+    },
 ];
 
 export default function SettingsPage() {
-    const { toast } = useToast();
+    const { addToast } = useToast();
     const [settings, setSettings] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
     const [smtpStatus, setSmtpStatus] = useState<"unknown" | "ok" | "error">("unknown");
+    const [backupPassword, setBackupPassword] = useState<string | null>(null);
+    const [exporting, setExporting] = useState(false);
+    const [importing, setImporting] = useState(false);
 
     useEffect(() => {
         fetchSettings();
@@ -124,13 +139,13 @@ export default function SettingsPage() {
             const data = await res.json();
 
             if (data.success) {
-                toast({ title: "✅ Configuración guardada", description: "Los cambios se aplicarán inmediatamente" });
+                addToast("Configuración guardada. Los cambios se aplicaron.", "success");
                 checkSmtpStatus();
             } else {
-                toast({ title: "Error", description: data.error, variant: "destructive" });
+                addToast(data.error || "No se pudo guardar la configuración", "error");
             }
         } catch (err) {
-            toast({ title: "Error", description: "No se pudo guardar", variant: "destructive" });
+            addToast("No se pudo guardar", "error");
         } finally {
             setSaving(false);
         }
@@ -143,6 +158,75 @@ export default function SettingsPage() {
     const togglePassword = (key: string) => {
         setShowPasswords(prev => ({ ...prev, [key]: !prev[key] }));
     };
+
+    const requestBackupPassword = async (): Promise<string | null> => {
+        if (backupPassword) return backupPassword;
+        const pwd = window.prompt("Contraseña SSH:");
+        if (pwd) setBackupPassword(pwd);
+        return pwd;
+    };
+
+    const handleExport = async () => {
+        setExporting(true);
+        try {
+            const res = await fetch("/api/system/export");
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `rnv-backup-${new Date().toISOString().split("T")[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            addToast("Exportación completada. Archivo descargado.", "success");
+        } catch (err) {
+            console.error(err);
+            addToast("Falló la exportación", "error");
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (!confirm("⚠️ ADVERTENCIA: Esta acción reemplazará TODOS los datos actuales con los del respaldo. ¿Estás seguro de continuar?")) {
+            e.target.value = "";
+            return;
+        }
+
+        setImporting(true);
+        try {
+            const content = await file.text();
+            const json = JSON.parse(content);
+
+            const res = await fetch("/api/system/import", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(json),
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                addToast("Restauración exitosa. Recargando página...", "success");
+                setTimeout(() => window.location.reload(), 2000);
+            } else {
+                addToast(data.error || "Falló la importación", "error");
+            }
+        } catch (err) {
+            console.error(err);
+            addToast("Archivo de respaldo inválido", "error");
+        } finally {
+            setImporting(false);
+            e.target.value = "";
+        }
+    };
+
+    const backupHost = settings.backup_host || "";
+    const backupUser = settings.backup_user || "";
+    const backupPort = parseInt(settings.backup_port || "22", 10) || 22;
+    const backupReady = Boolean(backupHost && backupUser);
 
     if (loading) {
         return (
@@ -247,6 +331,76 @@ export default function SettingsPage() {
                         </div>
                     </div>
                 ))}
+            </div>
+
+            <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                <div className="px-6 py-4 bg-gray-900 border-b border-gray-700 flex items-center gap-3">
+                    <HardDrive className="w-5 h-5 text-cyan-400" />
+                    <div>
+                        <h2 className="font-bold text-white">Gestión de Datos Locales</h2>
+                        <p className="text-sm text-gray-500">Exportar e importar datos de la aplicación para migración</p>
+                    </div>
+                </div>
+                <div className="p-6">
+                    <div className="flex flex-col md:flex-row gap-4">
+                        <button
+                            onClick={handleExport}
+                            disabled={exporting}
+                            className="flex-1 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 text-cyan-200 px-6 py-4 rounded-xl flex items-center justify-center gap-3 transition"
+                        >
+                            {exporting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                            <div className="text-left">
+                                <span className="block font-bold">Exportar Datos</span>
+                                <span className="text-xs opacity-70">Descargar JSON completo</span>
+                            </div>
+                        </button>
+
+                        <div className="flex-1 relative">
+                            <input
+                                type="file"
+                                accept=".json"
+                                onChange={handleImport}
+                                disabled={importing}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                            />
+                            <div className="bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/30 text-orange-200 px-6 py-4 rounded-xl flex items-center justify-center gap-3 transition h-full">
+                                {importing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                                <div className="text-left">
+                                    <span className="block font-bold">Importar Datos</span>
+                                    <span className="text-xs opacity-70">Restaurar desde JSON</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-4 text-center">
+                        ⚠️ La importación reemplazará todos los datos actuales. Asegúrate de tener un respaldo reciente.
+                    </p>
+                </div>
+            </div>
+
+            <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                <div className="px-6 py-4 bg-gray-900 border-b border-gray-700 flex items-center gap-3">
+                    <Database className="w-5 h-5 text-violet-400" />
+                    <div>
+                        <h2 className="font-bold text-white">Backup de datos</h2>
+                        <p className="text-sm text-gray-500">Genera respaldos desde el servidor configurado</p>
+                    </div>
+                </div>
+                <div className="p-6 space-y-4">
+                    {!backupReady && (
+                        <div className="text-sm text-yellow-300">
+                            Completa Host y Usuario SSH en la sección de Backups para habilitar el respaldo.
+                        </div>
+                    )}
+                    {backupReady && (
+                        <BackupPanel
+                            host={backupHost}
+                            port={backupPort}
+                            username={backupUser}
+                            onPasswordRequest={requestBackupPassword}
+                        />
+                    )}
+                </div>
             </div>
 
             {/* Info */}

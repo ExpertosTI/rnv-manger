@@ -1,0 +1,3 @@
+[submodule "OpenUpgrade"]
+	path = OpenUpgrade
+	url = https://github.com/OCA/OpenUpgrade.git

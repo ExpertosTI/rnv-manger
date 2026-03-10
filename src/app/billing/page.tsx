@@ -337,7 +337,7 @@ export default function BillingPage() {
 
                             <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 p-3 rounded-xl">
                                 <AlertCircle size={16} />
-                                <span>La factura se creará en Odoo con estado "Borrador"</span>
+                                <span>La factura se creará en Odoo con estado &quot;Borrador&quot;</span>
                             </div>
                         </div>
                     )}

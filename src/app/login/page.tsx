@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Lock, Zap, Loader2 } from "lucide-react";
+import { Lock, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { motion } from "framer-motion";
 
@@ -52,7 +53,7 @@ export default function LoginPage() {
             >
                 <div className="flex justify-center mb-8">
                     <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-2xl shadow-purple-200">
-                        <Zap className="w-8 h-8 text-white" />
+                        <Image src="/renace-logo-icon.svg" alt="Renace" width={32} height={32} className="w-8 h-8 object-contain" />
                     </div>
                 </div>
 

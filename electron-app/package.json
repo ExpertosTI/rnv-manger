@@ -1,23 +1,58 @@
 {
     "name": "rnv-manager-desktop",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "RNV Manager - Desktop App for Windows",
     "main": "main.js",
     "author": "Renace Tech",
     "license": "MIT",
     "scripts": {
         "start": "electron .",
-        "build": "electron-builder --win --dir",
+        "build": "electron-builder --win",
         "pack": "electron-builder --dir"
     },
     "build": {
         "appId": "tech.renace.rnv-manager",
-        "productName": "RNV Manager",
+        "productName": "RENACE Manager",
         "directories": {
             "output": "dist"
         },
+        "files": [
+            "main.js",
+            "package.json"
+        ],
+        "extraResources": [
+            {
+                "from": "../.next/standalone",
+                "to": "app"
+            },
+            {
+                "from": "../.next/static",
+                "to": "app/.next/static"
+            },
+            {
+                "from": "../public",
+                "to": "app/public"
+            },
+            {
+                "from": "../prisma",
+                "to": "app/prisma"
+            },
+            {
+                "from": "../public/renace-cone.png",
+                "to": "assets/renace-cone.png"
+            },
+            {
+                "from": "../.env",
+                "to": "app/.env"
+            },
+            {
+                "from": "../OpenUpgrade/upgradernc",
+                "to": "app/OpenUpgrade/upgradernc"
+            }
+        ],
         "win": {
-            "target": "dir"
+            "target": "nsis",
+            "icon": "../public/renace-cone.png"
         }
     },
     "devDependencies": {

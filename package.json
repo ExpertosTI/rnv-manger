@@ -5,11 +5,13 @@
   "scripts": {
     "dev": "next dev -p 4200",
     "build": "next build",
+    "build:desktop": "next build && cd electron-app && npm run build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.0",
+    "@google/generative-ai": "^0.21.0",
     "@types/ssh2": "^1.15.5",
     "@xterm/addon-fit": "^0.11.0",
     "clsx": "^2.1.1",
@@ -20,6 +22,9 @@
     "nodemailer": "^7.0.12",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-markdown": "^9.0.1",
+    "recharts": "^2.12.7",
+    "remark-gfm": "^4.0.0",
     "server-only": "^0.0.1",
     "ssh2": "^1.17.0",
     "swr": "^2.3.8",
