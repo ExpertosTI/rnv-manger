@@ -9,11 +9,14 @@ export async function POST(request: NextRequest) {
 
         if (password === masterPassword) {
             const response = NextResponse.json({ success: true });
+            const hostname = request.nextUrl.hostname;
+            const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+            const isSecure = request.nextUrl.protocol === "https:";
 
             // Set a simple cookie for "session"
             response.cookies.set("rnv_session", "authenticated", {
                 httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
+                secure: isSecure && !isLocalhost,
                 sameSite: "lax",
                 maxAge: 60 * 60 * 24, // 24 hours
                 path: "/",
