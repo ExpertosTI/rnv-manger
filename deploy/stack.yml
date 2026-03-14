@@ -1,0 +1,78 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - rnv_manager_db_data:/var/lib/postgresql/data
+    networks:
+      - rnv_internal
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  app:
+    image: rnv-manager:latest
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?schema=public
+      NODE_ENV: production
+      PORT: ${APP_PORT}
+      MASTER_PASSWORD: ${MASTER_PASSWORD}
+      HOSTINGER_API_TOKEN: ${HOSTINGER_API_TOKEN}
+      ODOO_URL: ${ODOO_URL}
+      ODOO_DB: ${ODOO_DB}
+      ODOO_USERNAME: ${ODOO_USERNAME}
+      ODOO_API_KEY: ${ODOO_API_KEY}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      ALLOWED_ORIGIN: https://rnv.renace.tech
+    networks:
+      - rnv_internal
+      - RenaceNet
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.rnv.rule=Host(`rnv.renace.tech`)"
+        - "traefik.http.routers.rnv.entrypoints=websecure"
+        - "traefik.http.routers.rnv.tls=true"
+        - "traefik.http.routers.rnv.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.rnv.loadbalancer.server.port=3000"
+        - "traefik.docker.network=RenaceNet"
+
+  backup:
+    image: postgres:16-alpine
+    environment:
+      PGHOST: db
+      PGUSER: ${DB_USER}
+      PGPASSWORD: ${DB_PASSWORD}
+      PGDATABASE: ${DB_NAME}
+    volumes:
+      - rnv_manager_backups:/backups
+    entrypoint: /bin/sh
+    command: -c "while true; do pg_dump -Fc > /backups/rnv_manager_$(date +%Y%m%d_%H%M%S).dump; ls -t /backups/*.dump 2>/dev/null | tail -n +8 | xargs -r rm; sleep 86400; done"
+    networks:
+      - rnv_internal
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+networks:
+  rnv_internal:
+    driver: overlay
+  RenaceNet:
+    external: true
+
+volumes:
+  rnv_manager_db_data:
+  rnv_manager_backups:
