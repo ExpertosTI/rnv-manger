@@ -2,8 +2,8 @@
 set -euo pipefail
 
 STACK_NAME="rnv-manager"
-BRANCH="deploy/rnv-manager"
-REPO_URL="https://github.com/ExpertosTI/rnv-manger.git"
+GITHUB_REPO="ExpertosTI/rnv-manger"
+GITHUB_REF="deploy/rnv-manager"
 WORKDIR="/opt/rnv-manager"
 ENV_FILE="/etc/rnv-manager/rnv.env"
 NETWORK_PUBLIC="RenaceNet"
@@ -55,8 +55,9 @@ generate_password() {
 }
 
 require_command docker
-require_command git
 require_command openssl
+require_command curl
+require_command tar
 
 if ! docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -qi active; then
     run_as_root docker swarm init
@@ -70,13 +71,29 @@ if ! docker network inspect "$NETWORK_INTERNAL" >/dev/null 2>&1; then
     run_as_root docker network create --driver overlay --attachable "$NETWORK_INTERNAL"
 fi
 
-if [ -d "$WORKDIR/.git" ]; then
-    git -C "$WORKDIR" fetch origin
-    git -C "$WORKDIR" checkout "$BRANCH"
-    git -C "$WORKDIR" pull origin "$BRANCH"
-else
-    mkdir -p "$(dirname "$WORKDIR")"
-    git clone --branch "$BRANCH" "$REPO_URL" "$WORKDIR"
+ARCHIVE_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/${GITHUB_REF}.tar.gz"
+mkdir -p "$(dirname "$WORKDIR")"
+run_as_root mkdir -p "$WORKDIR"
+
+TMP_DIR="$(mktemp -d)"
+cleanup() {
+    rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
+
+echo "Descargando codigo: ${ARCHIVE_URL}"
+curl -fsSL "$ARCHIVE_URL" -o "${TMP_DIR}/src.tgz"
+
+run_as_root rm -rf "${WORKDIR}/src"
+run_as_root mkdir -p "${WORKDIR}/src"
+run_as_root tar -xzf "${TMP_DIR}/src.tgz" -C "${WORKDIR}/src" --strip-components=1
+
+PROJECT_DIR="${WORKDIR}/src"
+STACK_FILE="${PROJECT_DIR}/deploy/stack.yml"
+
+if [ ! -f "$STACK_FILE" ]; then
+    echo "No se encontro stack.yml en ${STACK_FILE}"
+    exit 1
 fi
 
 if [ ! -f "$ENV_FILE" ]; then
@@ -88,9 +105,9 @@ if [ ! -f "$ENV_FILE" ]; then
     MASTER_PASSWORD_VALUE="${MASTER_PASSWORD:-JustWork2027@}"
     MAESTRO_PIN_VALUE="${MAESTRO_PIN:-101284}"
     SESSION_SECRET_VALUE="$(generate_secret)"
-    SMTP_HOST_VALUE="${SMTP_HOST:-smtp.hostinger.com}"
-    SMTP_PORT_VALUE="${SMTP_PORT:-465}"
-    SMTP_USER_VALUE="${SMTP_USER:-info@renace.space}"
+    SMTP_HOST_VALUE="${SMTP_HOST:-}"
+    SMTP_PORT_VALUE="${SMTP_PORT:-}"
+    SMTP_USER_VALUE="${SMTP_USER:-}"
     SMTP_PASS_VALUE="${SMTP_PASS:-}"
     HOSTINGER_API_TOKEN_VALUE="${HOSTINGER_API_TOKEN:-}"
     ODOO_URL_VALUE="${ODOO_URL:-}"
@@ -130,10 +147,6 @@ required_vars=(
     MASTER_PASSWORD
     MAESTRO_PIN
     SESSION_SECRET
-    SMTP_HOST
-    SMTP_PORT
-    SMTP_USER
-    SMTP_PASS
 )
 
 for var_name in "${required_vars[@]}"; do
@@ -154,13 +167,15 @@ if [ "${#SESSION_SECRET}" -lt 32 ]; then
     exit 1
 fi
 
-if ! grep -q "rnv.renace.tech" "$WORKDIR/deploy/stack.yml"; then
-    echo "Dominio de stack invalido"
+run_as_root sed -i "s|rnv\.renace\.tech|${APP_DOMAIN}|g" "$STACK_FILE"
+
+if ! grep -q "${APP_DOMAIN}" "$STACK_FILE"; then
+    echo "No se pudo aplicar APP_DOMAIN en stack.yml"
     exit 1
 fi
 
-run_as_root docker build -t rnv-manager:latest "$WORKDIR"
-run_as_root docker stack deploy -c "$WORKDIR/deploy/stack.yml" "$STACK_NAME"
+run_as_root docker build -t rnv-manager:latest "$PROJECT_DIR"
+run_as_root docker stack deploy -c "$STACK_FILE" "$STACK_NAME"
 run_as_root docker service ls --filter "name=${STACK_NAME}_"
 echo "Deploy completado: https://${APP_DOMAIN}"
 echo "Variables guardadas en ${ENV_FILE}"
