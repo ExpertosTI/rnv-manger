@@ -18,6 +18,10 @@ interface BackupResult {
     error?: string;
 }
 
+function isSafeTarget(value: string) {
+    return /^[a-zA-Z0-9._/\-]+$/.test(value);
+}
+
 async function sshExec(config: SSHConfig, command: string, timeout = 120000): Promise<string> {
     return new Promise((resolve, reject) => {
         const conn = new Client();
@@ -90,7 +94,7 @@ const BACKUP_COMMANDS = {
 // POST - Execute backup
 export async function POST(request: NextRequest) {
     try {
-        const { host, port, username, password, type, target, customCommand } = await request.json();
+        const { host, port, username, password, type, target } = await request.json();
 
         if (!host || !username || !password) {
             return NextResponse.json({ success: false, error: "Faltan credenciales SSH" }, { status: 400 });
@@ -102,44 +106,40 @@ export async function POST(request: NextRequest) {
 
         let command: string;
         let filename: string;
+        const normalizedTarget = typeof target === "string" && target.trim().length > 0 ? target.trim() : "";
+        if (normalizedTarget && !isSafeTarget(normalizedTarget)) {
+            return NextResponse.json({ success: false, error: "Target inválido" }, { status: 400 });
+        }
 
         switch (type) {
             case "postgres":
-                filename = `${target || "database"}_${timestamp}.sql.gz`;
-                command = BACKUP_COMMANDS.postgres(target || "postgres", filename);
+                filename = `${normalizedTarget || "database"}_${timestamp}.sql.gz`;
+                command = BACKUP_COMMANDS.postgres(normalizedTarget || "postgres", filename);
                 break;
 
             case "mysql":
-                filename = `${target || "database"}_${timestamp}.sql.gz`;
-                command = BACKUP_COMMANDS.mysql(target || "mysql", filename);
+                filename = `${normalizedTarget || "database"}_${timestamp}.sql.gz`;
+                command = BACKUP_COMMANDS.mysql(normalizedTarget || "mysql", filename);
                 break;
 
             case "odoo":
-                filename = `${target || "odoo"}_${timestamp}.tar.gz`;
-                command = BACKUP_COMMANDS.odoo(target || "odoo", filename);
+                filename = `${normalizedTarget || "odoo"}_${timestamp}.tar.gz`;
+                command = BACKUP_COMMANDS.odoo(normalizedTarget || "odoo", filename);
                 break;
 
             case "docker":
-                filename = `${target || "container"}_${timestamp}.sql.gz`;
-                command = BACKUP_COMMANDS.docker(target || "odoo", filename);
+                filename = `${normalizedTarget || "container"}_${timestamp}.sql.gz`;
+                command = BACKUP_COMMANDS.docker(normalizedTarget || "odoo", filename);
                 break;
 
             case "files":
                 filename = `files_${timestamp}.tar.gz`;
-                command = BACKUP_COMMANDS.files(target || "/opt", filename);
+                command = BACKUP_COMMANDS.files(normalizedTarget || "/opt", filename);
                 break;
 
             case "full":
                 filename = `full_backup_${timestamp}.tar.gz`;
                 command = BACKUP_COMMANDS.full(filename);
-                break;
-
-            case "custom":
-                if (!customCommand) {
-                    return NextResponse.json({ success: false, error: "Comando custom requerido" }, { status: 400 });
-                }
-                filename = `custom_${timestamp}.backup`;
-                command = customCommand;
                 break;
 
             default:
@@ -181,41 +181,9 @@ export async function POST(request: NextRequest) {
 }
 
 // GET - List existing backups
-export async function GET(request: NextRequest) {
-    try {
-        const url = new URL(request.url);
-        const host = url.searchParams.get("host");
-        const port = parseInt(url.searchParams.get("port") || "22");
-        const username = url.searchParams.get("username");
-        const password = url.searchParams.get("password");
-
-        if (!host || !username || !password) {
-            return NextResponse.json({ success: false, error: "Faltan parámetros" }, { status: 400 });
-        }
-
-        const config: SSHConfig = { host, port, username, password };
-
-        // List backups in /tmp
-        const output = await sshExec(config,
-            "ls -lh /tmp/*.gz /tmp/*.backup 2>/dev/null | awk '{print $5,$9}' | tail -20"
-        );
-
-        const backups = output.split("\n")
-            .filter(line => line.trim())
-            .map(line => {
-                const parts = line.split(" ");
-                return {
-                    size: parts[0],
-                    path: parts[1],
-                    filename: parts[1]?.split("/").pop() || ""
-                };
-            });
-
-        return NextResponse.json({ success: true, data: backups });
-    } catch (error) {
-        return NextResponse.json(
-            { success: false, error: error instanceof Error ? error.message : "Error listando backups" },
-            { status: 500 }
-        );
-    }
+export async function GET() {
+    return NextResponse.json(
+        { success: false, error: "Method not allowed" },
+        { status: 405 }
+    );
 }

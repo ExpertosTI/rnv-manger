@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Terminal, Loader2, Play, X, Info } from "lucide-react";
+import { Terminal, Loader2, Play, X } from "lucide-react";
 
 interface SSHConsoleProps {
     host: string;
@@ -22,7 +22,6 @@ export default function SSHConsole({ host, port, username, onClose }: SSHConsole
     const [isConnected, setIsConnected] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
     const [command, setCommand] = useState("");
-    const [isExecuting, setIsExecuting] = useState(false);
     const [history, setHistory] = useState<CommandResult[]>([]);
     const [serverInfo, setServerInfo] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
@@ -76,45 +75,16 @@ export default function SSHConsole({ host, port, username, onClose }: SSHConsole
 
     const executeCommand = async () => {
         if (!command.trim() || !isConnected) return;
-        setIsExecuting(true);
-
-        try {
-            const res = await fetch("/api/ssh", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    host,
-                    port,
-                    username,
-                    password,
-                    command: command.trim(),
-                }),
-            });
-            const data = await res.json();
-
-            setHistory((prev) => [
-                ...prev,
-                {
-                    command: command.trim(),
-                    output: data.output || data.error || "No output",
-                    success: data.success,
-                    timestamp: new Date(),
-                },
-            ]);
-            setCommand("");
-        } catch (err) {
-            setHistory((prev) => [
-                ...prev,
-                {
-                    command: command.trim(),
-                    output: "Error ejecutando comando",
-                    success: false,
-                    timestamp: new Date(),
-                },
-            ]);
-        } finally {
-            setIsExecuting(false);
-        }
+        setHistory((prev) => [
+            ...prev,
+            {
+                command: command.trim(),
+                output: "La ejecución remota de comandos fue deshabilitada por seguridad.",
+                success: false,
+                timestamp: new Date(),
+            },
+        ]);
+        setCommand("");
     };
 
     const quickCommands = [

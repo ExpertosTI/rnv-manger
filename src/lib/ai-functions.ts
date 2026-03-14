@@ -1095,7 +1095,10 @@ export async function addExpense(args: AddExpenseArgs) {
         if (!isPositiveNumber(args.amount)) return { success: false, error: "Monto inválido" };
         if (!isNonEmptyString(args.description)) return { success: false, error: "Descripción inválida" };
 
-        const expectedPin = process.env.MAESTRO_PIN || "1234";
+        const expectedPin = process.env.MAESTRO_PIN;
+        if (!expectedPin) {
+            return { success: false, error: "PIN maestro no configurado" };
+        }
 
         if (!args.pin || args.pin !== expectedPin) {
             return {
@@ -1216,7 +1219,10 @@ export async function executeBashCommand(args: ExecuteBashCommandArgs) {
     try {
         if (!isNonEmptyString(args.command)) return { success: false, error: "Comando inválido" };
 
-        const expectedPin = process.env.MAESTRO_PIN || "1234";
+        const expectedPin = process.env.MAESTRO_PIN;
+        if (!expectedPin) {
+            return { success: false, error: "PIN maestro no configurado" };
+        }
 
         if (!args.pin || args.pin !== expectedPin) {
             return {

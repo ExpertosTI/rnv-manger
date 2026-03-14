@@ -23,6 +23,8 @@ services:
       NODE_ENV: production
       PORT: ${APP_PORT}
       MASTER_PASSWORD: ${MASTER_PASSWORD}
+      MAESTRO_PIN: ${MAESTRO_PIN}
+      SESSION_SECRET: ${SESSION_SECRET}
       HOSTINGER_API_TOKEN: ${HOSTINGER_API_TOKEN}
       ODOO_URL: ${ODOO_URL}
       ODOO_DB: ${ODOO_DB}
@@ -46,7 +48,7 @@ services:
         - "traefik.http.routers.rnv.entrypoints=websecure"
         - "traefik.http.routers.rnv.tls=true"
         - "traefik.http.routers.rnv.tls.certresolver=letsencryptresolver"
-        - "traefik.http.services.rnv.loadbalancer.server.port=3000"
+        - "traefik.http.services.rnv.loadbalancer.server.port=${APP_PORT}"
         - "traefik.docker.network=RenaceNet"
 
   backup:

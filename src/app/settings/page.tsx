@@ -167,6 +167,11 @@ export default function SettingsPage() {
     };
 
     const handleImport = async (file: File) => {
+        const confirmation = window.prompt("Escribe RESTAURAR para confirmar");
+        if (confirmation !== "RESTAURAR") {
+            addToast("Restauración cancelada", "error");
+            return;
+        }
         setIsImporting(true);
         try {
             const text = await file.text();

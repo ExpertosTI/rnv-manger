@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
+const SENSITIVE_KEY_PATTERNS = ["password", "pass", "token", "secret", "key", "pin"];
+
+function isSensitiveKey(key: string) {
+    const lower = key.toLowerCase();
+    return SENSITIVE_KEY_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
 // GET - Get all settings or by category
 export async function GET(request: NextRequest) {
     try {
@@ -12,6 +19,12 @@ export async function GET(request: NextRequest) {
             const setting = await prisma.appSettings.findUnique({
                 where: { key },
             });
+            if (setting && isSensitiveKey(key)) {
+                return NextResponse.json({
+                    success: true,
+                    data: "__HIDDEN__"
+                });
+            }
             return NextResponse.json({
                 success: true,
                 data: setting?.value || null
@@ -25,7 +38,7 @@ export async function GET(request: NextRequest) {
 
         // Convert to key-value object
         const settingsMap = settings.reduce((acc, s) => {
-            acc[s.key] = s.value;
+            acc[s.key] = isSensitiveKey(s.key) ? "__HIDDEN__" : s.value;
             return acc;
         }, {} as Record<string, string>);
 
@@ -55,19 +68,23 @@ export async function POST(request: NextRequest) {
         const results = [];
         for (const [key, value] of Object.entries(settings)) {
             const category = key.split("_")[0]; // e.g., smtp_host -> smtp
+            const sanitizedValue = value === "__HIDDEN__" ? undefined : String(value);
+            if (sanitizedValue === undefined) {
+                continue;
+            }
 
             const result = await prisma.appSettings.upsert({
                 where: { key },
                 create: {
                     key,
-                    value: String(value),
+                    value: sanitizedValue,
                     category,
                 },
                 update: {
-                    value: String(value),
+                    value: sanitizedValue,
                 },
             });
-            results.push(result);
+            results.push(isSensitiveKey(key) ? { ...result, value: "__HIDDEN__" } : result);
         }
 
         return NextResponse.json({ success: true, data: results });
@@ -98,7 +115,7 @@ export async function DELETE(request: NextRequest) {
         });
 
         return NextResponse.json({ success: true });
-    } catch (error) {
+    } catch {
         return NextResponse.json(
             { success: false, error: "Error eliminando configuración" },
             { status: 500 }

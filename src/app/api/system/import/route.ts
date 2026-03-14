@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const SENSITIVE_KEY_PATTERNS = ["password", "pass", "token", "secret", "key", "pin"];
+
+function isSensitiveKey(key: string) {
+    const lower = key.toLowerCase();
+    return SENSITIVE_KEY_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
@@ -89,8 +96,9 @@ export async function POST(request: NextRequest) {
 
             // App Settings
             if (appSettings && appSettings.length > 0) {
+                const safeSettings = appSettings.filter((setting: any) => !isSensitiveKey(setting.key));
                 await tx.appSettings.createMany({
-                    data: appSettings.map((a: any) => ({
+                    data: safeSettings.map((a: any) => ({
                         ...a,
                         createdAt: new Date(a.createdAt),
                         updatedAt: new Date(a.updatedAt),

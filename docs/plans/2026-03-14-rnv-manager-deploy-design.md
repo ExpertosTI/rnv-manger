@@ -14,7 +14,7 @@ Desplegar RNV Manager en Linux con Docker Swarm, Traefik y configuración segura
 ## Flujo de despliegue
 - Inicializar Swarm y redes necesarias.
 - Clonar o actualizar el repo y la rama deploy.
-- Cargar variables desde /etc/rnv-manager/rnv.env.
+- Generar variables automáticamente en /etc/rnv-manager/rnv.env si no existe.
 - Construir imagen y desplegar stack.
 
 ## Backups

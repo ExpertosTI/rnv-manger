@@ -145,7 +145,7 @@ async function getServerInfo(config: SSHConnectionConfig) {
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { host, port, username, password, command, action } = body;
+        const { host, port, username, password, action } = body;
 
         if (!host || !username || !password) {
             return NextResponse.json(
@@ -166,15 +166,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: true, data: info });
         }
 
-        if (!command) {
-            return NextResponse.json(
-                { success: false, error: "No se especificó comando" },
-                { status: 400 }
-            );
-        }
-
-        const result = await sshExec(config, command);
-        return NextResponse.json(result);
+        return NextResponse.json(
+            { success: false, error: "Acción no permitida" },
+            { status: 403 }
+        );
     } catch (error) {
         console.error("SSH API Error:", error);
         return NextResponse.json(
@@ -185,20 +180,9 @@ export async function POST(request: NextRequest) {
 }
 
 // GET - Quick server status check
-export async function GET(request: NextRequest) {
-    const url = new URL(request.url);
-    const host = url.searchParams.get("host");
-    const port = parseInt(url.searchParams.get("port") || "22");
-    const username = url.searchParams.get("username");
-    const password = url.searchParams.get("password");
-
-    if (!host || !username || !password) {
-        return NextResponse.json(
-            { success: false, error: "Faltan parámetros" },
-            { status: 400 }
-        );
-    }
-
-    const result = await testSSHConnection({ host, port, username, password });
-    return NextResponse.json(result);
+export async function GET() {
+    return NextResponse.json(
+        { success: false, error: "Method not allowed" },
+        { status: 405 }
+    );
 }
