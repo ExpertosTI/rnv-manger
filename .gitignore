@@ -47,3 +47,4 @@ electron-app/dist/
 electron-app/node_modules/
 *.exe
 OpenUpgrade/
+/OpenUpgrade/
