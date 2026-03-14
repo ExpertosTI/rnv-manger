@@ -537,6 +537,19 @@ const functionDeclarations = [
         }
     },
     {
+        name: "link_vps_to_client",
+        description: "Vincula un VPS a un cliente. Úsalo para asignar servidores y mantener todo conectado.",
+        parameters: {
+            type: SchemaType.OBJECT,
+            properties: {
+                vpsName: { type: SchemaType.STRING, description: "Nombre del VPS a asignar" },
+                clientName: { type: SchemaType.STRING, description: "Nombre del cliente destino" },
+                linkServices: { type: SchemaType.BOOLEAN, description: "Si es true, asigna servicios del VPS al cliente (default: true)" }
+            },
+            required: ["vpsName", "clientName"]
+        }
+    },
+    {
         name: "link_service_to_vps",
         description: "Vincula un servicio existente a un servidor VPS específico. Úsalo cuando el usuario quiera mover un servicio o asignarlo a un host.",
         parameters: {
@@ -577,6 +590,7 @@ const modelConfig = {
     - Consultar información financiera
     - Crear facturas en Odoo
     - Listar VPS y servicios
+    - Vincular VPS a clientes
     - **MEMORIA CÍCLICA**: Puedes guardar memorias sobre cómo el usuario trabaja usando save_memory. Cuando notes patrones (ej: siempre busca cierto cliente, prefiere cierto formato), guárdalos automáticamente. Usa recall_memories para recuperar contexto personalizado.
     - **CICLOS DE FACTURACIÓN**: Puedes cambiar el modo de pago de un cliente (mensual, trimestral, semestral, anual) usando change_billing_cycle.
     - **ODOO CRM**: Puedes crear y buscar oportunidades/leads en Odoo CRM con manage_odoo_crm. Después de una interacción importante con un cliente, sugiere crear un lead o tarea de seguimiento.

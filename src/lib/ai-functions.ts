@@ -119,6 +119,12 @@ interface LinkServiceArgs {
     vpsName: string;
 }
 
+interface LinkVpsToClientArgs {
+    vpsName: string;
+    clientName: string;
+    linkServices?: boolean;
+}
+
 interface ChangeBillingCycleArgs {
     clientName: string;
     cycle: string;
@@ -710,7 +716,7 @@ export async function listPendingPayments(args: ListPendingPaymentsArgs = {}) {
         const clients = await prisma.client.findMany({
             where,
             include: {
-                vpsList: { include: { vps: true } },
+                vpsList: true,
                 services: true,
                 payments: {
                     where: { date: { gte: startOfMonth }, status: "completed" },
@@ -721,7 +727,7 @@ export async function listPendingPayments(args: ListPendingPaymentsArgs = {}) {
         });
 
         const pending = clients.map(client => {
-            const vpsCost = client.vpsList.reduce((sum, cv) => sum + (cv.vps?.monthlyCost || 0), 0);
+            const vpsCost = client.vpsList.reduce((sum, vps) => sum + (vps.monthlyCost || 0), 0);
             const serviceCost = client.services.reduce((sum, svc) => sum + (svc.monthlyCost || 0), 0);
             const totalMonthlyCost = vpsCost + serviceCost + (client.monthlyFee || 0);
             const lastPayment = client.payments[0];
@@ -830,9 +836,11 @@ export async function listVPS() {
                 provider: true,
                 status: true,
                 monthlyCost: true,
+                client: {
+                    select: { id: true, name: true }
+                },
                 _count: {
                     select: {
-                        clients: true,
                         services: true
                     }
                 }
@@ -849,7 +857,7 @@ export async function listVPS() {
                 provider: v.provider,
                 status: v.status,
                 cost: v.monthlyCost,
-                clients: v._count.clients,
+                clients: v.client ? 1 : 0,
                 services: v._count.services
             })),
             message: `${vpsList.length} servidores VPS en el sistema`
@@ -1546,7 +1554,75 @@ export async function getOdooDeadlines(args: { days?: number }) {
 }
 
 /**
- * 24. Link Service to VPS
+ * 24. Link VPS to Client
+ */
+export async function linkVpsToClient(args: LinkVpsToClientArgs) {
+    try {
+        if (!isNonEmptyString(args.vpsName) || !isNonEmptyString(args.clientName)) {
+            return { success: false, error: "Falta vpsName o clientName" };
+        }
+
+        const vps = await prisma.vPS.findFirst({
+            where: { name: { contains: args.vpsName, mode: "insensitive" } }
+        });
+
+        if (!vps) {
+            return { success: false, error: `VPS "${args.vpsName}" no encontrado` };
+        }
+
+        const client = await prisma.client.findFirst({
+            where: { name: { contains: args.clientName, mode: "insensitive" } }
+        });
+
+        if (!client) {
+            return { success: false, error: `Cliente "${args.clientName}" no encontrado` };
+        }
+
+        const updatedVps = await prisma.vPS.update({
+            where: { id: vps.id },
+            data: { clientId: client.id }
+        });
+
+        let servicesLinked = 0;
+        if (args.linkServices !== false) {
+            const updateResult = await prisma.service.updateMany({
+                where: { vpsId: vps.id, clientId: null },
+                data: { clientId: client.id }
+            });
+            servicesLinked = updateResult.count;
+        }
+
+        const refreshedClient = await prisma.client.findUnique({
+            where: { id: client.id },
+            include: { vpsList: true, services: true }
+        });
+
+        if (refreshedClient) {
+            const vpsCost = refreshedClient.vpsList.reduce((sum, item) => sum + (item.monthlyCost || 0), 0);
+            const serviceCost = refreshedClient.services.reduce((sum, svc) => sum + (svc.monthlyCost || 0), 0);
+            const totalCost = vpsCost + serviceCost + (refreshedClient.monthlyFee || 0);
+            await prisma.client.update({
+                where: { id: client.id },
+                data: { totalMonthlyCost: totalCost }
+            });
+        }
+
+        return {
+            success: true,
+            message: `VPS **${updatedVps.name}** asignado a **${client.name}**. Servicios vinculados: ${servicesLinked}.`,
+            data: {
+                vpsId: updatedVps.id,
+                clientId: client.id,
+                servicesLinked
+            }
+        };
+    } catch (error: any) {
+        return { success: false, error: `Error al vincular VPS: ${error.message}` };
+    }
+}
+
+/**
+ * 25. Link Service to VPS
  */
 export async function linkServiceToVps(args: LinkServiceArgs) {
     try {
@@ -1621,6 +1697,7 @@ export const functionHandlers: Record<string, (args: any) => Promise<any>> = {
     manage_odoo_tasks: manageOdooTasks,
     send_odoo_notification: sendOdooNotification,
     get_odoo_deadlines: getOdooDeadlines,
+    link_vps_to_client: linkVpsToClient,
     link_service_to_vps: linkServiceToVps,
 };
 

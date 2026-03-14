@@ -61,6 +61,20 @@ if (userEnvPath) {
     loadEnvFile(userEnvPath, false);
 }
 
+const defaultDbEnv = {
+    DB_USER: "rnvadmin",
+    DB_PASSWORD: "rnv_local_2026",
+    DB_NAME: "rnv_manager",
+    DB_HOST: "127.0.0.1",
+    DB_PORT: "5433",
+};
+
+Object.entries(defaultDbEnv).forEach(([key, value]) => {
+    if (!process.env[key]) {
+        process.env[key] = value;
+    }
+});
+
 function buildDatabaseUrlFromParts() {
     const dbUser = process.env.DB_USER;
     const dbPassword = process.env.DB_PASSWORD;

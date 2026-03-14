@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
     try {
         const clients = await prisma.client.findMany();
-        const vps = await prisma.vps.findMany();
+        const vps = await prisma.vPS.findMany();
         const services = await prisma.service.findMany();
         const payments = await prisma.payment.findMany();
         const revenueHistory = await prisma.revenueHistory.findMany();

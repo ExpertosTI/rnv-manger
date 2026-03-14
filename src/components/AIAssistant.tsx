@@ -72,6 +72,13 @@ interface RichBlock {
     items?: string[];
 }
 
+interface MaterializedItem {
+    title: string;
+    meta: string[];
+    actionLabel: string;
+    actionCommand: string;
+}
+
 function parseRichBlocks(content: string): RichBlock[] {
     const blocks: RichBlock[] = [];
     const regex = /:::([\w][\w-]*)\n([\s\S]*?):::/g;
@@ -295,6 +302,44 @@ function QuickActionsBlock({ items, onAction }: { items: string[]; onAction: (cm
     );
 }
 
+function MaterializedListBlock({ title, items, onAction }: { title: string; items: MaterializedItem[]; onAction: (cmd: string) => void }) {
+    if (!items.length) return null;
+    return (
+        <div className="my-3 rounded-2xl border border-violet-400/20 bg-white/5 overflow-hidden">
+            <div className="px-3 py-2 text-xs uppercase tracking-wider text-violet-300/80 bg-violet-500/10 border-b border-violet-400/20">
+                {title}
+            </div>
+            <div className="divide-y divide-violet-400/10">
+                {items.map((item, i) => (
+                    <div key={`${item.title}-${i}`} className="p-3 flex flex-col gap-2">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="text-sm font-semibold text-white truncate">{item.title}</div>
+                                <div className="text-[11px] text-violet-200/70 flex flex-wrap gap-x-2 gap-y-1">
+                                    {item.meta.map((meta, mi) => (
+                                        <span key={`${item.title}-${mi}`} className="px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-400/20">
+                                            {meta}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => onAction(item.actionCommand)}
+                                className="action-btn-materialize inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold
+                                           bg-violet-500/15 hover:bg-violet-500/25 text-violet-200 border border-violet-400/30
+                                           hover:border-violet-400/60 transition-all hover:shadow-[0_0_16px_rgba(139,92,246,0.3)]"
+                            >
+                                <ArrowRight className="w-3 h-3" />
+                                {item.actionLabel}
+                            </button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 /* ──────────────────── Mascot SVG Inline ──────────────────────── */
 
 function ConeMascot({ state, size = 56 }: { state: MascotState; size?: number }) {
@@ -308,7 +353,7 @@ function ConeMascot({ state, size = 56 }: { state: MascotState; size?: number })
         <div className={`relative ${stateClass}`} style={{ width: size, height: size }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <motion.img
-                src="/renace-cone.svg"
+                src="/renace-cone.png"
                 alt="Asistente RNV"
                 width={size}
                 height={size}
@@ -647,6 +692,41 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
         }
 
         const blocks = parseRichBlocks(msg.content);
+        const materializedBlocks = (() => {
+            if (!msg.executedFunctions) return [];
+            const blocks: { title: string; items: MaterializedItem[] }[] = [];
+            const vpsFn = msg.executedFunctions.find((fn) => fn?.name === "list_vps" && fn?.result?.success && Array.isArray(fn?.result?.data));
+            if (vpsFn?.result?.data?.length) {
+                const items = vpsFn.result.data.map((v: any) => ({
+                    title: v.name,
+                    meta: [
+                        v.ip ? `IP ${v.ip}` : null,
+                        v.provider ? v.provider : null,
+                        v.status ? v.status : null,
+                        typeof v.services === "number" ? `${v.services} servicios` : null,
+                        v.clients ? "Cliente asignado" : "Sin cliente",
+                    ].filter(Boolean) as string[],
+                    actionLabel: "Vincular",
+                    actionCommand: `Vincular VPS "${v.name}" a un cliente`
+                }));
+                blocks.push({ title: "VPS disponibles", items });
+            }
+            const servicesFn = msg.executedFunctions.find((fn) => fn?.name === "list_unassigned_services" && fn?.result?.success && Array.isArray(fn?.result?.data));
+            if (servicesFn?.result?.data?.length) {
+                const items = servicesFn.result.data.map((s: any) => ({
+                    title: s.name,
+                    meta: [
+                        s.type ? s.type : null,
+                        s.status ? s.status : null,
+                        typeof s.monthlyCost === "number" ? `$${s.monthlyCost}` : null,
+                    ].filter(Boolean) as string[],
+                    actionLabel: "Asignar",
+                    actionCommand: `Asignar el servicio "${s.name}" a un cliente`
+                }));
+                blocks.push({ title: "Servicios sin cliente", items });
+            }
+            return blocks;
+        })();
 
         return (
             <motion.div
@@ -719,6 +799,25 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
                                                         </button>
                                                     );
                                                 }
+                                                if (href.startsWith("action:")) {
+                                                    const command = decodeURIComponent(href.replace(/^action:/, ""));
+                                                    return (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                handleAction(command);
+                                                            }}
+                                                            className="action-btn-materialize inline-flex items-center gap-2 bg-violet-500/15
+                                                                       hover:bg-violet-500/25 text-violet-200 font-semibold py-2 px-4
+                                                                       rounded-xl text-xs border border-violet-400/40
+                                                                       shadow-[0_0_14px_rgba(139,92,246,0.35)]
+                                                                       hover:shadow-[0_0_24px_rgba(139,92,246,0.6)] transition-all my-1"
+                                                        >
+                                                            <ArrowRight className="w-3 h-3" />
+                                                            {props.children}
+                                                        </button>
+                                                    );
+                                                }
                                                 return <a {...props} target="_blank" rel="noopener noreferrer" />;
                                             },
                                             table: ({ children }) => (
@@ -734,6 +833,15 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
                             );
                     }
                 })}
+
+                {materializedBlocks.map((block, i) => (
+                    <MaterializedListBlock
+                        key={`${block.title}-${i}`}
+                        title={block.title}
+                        items={block.items}
+                        onAction={handleAction}
+                    />
+                ))}
 
                 {/* Function execution badges */}
                 {msg.executedFunctions && msg.executedFunctions.some(fn => fn?.result?.success !== false) && (

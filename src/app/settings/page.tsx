@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
     Settings, Save, Mail, Key, Bell, Server, RefreshCw,
-    CheckCircle, AlertTriangle, Eye, EyeOff, Shield
+    CheckCircle, AlertTriangle, Eye, EyeOff, Shield, Download, Upload
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 
@@ -77,12 +77,15 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
 ];
 
 export default function SettingsPage() {
-    const { toast } = useToast();
+    const { addToast } = useToast();
     const [settings, setSettings] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
     const [smtpStatus, setSmtpStatus] = useState<"unknown" | "ok" | "error">("unknown");
+    const [isExporting, setIsExporting] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
 
     useEffect(() => {
         fetchSettings();
@@ -124,16 +127,69 @@ export default function SettingsPage() {
             const data = await res.json();
 
             if (data.success) {
-                toast({ title: "✅ Configuración guardada", description: "Los cambios se aplicarán inmediatamente" });
+                addToast("Configuración guardada", "success");
                 checkSmtpStatus();
             } else {
-                toast({ title: "Error", description: data.error, variant: "destructive" });
+                addToast(data.error || "No se pudo guardar", "error");
             }
         } catch (err) {
-            toast({ title: "Error", description: "No se pudo guardar", variant: "destructive" });
+            addToast("No se pudo guardar", "error");
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleExport = async () => {
+        setIsExporting(true);
+        try {
+            const res = await fetch("/api/system/export");
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || "Error al exportar");
+            }
+
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            const timestamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
+            link.href = url;
+            link.download = `rnv_manager_backup_${timestamp}.json`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            addToast("Backup descargado", "success");
+        } catch {
+            addToast("No se pudo exportar", "error");
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    const handleImport = async (file: File) => {
+        setIsImporting(true);
+        try {
+            const text = await file.text();
+            const payload = JSON.parse(text);
+            const res = await fetch("/api/system/import", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || "Error al restaurar");
+            }
+            addToast("Backup restaurado", "success");
+        } catch {
+            addToast("No se pudo restaurar", "error");
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+    const triggerImport = () => {
+        fileInputRef.current?.click();
     };
 
     const updateSetting = (key: string, value: string) => {
@@ -247,6 +303,72 @@ export default function SettingsPage() {
                         </div>
                     </div>
                 ))}
+            </div>
+
+            <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                <div className="px-6 py-4 bg-gray-900 border-b border-gray-700 flex items-center gap-3">
+                    <Download className="w-5 h-5 text-cyan-400" />
+                    <div>
+                        <h2 className="font-bold text-white">Backups y restauración</h2>
+                        <p className="text-sm text-gray-500">Exporta o restaura la base de datos local</p>
+                    </div>
+                </div>
+                <div className="p-6 grid gap-6 md:grid-cols-2">
+                    <div className="space-y-3">
+                        <p className="text-sm text-gray-300">Exportar datos actuales</p>
+                        <button
+                            onClick={handleExport}
+                            disabled={isExporting}
+                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-medium rounded-lg transition flex items-center justify-center gap-2"
+                        >
+                            {isExporting ? (
+                                <>
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                    Generando backup...
+                                </>
+                            ) : (
+                                <>
+                                    <Download className="w-4 h-4" />
+                                    Descargar backup
+                                </>
+                            )}
+                        </button>
+                    </div>
+                    <div className="space-y-3">
+                        <p className="text-sm text-gray-300">Restaurar desde archivo</p>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".json"
+                            className="hidden"
+                            onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file) {
+                                    handleImport(file);
+                                }
+                                event.target.value = "";
+                            }}
+                        />
+                        <button
+                            onClick={triggerImport}
+                            disabled={isImporting}
+                            className="w-full py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white font-medium rounded-lg transition flex items-center justify-center gap-2"
+                        >
+                            {isImporting ? (
+                                <>
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                    Restaurando...
+                                </>
+                            ) : (
+                                <>
+                                    <Upload className="w-4 h-4" />
+                                    Cargar backup
+                                </>
+                            )}
+                        </button>
+                        <p className="text-xs text-gray-500">La restauración reemplaza los datos actuales</p>
+                    </div>
+                </div>
             </div>
 
             {/* Info */}
