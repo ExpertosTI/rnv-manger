@@ -2,13 +2,13 @@
 set -euo pipefail
 
 STACK_NAME="rnv-manager"
-GITHUB_REPO="ExpertosTI/rnv-manger"
-GITHUB_REF="deploy/rnv-manager"
+GITHUB_REPO="${GITHUB_REPO:-ExpertosTI/rnv-manger}"
+GITHUB_REF="${GITHUB_REF:-deploy/rnv-manager}"
 WORKDIR="/opt/rnv-manager"
 ENV_FILE="/etc/rnv-manager/rnv.env"
 NETWORK_PUBLIC="RenaceNet"
 NETWORK_INTERNAL="rnv_internal"
-APP_DOMAIN="rnv.renace.tech"
+APP_DOMAIN="${APP_DOMAIN:-rnv.renace.tech}"
 
 echo "RNV Manager deploy"
 
