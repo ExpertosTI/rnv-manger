@@ -160,6 +160,7 @@ if [ ! -f "$ENV_FILE" ]; then
     ODOO_DB_VALUE="${ODOO_DB:-}"
     ODOO_USERNAME_VALUE="${ODOO_USERNAME:-}"
     ODOO_API_KEY_VALUE="${ODOO_API_KEY:-}"
+    GEMINI_API_KEY_VALUE="${GEMINI_API_KEY:-}"
     cat <<EOF | run_as_root tee "$ENV_FILE" >/dev/null
 DB_USER=${DB_USER_VALUE}
 DB_PASSWORD=${DB_PASSWORD_VALUE}
@@ -173,6 +174,7 @@ ODOO_URL=${ODOO_URL_VALUE}
 ODOO_DB=${ODOO_DB_VALUE}
 ODOO_USERNAME=${ODOO_USERNAME_VALUE}
 ODOO_API_KEY=${ODOO_API_KEY_VALUE}
+GEMINI_API_KEY=${GEMINI_API_KEY_VALUE}
 SMTP_HOST=${SMTP_HOST_VALUE}
 SMTP_PORT=${SMTP_PORT_VALUE}
 SMTP_USER=${SMTP_USER_VALUE}
@@ -214,14 +216,32 @@ if [ "${#SESSION_SECRET}" -lt 32 ]; then
 fi
 
 run_as_root sed -i "s|rnv\.renace\.tech|${APP_DOMAIN}|g" "$STACK_FILE"
+# Configurar dominio del Upgrader (subdominio upgrader.)
+UPGRADER_DOMAIN="upgrader.${APP_DOMAIN}"
+run_as_root sed -i "s|upgrader\.rnv\.renace\.tech|${UPGRADER_DOMAIN}|g" "$STACK_FILE"
+# Reemplazar URL del Upgrader en el codigo fuente antes de build
+if [ -f "$PROJECT_DIR/src/app/upgrader/page.tsx" ]; then
+    run_as_root sed -i "s|https://upgrader.rnv.renace.tech|https://${UPGRADER_DOMAIN}|g" "$PROJECT_DIR/src/app/upgrader/page.tsx"
+fi
 
 if ! grep -q "${APP_DOMAIN}" "$STACK_FILE"; then
     echo "No se pudo aplicar APP_DOMAIN en stack.yml"
     exit 1
 fi
 
+# Build Main App
+echo "Construyendo imagen principal..."
 run_as_root docker build -t rnv-manager:latest "$PROJECT_DIR"
+
+# Build Upgrader Services
+if [ -d "$PROJECT_DIR/upgrader" ]; then
+    echo "Construyendo servicios Upgrader..."
+    run_as_root docker build -t rnv-upgrader-backend:latest "$PROJECT_DIR/upgrader/backend"
+    run_as_root docker build -t rnv-upgrader-frontend:latest "$PROJECT_DIR/upgrader/frontend"
+fi
+
 run_as_root docker stack deploy -c "$STACK_FILE" "$STACK_NAME"
 run_as_root docker service ls --filter "name=${STACK_NAME}_"
 echo "Deploy completado: https://${APP_DOMAIN}"
+echo "Upgrader disponible en: https://${UPGRADER_DOMAIN}"
 echo "Variables guardadas en ${ENV_FILE}"

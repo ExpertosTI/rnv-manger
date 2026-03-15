@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
 
-const UPGRADER_URL = "http://127.0.0.1:3005";
+const UPGRADER_URL = process.env.NEXT_PUBLIC_UPGRADER_URL || "https://upgrader.rnv.renace.tech";
 
 export default function UpgraderPage() {
     const [reachable, setReachable] = useState(false);

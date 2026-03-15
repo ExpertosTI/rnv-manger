@@ -35,6 +35,7 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       ALLOWED_ORIGIN: https://rnv.renace.tech
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
     networks:
       - rnv_internal
       - RenaceNet
@@ -69,6 +70,62 @@ services:
       restart_policy:
         condition: on-failure
 
+  upgrader_redis:
+    image: redis:7-alpine
+    networks:
+      - rnv_internal
+    deploy:
+      replicas: 1
+
+  upgrader_backend:
+    image: rnv-upgrader-backend:latest
+    environment:
+      - REDIS_URL=redis://upgrader_redis:6379/0
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - upgradernc_workdir:/workdir
+    networks:
+      - rnv_internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  upgrader_worker:
+    image: rnv-upgrader-backend:latest
+    command: celery -A core.worker.celery_app worker --loglevel=info
+    environment:
+      - REDIS_URL=redis://upgrader_redis:6379/0
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - upgradernc_workdir:/workdir
+    networks:
+      - rnv_internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  upgrader_frontend:
+    image: rnv-upgrader-frontend:latest
+    environment:
+      - NEXT_PUBLIC_API_URL=
+    networks:
+      - rnv_internal
+      - RenaceNet
+    deploy:
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.upgrader.rule=Host(`upgrader.rnv.renace.tech`)"
+        - "traefik.http.routers.upgrader.entrypoints=websecure"
+        - "traefik.http.routers.upgrader.tls=true"
+        - "traefik.http.routers.upgrader.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.upgrader.loadbalancer.server.port=3000"
+        - "traefik.docker.network=RenaceNet"
+
 networks:
   rnv_internal:
     driver: overlay
@@ -78,3 +135,4 @@ networks:
 volumes:
   rnv_manager_db_data:
   rnv_manager_backups:
+  upgradernc_workdir:
