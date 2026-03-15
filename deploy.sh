@@ -71,7 +71,7 @@ if ! docker network inspect "$NETWORK_INTERNAL" >/dev/null 2>&1; then
     run_as_root docker network create --driver overlay --attachable "$NETWORK_INTERNAL"
 fi
 
-ARCHIVE_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/${GITHUB_REF##*/}.tar.gz"
+ARCHIVE_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/${GITHUB_REF}.tar.gz"
 mkdir -p "$(dirname "$WORKDIR")"
 run_as_root mkdir -p "$WORKDIR"
 
