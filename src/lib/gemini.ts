@@ -4,15 +4,28 @@
  */
 
 import { GoogleGenerativeAI, Tool, SchemaType } from "@google/generative-ai";
+import { prisma } from "@/lib/prisma";
 
-const API_KEY = process.env.GEMINI_API_KEY || "";
+export async function getGeminiClient() {
+    let apiKey = process.env.GEMINI_API_KEY;
 
-if (!API_KEY) {
-    console.warn("⚠️ GEMINI_API_KEY no configurada");
+    // Si no hay key en entorno, buscar en AppSettings
+    if (!apiKey) {
+        const setting = await prisma.appSettings.findUnique({
+            where: { key: "gemini_api_key" }
+        });
+        if (setting?.value && setting.value !== "__HIDDEN__") {
+            apiKey = setting.value;
+        }
+    }
+
+    if (!apiKey) {
+        console.warn("⚠️ GEMINI_API_KEY no configurada");
+        return null;
+    }
+
+    return new GoogleGenerativeAI(apiKey);
 }
-
-// Inicializar el cliente
-const genAI = new GoogleGenerativeAI(API_KEY);
 
 // Function Declarations - Herramientas disponibles para la AI
 const functionDeclarations = [

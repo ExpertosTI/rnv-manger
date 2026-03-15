@@ -1,0 +1,43 @@
+# Este Dockerfile es una plantilla. 
+# El backend de upgradernc lo usará pasándole ODOO_VERSION como argumento de compilación.
+ARG ODOO_VERSION=18.0
+FROM python:3.12-slim
+
+ARG ODOO_VERSION
+ENV ODOO_VERSION=${ODOO_VERSION}
+
+# Instalar dependencias del sistema necesarias para compilar dependencias de Odoo
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-client \
+    build-essential \
+    libpq-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    libldap2-dev \
+    libsasl2-dev \
+    libjpeg-dev \
+    zlib1g-dev \
+    git \
+    wkhtmltopdf \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt
+
+# Clonar Odoo oficial (depth 1 para rápidez)
+RUN git clone --depth 1 -b ${ODOO_VERSION} https://github.com/odoo/odoo.git /opt/odoo
+
+# Instalar dependencias de Python de Odoo
+RUN pip install --no-cache-dir -r /opt/odoo/requirements.txt
+
+# Clonar OpenUpgrade (depth 1)
+RUN git clone --depth 1 -b ${ODOO_VERSION} https://github.com/OCA/OpenUpgrade.git /opt/openupgrade
+
+# Mover los scripts a la carpeta esperada y limpiar
+RUN pip install --no-cache-dir openupgradelib
+
+# Crear carpeta de configuración
+RUN mkdir -p /etc/odoo
+COPY odoo.conf /etc/odoo/odoo.conf
+
+# El comando por defecto (puede ser sobrescrito por el worker)
+ENTRYPOINT ["python", "/opt/odoo/odoo-bin", "-c", "/etc/odoo/odoo.conf"]

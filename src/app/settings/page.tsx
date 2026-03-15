@@ -43,6 +43,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
         icon: Key,
         description: "Tokens de acceso para integraciones",
         fields: [
+            { key: "gemini_api_key", label: "Gemini API Key", type: "password", placeholder: "AIza...", description: "Para el asistente AI" },
             { key: "hostinger_token", label: "Hostinger API Token", type: "password", placeholder: "Bearer token..." },
             { key: "odoo_url", label: "Odoo URL", type: "text", placeholder: "https://odoo.tuempresa.com" },
             { key: "odoo_db", label: "Odoo Database", type: "text", placeholder: "production" },

@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: upgradernc-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build: 
+      context: ./backend
+    container_name: upgradernc-backend
+    ports:
+      - "8005:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock # Needed to spawn Odoo containers
+      - upgradernc_workdir:/workdir               # Where zip files are unpacked
+    depends_on:
+      - redis
+
+  worker:
+    build: 
+      context: ./backend
+    container_name: upgradernc-worker
+    command: celery -A core.worker.celery_app worker --loglevel=info
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+      - upgradernc_workdir:/workdir
+    depends_on:
+      - redis
+      
+  frontend:
+    build:
+      context: ./frontend
+    container_name: upgradernc-frontend
+    ports:
+      - "3005:3000"
+    command: sh -c "npm install && npm run build && npm start -- -H 0.0.0.0 -p 3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8005
+    depends_on:
+      - backend
+
+volumes:
+  redis_data:
+  upgradernc_workdir:
