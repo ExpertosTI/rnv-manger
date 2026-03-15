@@ -216,13 +216,6 @@ if [ "${#SESSION_SECRET}" -lt 32 ]; then
 fi
 
 run_as_root sed -i "s|rnv\.renace\.tech|${APP_DOMAIN}|g" "$STACK_FILE"
-# Configurar dominio del Upgrader (subdominio upgrader.)
-UPGRADER_DOMAIN="upgrader.${APP_DOMAIN}"
-run_as_root sed -i "s|upgrader\.rnv\.renace\.tech|${UPGRADER_DOMAIN}|g" "$STACK_FILE"
-# Reemplazar URL del Upgrader en el codigo fuente antes de build
-if [ -f "$PROJECT_DIR/src/app/upgrader/page.tsx" ]; then
-    run_as_root sed -i "s|https://upgrader.rnv.renace.tech|https://${UPGRADER_DOMAIN}|g" "$PROJECT_DIR/src/app/upgrader/page.tsx"
-fi
 
 if ! grep -q "${APP_DOMAIN}" "$STACK_FILE"; then
     echo "No se pudo aplicar APP_DOMAIN en stack.yml"
@@ -243,5 +236,5 @@ fi
 run_as_root docker stack deploy -c "$STACK_FILE" "$STACK_NAME"
 run_as_root docker service ls --filter "name=${STACK_NAME}_"
 echo "Deploy completado: https://${APP_DOMAIN}"
-echo "Upgrader disponible en: https://${UPGRADER_DOMAIN}"
+echo "Upgrader disponible en: https://${APP_DOMAIN}/upgrader"
 echo "Variables guardadas en ${ENV_FILE}"

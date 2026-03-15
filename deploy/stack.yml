@@ -119,12 +119,14 @@ services:
       replicas: 1
       labels:
         - "traefik.enable=true"
-        - "traefik.http.routers.upgrader.rule=Host(`upgrader.rnv.renace.tech`)"
+        - "traefik.http.routers.upgrader.rule=Host(`rnv.renace.tech`) && PathPrefix(`/upgrader`)"
         - "traefik.http.routers.upgrader.entrypoints=websecure"
         - "traefik.http.routers.upgrader.tls=true"
         - "traefik.http.routers.upgrader.tls.certresolver=letsencryptresolver"
         - "traefik.http.services.upgrader.loadbalancer.server.port=3000"
         - "traefik.docker.network=RenaceNet"
+        - "traefik.http.middlewares.upgrader-strip.stripprefix.prefixes=/upgrader"
+        - "traefik.http.routers.upgrader.middlewares=upgrader-strip"
 
 networks:
   rnv_internal:
