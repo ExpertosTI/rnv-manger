@@ -42,6 +42,9 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 # Set permissions
 RUN chown -R nextjs:nodejs /app
 
+# Install prisma globally for migrations
+RUN npm install -g prisma
+
 USER nextjs
 
 EXPOSE 3000
@@ -49,5 +52,5 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Start directly without migration script
-CMD ["node", "server.js"]
+# Start with migration
+CMD sh -c "npx prisma migrate deploy && node server.js"

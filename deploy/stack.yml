@@ -125,8 +125,6 @@ services:
         - "traefik.http.routers.upgrader.tls.certresolver=letsencryptresolver"
         - "traefik.http.services.upgrader.loadbalancer.server.port=3000"
         - "traefik.docker.network=RenaceNet"
-        - "traefik.http.middlewares.upgrader-strip.stripprefix.prefixes=/upgrader"
-        - "traefik.http.routers.upgrader.middlewares=upgrader-strip"
 
 networks:
   rnv_internal:
