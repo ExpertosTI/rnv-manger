@@ -75,9 +75,20 @@ ARCHIVE_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/${GITHUB_REF}.
 mkdir -p "$(dirname "$WORKDIR")"
 run_as_root mkdir -p "$WORKDIR"
 
-# Intentar descargar tarball (rapido, funciona si es publico)
-if curl -fIm 5 "$ARCHIVE_URL" >/dev/null 2>&1; then
-    echo "Descargando codigo via tarball: ${ARCHIVE_URL}"
+# Check if current directory is a valid project source
+if [ -f "./deploy/stack.yml" ]; then
+    echo "Usando directorio actual como fuente..."
+    PROJECT_DIR="$(pwd)"
+else
+    # Intentar descargar tarball (rapido, funciona si es publico)
+    # Preferimos GIT si está disponible para evitar caché vieja de tarballs
+    USE_TARBALL=1
+    if command -v git >/dev/null 2>&1; then
+         USE_TARBALL=0
+    fi
+    
+    if [ "$USE_TARBALL" -eq 1 ] && curl -fIm 5 "$ARCHIVE_URL" >/dev/null 2>&1; then
+        echo "Descargando codigo via tarball: ${ARCHIVE_URL}"
     TMP_DIR="$(mktemp -d)"
     # shellcheck disable=SC2064
     trap "rm -rf '$TMP_DIR'" EXIT
