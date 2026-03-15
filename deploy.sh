@@ -145,6 +145,7 @@ else
         PROJECT_DIR="$WORKDIR"
     fi
 fi
+fi
 
 STACK_FILE="${PROJECT_DIR}/deploy/stack.yml"
 
