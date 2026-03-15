@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createChatSession, getCandidateModels } from "@/lib/gemini";
+import { createChatSession, getCandidateModels, getGeminiClient } from "@/lib/gemini";
 import { functionHandlers } from "@/lib/ai-functions";
 import prisma from "@/lib/prisma";
 
@@ -13,11 +13,12 @@ const MAX_FUNCTION_CALLS = 5;
 
 export async function POST(request: NextRequest) {
     try {
-        if (!process.env.GEMINI_API_KEY) {
+        const client = await getGeminiClient();
+        if (!client) {
             return NextResponse.json(
                 {
                     success: false,
-                    error: "Gemini no está configurado. Agrega GEMINI_API_KEY en el entorno."
+                    error: "Gemini no está configurado. Agrega GEMINI_API_KEY en ajustes."
                 },
                 { status: 503 }
             );
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
         }
 
         const runChat = async (modelName: string) => {
-            const chat = createChatSession(formattedHistory, modelName);
+            const chat = await createChatSession(formattedHistory, modelName);
             let contextPrefix = "";
             if (url) {
                 contextPrefix = `[CONTEXTO DE NAVEGACIÓN: El usuario está viendo la ruta: '${url}'. Si el usuario usa términos como "este cliente", "este VPS", "aquí" o "este servicio", asume que se refiere a la entidad visible en esta ruta.]\n\n`;

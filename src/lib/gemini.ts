@@ -694,8 +694,11 @@ export function getCandidateModels() {
 }
 
 // Iniciar una sesión de chat
-export function createChatSession(history: any[] = [], modelName: string = defaultModel) {
-    const model = genAI.getGenerativeModel({
+export async function createChatSession(history: any[] = [], modelName: string = defaultModel) {
+    const client = await getGeminiClient();
+    if (!client) throw new Error("Gemini API not configured");
+
+    const model = client.getGenerativeModel({
         ...modelConfig,
         model: modelName
     });
