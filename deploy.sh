@@ -71,24 +71,70 @@ if ! docker network inspect "$NETWORK_INTERNAL" >/dev/null 2>&1; then
     run_as_root docker network create --driver overlay --attachable "$NETWORK_INTERNAL"
 fi
 
-ARCHIVE_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/${GITHUB_REF}.tar.gz"
+ARCHIVE_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/${GITHUB_REF##*/}.tar.gz"
 mkdir -p "$(dirname "$WORKDIR")"
 run_as_root mkdir -p "$WORKDIR"
 
-TMP_DIR="$(mktemp -d)"
-cleanup() {
-    rm -rf "$TMP_DIR"
-}
-trap cleanup EXIT
+# Intentar descargar tarball (rapido, funciona si es publico)
+if curl -fIm 5 "$ARCHIVE_URL" >/dev/null 2>&1; then
+    echo "Descargando codigo via tarball: ${ARCHIVE_URL}"
+    TMP_DIR="$(mktemp -d)"
+    # shellcheck disable=SC2064
+    trap "rm -rf '$TMP_DIR'" EXIT
+    
+    if curl -fsSL "$ARCHIVE_URL" -o "${TMP_DIR}/src.tgz"; then
+        run_as_root rm -rf "${WORKDIR}/src"
+        run_as_root mkdir -p "${WORKDIR}/src"
+        run_as_root tar -xzf "${TMP_DIR}/src.tgz" -C "${WORKDIR}/src" --strip-components=1
+        PROJECT_DIR="${WORKDIR}/src"
+    else
+        echo "Error descargando tarball"
+        exit 1
+    fi
+else
+    echo "Repositorio privado o tarball no accesible. Usando git clone..."
+    require_command git
+    
+    # Si ya existe .git, usamos git pull
+    if [ -d "$WORKDIR/.git" ]; then
+        echo "Actualizando repositorio existente..."
+        git -C "$WORKDIR" fetch origin
+        git -C "$WORKDIR" checkout "$GITHUB_REF"
+        git -C "$WORKDIR" pull origin "$GITHUB_REF"
+        PROJECT_DIR="$WORKDIR"
+    else
+        # Clonado limpio
+        echo "Clonando repositorio..."
+        # Intentar HTTPS primero, luego SSH si falla (aunque git clone suele manejar esto si se configura url)
+        # Pero aqui asumimos que el usuario proveera la URL correcta si falla el default
+        # Default a HTTPS para publico, pero si es privado pedira pass.
+        # Si el usuario tiene SSH configurado, deberia usar URL SSH.
+        # Vamos a intentar clonar con la URL construida.
+        GIT_URL="https://github.com/${GITHUB_REPO}.git"
+        SSH_URL="git@github.com:${GITHUB_REPO}.git"
+        
+        # Si existe llave SSH default, intentamos SSH primero para evitar prompt de HTTPS
+        USE_SSH=0
+        if [ -f "$HOME/.ssh/id_rsa" ] || [ -f "$HOME/.ssh/id_ed25519" ]; then
+             echo "Detectadas llaves SSH, intentando usar SSH..."
+             USE_SSH=1
+        fi
 
-echo "Descargando codigo: ${ARCHIVE_URL}"
-curl -fsSL "$ARCHIVE_URL" -o "${TMP_DIR}/src.tgz"
+        if [ "$USE_SSH" -eq 1 ]; then
+             if ! git clone --branch "${GITHUB_REF##*/}" "$SSH_URL" "$WORKDIR"; then
+                 echo "Fallo clonado SSH. Intentando HTTPS..."
+                 git clone --branch "${GITHUB_REF##*/}" "$GIT_URL" "$WORKDIR"
+             fi
+        else
+             if ! git clone --branch "${GITHUB_REF##*/}" "$GIT_URL" "$WORKDIR"; then
+                 echo "Fallo clonado HTTPS. Intentando SSH..."
+                 git clone --branch "${GITHUB_REF##*/}" "$SSH_URL" "$WORKDIR"
+             fi
+        fi
+        PROJECT_DIR="$WORKDIR"
+    fi
+fi
 
-run_as_root rm -rf "${WORKDIR}/src"
-run_as_root mkdir -p "${WORKDIR}/src"
-run_as_root tar -xzf "${TMP_DIR}/src.tgz" -C "${WORKDIR}/src" --strip-components=1
-
-PROJECT_DIR="${WORKDIR}/src"
 STACK_FILE="${PROJECT_DIR}/deploy/stack.yml"
 
 if [ ! -f "$STACK_FILE" ]; then
