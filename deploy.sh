@@ -63,11 +63,22 @@ get_env_value() {
 }
 
 sync_db_credentials() {
-    db_container="$(docker ps --filter "name=${STACK_NAME}_db" --format "{{.ID}}" | head -n 1)"
+    db_container=""
+    attempts=0
+    while [ $attempts -lt 30 ]; do
+        db_container="$(docker ps --filter "name=${STACK_NAME}_db" --format "{{.ID}}" | head -n 1)"
+        if [ -n "$db_container" ]; then
+            if run_as_root docker exec -u postgres -e PGPASSWORD="$DB_PASSWORD" "$db_container" psql -U "$DB_USER" -d postgres -c "select 1" >/dev/null 2>&1; then
+                break
+            fi
+        fi
+        attempts=$((attempts+1))
+        sleep 2
+    done
     if [ -n "$db_container" ]; then
-        run_as_root docker exec -u postgres "$db_container" psql -v ON_ERROR_STOP=1 -v "db_user=$DB_USER" -v "db_pass=$DB_PASSWORD" -v "db_name=$DB_NAME" -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = :'db_user') THEN EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'db_user', :'db_pass'); ELSE EXECUTE format('ALTER ROLE %I WITH PASSWORD %L', :'db_user', :'db_pass'); END IF; END \$\$;" >/dev/null
-        run_as_root docker exec -u postgres "$db_container" psql -v ON_ERROR_STOP=1 -v "db_user=$DB_USER" -v "db_name=$DB_NAME" -c "DO \$\$ BEGIN IF EXISTS (SELECT FROM pg_database WHERE datname = :'db_name') THEN EXECUTE format('ALTER DATABASE %I OWNER TO %I', :'db_name', :'db_user'); END IF; END \$\$;" >/dev/null || true
-        run_as_root docker exec -u postgres "$db_container" psql -v ON_ERROR_STOP=1 -v "db_user=$DB_USER" -v "db_name=$DB_NAME" -c "DO \$\$ BEGIN IF EXISTS (SELECT FROM pg_database WHERE datname = :'db_name') THEN EXECUTE format('GRANT ALL PRIVILEGES ON DATABASE %I TO %I', :'db_name', :'db_user'); END IF; END \$\$;" >/dev/null || true
+        run_as_root docker exec -u postgres -e PGPASSWORD="$DB_PASSWORD" "$db_container" psql -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 -v "db_user=$DB_USER" -v "db_pass=$DB_PASSWORD" -v "db_name=$DB_NAME" -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = :'db_user') THEN EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'db_user', :'db_pass'); ELSE EXECUTE format('ALTER ROLE %I WITH PASSWORD %L', :'db_user', :'db_pass'); END IF; END \$\$;" >/dev/null
+        run_as_root docker exec -u postgres -e PGPASSWORD="$DB_PASSWORD" "$db_container" psql -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 -v "db_user=$DB_USER" -v "db_name=$DB_NAME" -c "DO \$\$ BEGIN IF EXISTS (SELECT FROM pg_database WHERE datname = :'db_name') THEN EXECUTE format('ALTER DATABASE %I OWNER TO %I', :'db_name', :'db_user'); END IF; END \$\$;" >/dev/null || true
+        run_as_root docker exec -u postgres -e PGPASSWORD="$DB_PASSWORD" "$db_container" psql -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 -v "db_user=$DB_USER" -v "db_name=$DB_NAME" -c "DO \$\$ BEGIN IF EXISTS (SELECT FROM pg_database WHERE datname = :'db_name') THEN EXECUTE format('GRANT ALL PRIVILEGES ON DATABASE %I TO %I', :'db_name', :'db_user'); END IF; END \$\$;" >/dev/null || true
     fi
 }
 
@@ -249,8 +260,6 @@ if [ "${#SESSION_SECRET}" -lt 32 ]; then
     exit 1
 fi
 
-sync_db_credentials
-
 run_as_root sed -i "s|rnv\.renace\.tech|${APP_DOMAIN}|g" "$STACK_FILE"
 
 if ! grep -q "${APP_DOMAIN}" "$STACK_FILE"; then
@@ -270,6 +279,7 @@ if [ -d "$PROJECT_DIR/upgrader" ]; then
 fi
 
 run_as_root docker stack deploy -c "$STACK_FILE" "$STACK_NAME"
+sync_db_credentials
 run_as_root docker service ls --filter "name=${STACK_NAME}_"
 echo "Deploy completado: https://${APP_DOMAIN}"
 echo "Upgrader disponible en: https://${APP_DOMAIN}/upgrader"
