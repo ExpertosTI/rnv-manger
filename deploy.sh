@@ -76,16 +76,21 @@ sync_db_credentials() {
         sleep 2
     done
     if [ -n "$db_container" ]; then
-        role_exists="$(run_as_root docker exec -u postgres -e PGPASSWORD="$DB_ADMIN_PASSWORD" "$db_container" psql -U "$DB_ADMIN_USER" -d postgres -tAc "SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = :'db_user'" -v "db_user=$DB_USER" 2>/dev/null | head -n 1)"
+        db_user_lit="$(printf "%s" "$DB_USER" | sed "s/'/''/g")"
+        db_pass_lit="$(printf "%s" "$DB_PASSWORD" | sed "s/'/''/g")"
+        db_name_lit="$(printf "%s" "$DB_NAME" | sed "s/'/''/g")"
+        db_user_ident="$(printf "%s" "$DB_USER" | sed "s/\"/\"\"/g")"
+        db_name_ident="$(printf "%s" "$DB_NAME" | sed "s/\"/\"\"/g")"
+        role_exists="$(run_as_root docker exec -u postgres -e PGPASSWORD="$DB_ADMIN_PASSWORD" "$db_container" psql -U "$DB_ADMIN_USER" -d postgres -tAc "SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = '${db_user_lit}'" 2>/dev/null | head -n 1)"
         if [ "$role_exists" = "1" ]; then
-            run_as_root docker exec -u postgres -e PGPASSWORD="$DB_ADMIN_PASSWORD" "$db_container" psql -U "$DB_ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -v "db_user=$DB_USER" -v "db_pass=$DB_PASSWORD" -c "ALTER ROLE :\"db_user\" WITH PASSWORD :'db_pass';" >/dev/null
+            run_as_root docker exec -u postgres -e PGPASSWORD="$DB_ADMIN_PASSWORD" "$db_container" psql -U "$DB_ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -c "ALTER ROLE \"${db_user_ident}\" WITH PASSWORD '${db_pass_lit}';" >/dev/null
         else
-            run_as_root docker exec -u postgres -e PGPASSWORD="$DB_ADMIN_PASSWORD" "$db_container" psql -U "$DB_ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -v "db_user=$DB_USER" -v "db_pass=$DB_PASSWORD" -c "CREATE ROLE :\"db_user\" LOGIN PASSWORD :'db_pass';" >/dev/null
+            run_as_root docker exec -u postgres -e PGPASSWORD="$DB_ADMIN_PASSWORD" "$db_container" psql -U "$DB_ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE \"${db_user_ident}\" LOGIN PASSWORD '${db_pass_lit}';" >/dev/null
         fi
-        db_exists="$(run_as_root docker exec -u postgres -e PGPASSWORD="$DB_ADMIN_PASSWORD" "$db_container" psql -U "$DB_ADMIN_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = :'db_name'" -v "db_name=$DB_NAME" 2>/dev/null | head -n 1)"
+        db_exists="$(run_as_root docker exec -u postgres -e PGPASSWORD="$DB_ADMIN_PASSWORD" "$db_container" psql -U "$DB_ADMIN_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '${db_name_lit}'" 2>/dev/null | head -n 1)"
         if [ "$db_exists" = "1" ]; then
-            run_as_root docker exec -u postgres -e PGPASSWORD="$DB_ADMIN_PASSWORD" "$db_container" psql -U "$DB_ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -v "db_user=$DB_USER" -v "db_name=$DB_NAME" -c "ALTER DATABASE :\"db_name\" OWNER TO :\"db_user\";" >/dev/null || true
-            run_as_root docker exec -u postgres -e PGPASSWORD="$DB_ADMIN_PASSWORD" "$db_container" psql -U "$DB_ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -v "db_user=$DB_USER" -v "db_name=$DB_NAME" -c "GRANT ALL PRIVILEGES ON DATABASE :\"db_name\" TO :\"db_user\";" >/dev/null || true
+            run_as_root docker exec -u postgres -e PGPASSWORD="$DB_ADMIN_PASSWORD" "$db_container" psql -U "$DB_ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -c "ALTER DATABASE \"${db_name_ident}\" OWNER TO \"${db_user_ident}\";" >/dev/null || true
+            run_as_root docker exec -u postgres -e PGPASSWORD="$DB_ADMIN_PASSWORD" "$db_container" psql -U "$DB_ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -c "GRANT ALL PRIVILEGES ON DATABASE \"${db_name_ident}\" TO \"${db_user_ident}\";" >/dev/null || true
         fi
     fi
 }
