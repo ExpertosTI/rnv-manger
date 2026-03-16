@@ -73,19 +73,26 @@ export async function POST(request: NextRequest) {
                 continue;
             }
 
-            const result = await prisma.appSettings.upsert({
-                where: { key },
-                create: {
-                    key,
-                    value: sanitizedValue,
-                    category,
-                },
-                update: {
-                    value: sanitizedValue,
-                },
-            });
-            results.push(isSensitiveKey(key) ? { ...result, value: "__HIDDEN__" } : result);
+            try {
+                const result = await prisma.appSettings.upsert({
+                    where: { key },
+                    create: {
+                        key,
+                        value: sanitizedValue,
+                        category,
+                    },
+                    update: {
+                        value: sanitizedValue,
+                    },
+                });
+
+                results.push(isSensitiveKey(key) ? { ...result, value: "__HIDDEN__" } : result);
+            } catch (upsertError) {
+                console.error(`Failed to upsert setting ${key}:`, upsertError);
+                throw upsertError; // Propagate to trigger the 500 response below
+            }
         }
+
 
         return NextResponse.json({ success: true, data: results });
     } catch (error) {
