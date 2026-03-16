@@ -49,6 +49,19 @@ export default function Home() {
     }
   };
 
+  const getApiBase = () => {
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "/upgrader-service";
+    const normalizedBasePath = basePath.startsWith("/") ? basePath : `/${basePath}`;
+    const envApi = process.env.NEXT_PUBLIC_API_URL;
+    if (envApi && envApi.length > 0) {
+      return envApi.replace(/\/$/, "");
+    }
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}${normalizedBasePath}`;
+    }
+    return normalizedBasePath;
+  };
+
   const handleUploadAndMigrate = async () => {
     if (!file) return;
 
@@ -58,8 +71,8 @@ export default function Home() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
-      const uploadRes = await fetch(`${apiUrl}/api/upload`, {
+      const apiBase = getApiBase();
+      const uploadRes = await fetch(`${apiBase}/api/upload`, {
         method: "POST",
         body: formData,
       });
@@ -68,7 +81,7 @@ export default function Home() {
       const { session_id } = await uploadRes.json();
 
       // 2. Trigger Migration
-      const migrateUrl = new URL(`${apiUrl}/api/sessions/${session_id}/migrate`);
+      const migrateUrl = new URL(`${apiBase}/api/sessions/${session_id}/migrate`);
       migrateUrl.searchParams.append("source_version", sourceVersion);
       migrateUrl.searchParams.append("target_version", targetVersion);
 
@@ -88,10 +101,10 @@ export default function Home() {
 
   const handleDownload = () => {
     if (!sessionId) return;
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const apiBase = getApiBase();
 
     // Open the download URL directly — the browser will handle the file download
-    const downloadUrl = `${apiUrl}/api/sessions/${sessionId}/download`;
+    const downloadUrl = `${apiBase}/api/sessions/${sessionId}/download`;
     window.open(downloadUrl, "_blank");
   };
 

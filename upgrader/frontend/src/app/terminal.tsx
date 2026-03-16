@@ -38,12 +38,26 @@ export default function TerminalUI({ sessionId, onComplete }: TerminalUIProps) {
 
     const wsRef = useRef<WebSocket | null>(null);
 
+    const getApiBase = () => {
+        const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "/upgrader-service";
+        const normalizedBasePath = basePath.startsWith("/") ? basePath : `/${basePath}`;
+        const envApi = process.env.NEXT_PUBLIC_API_URL;
+        if (envApi && envApi.length > 0) {
+            return envApi.replace(/\/$/, "");
+        }
+        if (typeof window !== "undefined") {
+            return `${window.location.origin}${normalizedBasePath}`;
+        }
+        return normalizedBasePath;
+    };
+
     useEffect(() => {
         // Prevent duplicate connections from React StrictMode
         if (wsRef.current) return;
 
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-        const wsUrl = apiUrl.replace("http", "ws") + `/api/sessions/${sessionId}/logs`;
+        const apiBase = getApiBase();
+        const wsBase = apiBase.replace(/^http/, "ws");
+        const wsUrl = `${wsBase}/api/sessions/${sessionId}/logs`;
 
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;

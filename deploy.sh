@@ -62,6 +62,42 @@ get_env_value() {
     echo "$1" | awk -F= -v key="$2" '$1==key{print substr($0,index($0,"=")+1); exit}'
 }
 
+ensure_env_file() {
+    if [ ! -f "$ENV_FILE" ]; then
+        run_as_root mkdir -p "$(dirname "$ENV_FILE")"
+        cat <<EOF | run_as_root tee "$ENV_FILE" >/dev/null
+DB_USER=
+DB_PASSWORD=
+DB_NAME=
+APP_PORT=3000
+MASTER_PASSWORD=${MASTER_PASSWORD:-JustWork2027@}
+MAESTRO_PIN=${MAESTRO_PIN:-101284}
+SESSION_SECRET=
+HOSTINGER_API_TOKEN=
+ODOO_URL=
+ODOO_DB=
+ODOO_USERNAME=
+ODOO_API_KEY=
+GEMINI_API_KEY=
+SMTP_HOST=
+SMTP_PORT=
+SMTP_USER=
+SMTP_PASS=
+EOF
+        run_as_root chmod 600 "$ENV_FILE"
+    fi
+}
+
+set_env_value() {
+    key="$1"
+    value="$2"
+    if grep -q "^${key}=" "$ENV_FILE"; then
+        run_as_root sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+    else
+        echo "${key}=${value}" | run_as_root tee -a "$ENV_FILE" >/dev/null
+    fi
+}
+
 sync_db_credentials() {
     db_container=""
     attempts=0
@@ -200,45 +236,22 @@ service_db_user="$(get_env_value "$service_env" "POSTGRES_USER")"
 service_db_password="$(get_env_value "$service_env" "POSTGRES_PASSWORD")"
 service_db_name="$(get_env_value "$service_env" "POSTGRES_DB")"
 
-if [ ! -f "$ENV_FILE" ]; then
-    run_as_root mkdir -p "$(dirname "$ENV_FILE")"
-    DB_USER_VALUE="${DB_USER:-${service_db_user:-rnvadmin}}"
-    DB_PASSWORD_VALUE="${DB_PASSWORD:-${service_db_password:-$(generate_password)}}"
-    DB_NAME_VALUE="${DB_NAME:-${service_db_name:-rnv_manager}}"
-    APP_PORT_VALUE="${APP_PORT:-3000}"
-    MASTER_PASSWORD_VALUE="${MASTER_PASSWORD:-JustWork2027@}"
-    MAESTRO_PIN_VALUE="${MAESTRO_PIN:-101284}"
-    SESSION_SECRET_VALUE="${SESSION_SECRET:-$(generate_secret)}"
-    SMTP_HOST_VALUE="${SMTP_HOST:-}"
-    SMTP_PORT_VALUE="${SMTP_PORT:-}"
-    SMTP_USER_VALUE="${SMTP_USER:-}"
-    SMTP_PASS_VALUE="${SMTP_PASS:-}"
-    HOSTINGER_API_TOKEN_VALUE="${HOSTINGER_API_TOKEN:-}"
-    ODOO_URL_VALUE="${ODOO_URL:-}"
-    ODOO_DB_VALUE="${ODOO_DB:-}"
-    ODOO_USERNAME_VALUE="${ODOO_USERNAME:-}"
-    ODOO_API_KEY_VALUE="${ODOO_API_KEY:-}"
-    GEMINI_API_KEY_VALUE="${GEMINI_API_KEY:-}"
-    cat <<EOF | run_as_root tee "$ENV_FILE" >/dev/null
-DB_USER=${DB_USER_VALUE}
-DB_PASSWORD=${DB_PASSWORD_VALUE}
-DB_NAME=${DB_NAME_VALUE}
-APP_PORT=${APP_PORT_VALUE}
-MASTER_PASSWORD=${MASTER_PASSWORD_VALUE}
-MAESTRO_PIN=${MAESTRO_PIN_VALUE}
-SESSION_SECRET=${SESSION_SECRET_VALUE}
-HOSTINGER_API_TOKEN=${HOSTINGER_API_TOKEN_VALUE}
-ODOO_URL=${ODOO_URL_VALUE}
-ODOO_DB=${ODOO_DB_VALUE}
-ODOO_USERNAME=${ODOO_USERNAME_VALUE}
-ODOO_API_KEY=${ODOO_API_KEY_VALUE}
-GEMINI_API_KEY=${GEMINI_API_KEY_VALUE}
-SMTP_HOST=${SMTP_HOST_VALUE}
-SMTP_PORT=${SMTP_PORT_VALUE}
-SMTP_USER=${SMTP_USER_VALUE}
-SMTP_PASS=${SMTP_PASS_VALUE}
-EOF
-    run_as_root chmod 600 "$ENV_FILE"
+ensure_env_file
+
+if [ -n "$service_db_user" ]; then
+    set_env_value "DB_USER" "$service_db_user"
+fi
+if [ -n "$service_db_password" ]; then
+    set_env_value "DB_PASSWORD" "$service_db_password"
+fi
+if [ -n "$service_db_name" ]; then
+    set_env_value "DB_NAME" "$service_db_name"
+fi
+
+if [ -z "${SESSION_SECRET:-}" ]; then
+    if ! grep -q "^SESSION_SECRET=" "$ENV_FILE" || [ -z "$(get_env_value "$(cat "$ENV_FILE")" "SESSION_SECRET")" ]; then
+        set_env_value "SESSION_SECRET" "$(generate_secret)"
+    fi
 fi
 
 set -a
