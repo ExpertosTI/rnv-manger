@@ -3,6 +3,8 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+RUN apk add --no-cache openssl
+
 # Install dependencies
 COPY package*.json ./
 RUN npm ci
@@ -27,6 +29,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Install runtime dependencies for prisma and pg_isready
+RUN apk add --no-cache openssl postgresql-client
+
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -44,8 +49,8 @@ COPY docker-entrypoint.sh ./
 RUN chown -R nextjs:nodejs /app
 RUN chmod +x docker-entrypoint.sh
 
-# Install prisma globally for migrations
-RUN npm install -g prisma
+# Install prisma globally for migrations (matching version)
+RUN npm install -g prisma@5.10.0
 
 USER nextjs
 

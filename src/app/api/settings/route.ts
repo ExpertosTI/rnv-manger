@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
         }
 
         const results = [];
+        const errors = [];
         for (const [key, value] of Object.entries(settings)) {
             const category = key.split("_")[0]; // e.g., smtp_host -> smtp
             const sanitizedValue = value === "__HIDDEN__" ? undefined : String(value);
@@ -87,12 +88,18 @@ export async function POST(request: NextRequest) {
                 });
 
                 results.push(isSensitiveKey(key) ? { ...result, value: "__HIDDEN__" } : result);
-            } catch (upsertError) {
+            } catch (upsertError: any) {
                 console.error(`Failed to upsert setting ${key}:`, upsertError);
-                throw upsertError; // Propagate to trigger the 500 response below
+                errors.push(`${key}: ${upsertError.message}`);
             }
         }
 
+        if (errors.length > 0) {
+             return NextResponse.json(
+                { success: false, error: `Error saving some settings: ${errors.join(", ")}` },
+                { status: 500 }
+            );
+        }
 
         return NextResponse.json({ success: true, data: results });
     } catch (error) {

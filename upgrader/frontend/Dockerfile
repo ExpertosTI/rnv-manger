@@ -3,7 +3,7 @@ FROM node:20-slim
 WORKDIR /app
 
 # Enable Next.js telemetry collection off (optional)
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Install dependencies first (caching)
 COPY package.json package-lock.json* ./
