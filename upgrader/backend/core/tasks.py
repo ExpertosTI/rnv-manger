@@ -206,6 +206,20 @@ def start_migration_task(self, session_id: str, source_version: str, target_vers
 
     pg_container_name = f"pg_ephemeral_{session_id[:8]}"
     pg_container = None
+    workdir_volume = os.getenv("WORKDIR_VOLUME")
+    if not workdir_volume and docker_client:
+        try:
+            current_id = os.getenv("HOSTNAME")
+            if current_id:
+                current_container = docker_client.containers.get(current_id)
+                for mount in current_container.attrs.get("Mounts", []):
+                    if mount.get("Destination") == "/workdir":
+                        workdir_volume = mount.get("Name") or mount.get("Source")
+                        break
+        except Exception:
+            workdir_volume = None
+    if not workdir_volume:
+        workdir_volume = "upgradernc_workdir"
 
     publish_log(session_id, f"Preparando base de datos efímera (PostgreSQL 15): {pg_container_name}", progress=30)
 
@@ -213,6 +227,7 @@ def start_migration_task(self, session_id: str, source_version: str, target_vers
         cleanup_container(pg_container_name)
 
         # DO NOT use remove=True — we need the container alive for pg_dump later
+        publish_log(session_id, f"Usando volumen de workdir: {workdir_volume}", "info")
         pg_container = docker_client.containers.run(
             "postgres:15-alpine",
             name=pg_container_name,
@@ -222,7 +237,7 @@ def start_migration_task(self, session_id: str, source_version: str, target_vers
                 "POSTGRES_DB": "odoo"
             },
             network="upgradernc_default",
-            volumes={"upgradernc_upgradernc_workdir": {"bind": "/workdir", "mode": "rw"}},
+            volumes={workdir_volume: {"bind": "/workdir", "mode": "rw"}},
             detach=True,
             # remove=False so we can pg_dump after migration
         )
