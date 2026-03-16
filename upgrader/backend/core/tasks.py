@@ -6,6 +6,8 @@ import json
 import zipfile
 import docker
 import subprocess
+import io
+import tarfile
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 redis_client = redis.from_url(REDIS_URL)
@@ -15,6 +17,52 @@ try:
     docker_client = docker.from_env()
 except Exception:
     docker_client = None
+
+ODOO_CONF_CONTENT = """[options]
+admin_passwd = upgradernc_master_password
+db_host = host.docker.internal
+db_port = 5432
+db_user = odoo
+db_password = odoo
+addons_path = /opt/odoo/addons,/opt/openupgrade
+data_dir = /var/lib/odoo
+list_db = True
+proxy_mode = True
+workers = 0
+"""
+
+DOCKERFILE_TEMPLATE = """ARG ODOO_VERSION=18.0
+FROM python:3.12-slim
+
+ARG ODOO_VERSION
+ENV ODOO_VERSION=${ODOO_VERSION}
+
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    postgresql-client \\
+    build-essential \\
+    libpq-dev \\
+    libxml2-dev \\
+    libxslt1-dev \\
+    libldap2-dev \\
+    libsasl2-dev \\
+    libjpeg-dev \\
+    zlib1g-dev \\
+    git \\
+    wkhtmltopdf \\
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt
+
+RUN git clone --depth 1 -b ${ODOO_VERSION} https://github.com/odoo/odoo.git /opt/odoo
+RUN pip install --no-cache-dir -r /opt/odoo/requirements.txt
+RUN git clone --depth 1 -b ${ODOO_VERSION} https://github.com/OCA/OpenUpgrade.git /opt/openupgrade
+RUN pip install --no-cache-dir openupgradelib
+
+RUN mkdir -p /etc/odoo
+COPY odoo.conf /etc/odoo/odoo.conf
+
+ENTRYPOINT ["python", "/opt/odoo/odoo-bin", "-c", "/etc/odoo/odoo.conf"]
+"""
 
 
 def publish_log(session_id: str, message: str, type: str = "log", status: str = None, progress: int = None):
@@ -48,6 +96,33 @@ def cleanup_container(name):
         c.remove(force=True)
     except Exception:
         pass
+
+
+def build_openupgrade_image(version: str):
+    if not docker_client:
+        return False, "Docker client unavailable"
+    tar_stream = io.BytesIO()
+    with tarfile.open(fileobj=tar_stream, mode="w") as tar:
+        dockerfile_bytes = DOCKERFILE_TEMPLATE.encode("utf-8")
+        dockerfile_info = tarfile.TarInfo("Dockerfile")
+        dockerfile_info.size = len(dockerfile_bytes)
+        tar.addfile(dockerfile_info, io.BytesIO(dockerfile_bytes))
+        conf_bytes = ODOO_CONF_CONTENT.encode("utf-8")
+        conf_info = tarfile.TarInfo("odoo.conf")
+        conf_info.size = len(conf_bytes)
+        tar.addfile(conf_info, io.BytesIO(conf_bytes))
+    tar_stream.seek(0)
+    try:
+        docker_client.images.build(
+            fileobj=tar_stream,
+            custom_context=True,
+            tag=f"upgradernc/openupgrade:{version}",
+            buildargs={"ODOO_VERSION": version},
+            rm=True,
+        )
+        return True, None
+    except Exception as e:
+        return False, str(e)[:400]
 
 
 @shared_task(bind=True)
@@ -174,7 +249,10 @@ def start_migration_task(self, session_id: str, source_version: str, target_vers
         for idx, version in enumerate(versions_to_run):
             progress_start = 50 + int((idx / total_versions) * 35)
             progress_end = 50 + int(((idx + 1) / total_versions) * 35)
-            run_openupgrade_step(session_id, version, pg_container_name, progress_start, progress_end)
+            ok = run_openupgrade_step(session_id, version, pg_container_name, progress_start, progress_end)
+            if not ok:
+                cleanup_container(pg_container_name)
+                return {"status": "error", "error": f"OpenUpgrade {version} failed"}
 
     # ==========================================================================
     # PHASE 4: Export the migrated database
@@ -234,26 +312,21 @@ def run_openupgrade_step(session_id: str, version: str, pg_container_name: str, 
     try:
         cleanup_container(ou_container_name)
 
-        # Try the custom image first, then the official odoo image
         image_name = f"upgradernc/openupgrade:{version}"
         try:
             docker_client.images.get(image_name)
             publish_log(session_id, f"Imagen {image_name} encontrada localmente.", "info")
         except docker.errors.ImageNotFound:
-            # Try pulling
             publish_log(session_id, f"Imagen {image_name} no encontrada. Intentando descargar...", "info")
             try:
                 docker_client.images.pull(image_name)
                 publish_log(session_id, f"Imagen {image_name} descargada exitosamente.", "success")
             except Exception:
-                # Fall back to official odoo image
-                image_name = f"odoo:{version}"
-                publish_log(session_id, f"Usando imagen oficial: {image_name}", "info")
-                try:
-                    docker_client.images.get(image_name)
-                except docker.errors.ImageNotFound:
-                    publish_log(session_id, f"Descargando imagen {image_name}...", "info")
-                    docker_client.images.pull(image_name)
+                publish_log(session_id, "No se pudo descargar la imagen. Construyendo imagen local...", "warning")
+                built, error_msg = build_openupgrade_image(version)
+                if not built:
+                    publish_log(session_id, f"Error construyendo imagen OpenUpgrade: {error_msg}", "error", status="error")
+                    return False
 
         ou_container = docker_client.containers.run(
             image_name,
@@ -265,7 +338,15 @@ def run_openupgrade_step(session_id: str, version: str, pg_container_name: str, 
                 "PASSWORD": "odoo",
             },
             network="upgradernc_default",
-            command=f"odoo -d odoo -u all --stop-after-init --db_host {pg_container_name} --db_port 5432 --db_user odoo --db_password odoo",
+            command=[
+                "-d", "odoo",
+                "-u", "all",
+                "--stop-after-init",
+                "--db_host", pg_container_name,
+                "--db_port", "5432",
+                "--db_user", "odoo",
+                "--db_password", "odoo",
+            ],
             detach=True,
         )
 
@@ -286,22 +367,27 @@ def run_openupgrade_step(session_id: str, version: str, pg_container_name: str, 
         exit_code = result.get("StatusCode", -1)
 
         if exit_code != 0:
-            publish_log(session_id, f"OpenUpgrade {version} terminó con código {exit_code}. Verificando logs...", "warning")
-            # Get the last 20 lines of logs
-            tail_logs = ou_container.logs(tail=20).decode('utf-8', errors='replace')
-            publish_log(session_id, f"Últimas líneas: {tail_logs[:500]}", "warning")
-        else:
-            publish_log(session_id, f"OpenUpgrade {version} completado exitosamente.", "success", progress=progress_end)
+            publish_log(session_id, f"OpenUpgrade {version} terminó con código {exit_code}.", "error", status="error")
+            tail_logs = ou_container.logs(tail=40).decode('utf-8', errors='replace')
+            publish_log(session_id, f"Últimas líneas: {tail_logs[:500]}", "error")
+            cleanup_container(ou_container_name)
+            return False
+
+        publish_log(session_id, f"OpenUpgrade {version} completado exitosamente.", "success", progress=progress_end)
 
         # Clean up OpenUpgrade container
         cleanup_container(ou_container_name)
+        return True
 
     except docker.errors.ContainerError as e:
         publish_log(session_id, f"Error en contenedor OpenUpgrade {version}: {str(e)[:300]}", "error")
         cleanup_container(ou_container_name)
+        return False
     except docker.errors.APIError as e:
         publish_log(session_id, f"Error Docker API para {version}: {str(e)[:300]}", "error")
         cleanup_container(ou_container_name)
+        return False
     except Exception as e:
         publish_log(session_id, f"Error inesperado en OpenUpgrade {version}: {str(e)[:300]}", "error")
         cleanup_container(ou_container_name)
+        return False
