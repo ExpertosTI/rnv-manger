@@ -9,6 +9,11 @@ import { prisma } from "@/lib/prisma";
 export async function getGeminiClient() {
     let apiKey = process.env.GEMINI_API_KEY;
 
+    // Ignorar valor por defecto del template
+    if (apiKey === "TU_CLAVE_DE_GEMINI_AQUI") {
+        apiKey = undefined;
+    }
+
     // Si no hay key en entorno, buscar en AppSettings
     if (!apiKey) {
         const setting = await prisma.appSettings.findUnique({
