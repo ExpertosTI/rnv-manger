@@ -49,7 +49,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \\
     libjpeg-dev \\
     zlib1g-dev \\
     git \\
-    wkhtmltopdf \\
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt
