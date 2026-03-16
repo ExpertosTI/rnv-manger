@@ -14,7 +14,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
         if (username === "admin@renace.tech" && password === "Renace2026!") {
             onLogin();
         } else {
-            setError("Credenciales incorrectas. (Pista: admin@renace.tech / Renace2026!)");
+            setError("Credenciales incorrectas.");
         }
     };
 
