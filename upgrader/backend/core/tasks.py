@@ -8,6 +8,7 @@ import docker
 import subprocess
 import io
 import tarfile
+import gzip
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 redis_client = redis.from_url(REDIS_URL)
@@ -148,19 +149,28 @@ def start_migration_task(self, session_id: str, source_version: str, target_vers
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(extract_dir)
 
-        # Verify essential files exist
         dump_sql = os.path.join(extract_dir, "dump.sql")
         if not os.path.exists(dump_sql):
-            # Check if dump.sql is inside a subdirectory
+            candidates = []
             for root, dirs, files in os.walk(extract_dir):
                 for f in files:
-                    if f == "dump.sql":
-                        dump_sql = os.path.join(root, f)
-                        break
+                    lower = f.lower()
+                    if lower == "dump.sql" or lower == "dump.sql.gz":
+                        candidates.insert(0, os.path.join(root, f))
+                    elif lower.endswith(".sql") or lower.endswith(".sql.gz"):
+                        candidates.append(os.path.join(root, f))
+            if candidates:
+                dump_sql = candidates[0]
 
         if not os.path.exists(dump_sql):
-            publish_log(session_id, "Error: No se encontró dump.sql en el archivo ZIP.", "error", status="error")
+            publish_log(session_id, "Error: No se encontró dump.sql ni archivos .sql en el ZIP.", "error", status="error")
             return {"status": "error", "error": "dump.sql not found in zip"}
+
+        if dump_sql.lower().endswith(".gz"):
+            decompressed = os.path.join(extract_dir, "dump.sql")
+            with gzip.open(dump_sql, "rb") as gz_file, open(decompressed, "wb") as out_file:
+                out_file.write(gz_file.read())
+            dump_sql = decompressed
 
         publish_log(session_id, "El filestore y el dump.sql han sido extraídos con éxito.", "success", progress=25)
     except zipfile.BadZipFile:
@@ -208,15 +218,8 @@ def start_migration_task(self, session_id: str, source_version: str, target_vers
 
         publish_log(session_id, "PostgreSQL listo. Restaurando volcado SQL...", progress=38)
 
-        # Find the dump.sql relative path inside the workdir volume
-        dump_in_container = f"/workdir/{session_id}/extracted/dump.sql"
-        # Walk to find it if nested
-        for root, dirs, files in os.walk(extract_dir):
-            for f in files:
-                if f == "dump.sql":
-                    rel = os.path.relpath(os.path.join(root, f), UPLOAD_DIR)
-                    dump_in_container = f"/workdir/{rel.replace(os.sep, '/')}"
-                    break
+        rel = os.path.relpath(dump_sql, UPLOAD_DIR)
+        dump_in_container = f"/workdir/{rel.replace(os.sep, '/')}"
 
         exec_cmd = ["psql", "-U", "odoo", "-d", "odoo", "-f", dump_in_container]
         exit_code, output = pg_container.exec_run(exec_cmd, demux=True)
