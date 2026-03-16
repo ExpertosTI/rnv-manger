@@ -153,23 +153,30 @@ def start_migration_task(self, session_id: str, source_version: str, target_vers
         dump_format = "plain"
         if not os.path.exists(dump_sql):
             candidates = []
+            fallbacks = []
+            all_files = []
             for root, dirs, files in os.walk(extract_dir):
+                dirs[:] = [d for d in dirs if d.lower() != "filestore"]
                 for f in files:
                     lower = f.lower()
-                    if lower == "dump.sql" or lower == "dump.sql.gz":
-                        candidates.insert(0, os.path.join(root, f))
-                    elif lower == "dump.dump" or lower == "dump.backup" or lower == "dump.pgdump":
-                        candidates.insert(0, os.path.join(root, f))
+                    path = os.path.join(root, f)
+                    all_files.append(path)
+                    if lower in ("dump.sql", "dump.sql.gz", "dump.dump", "dump.backup", "dump.pgdump", "dump"):
+                        candidates.insert(0, path)
                     elif lower.endswith(".sql") or lower.endswith(".sql.gz"):
-                        candidates.append(os.path.join(root, f))
+                        candidates.append(path)
                     elif lower.endswith(".dump") or lower.endswith(".backup") or lower.endswith(".pgdump"):
-                        candidates.append(os.path.join(root, f))
+                        candidates.append(path)
+                    elif "dump" in lower:
+                        fallbacks.append(path)
+            if not candidates and fallbacks:
+                candidates = fallbacks
             if candidates:
                 dump_sql = candidates[0]
-
-        if not os.path.exists(dump_sql):
-            publish_log(session_id, "Error: No se encontró dump.sql, .sql, .dump o .backup en el ZIP.", "error", status="error")
-            return {"status": "error", "error": "dump.sql not found in zip"}
+            else:
+                sample = [os.path.relpath(f, extract_dir) for f in all_files[:15]]
+                publish_log(session_id, f"Error: No se encontró dump en el ZIP. Archivos: {sample}", "error", status="error")
+                return {"status": "error", "error": "dump.sql not found in zip"}
 
         if dump_sql.lower().endswith(".gz"):
             base_name = os.path.basename(dump_sql[:-3])
@@ -179,10 +186,10 @@ def start_migration_task(self, session_id: str, source_version: str, target_vers
             dump_sql = decompressed
 
         lower_dump = dump_sql.lower()
-        if lower_dump.endswith(".dump") or lower_dump.endswith(".backup") or lower_dump.endswith(".pgdump"):
+        if not lower_dump.endswith(".sql"):
             dump_format = "custom"
 
-        publish_log(session_id, "El filestore y el dump.sql han sido extraídos con éxito.", "success", progress=25)
+        publish_log(session_id, "El filestore y el dump han sido extraídos con éxito.", "success", progress=25)
     except zipfile.BadZipFile:
         publish_log(session_id, "Error: El archivo subido no es un ZIP válido.", "error", status="error")
         return {"status": "error", "error": "Bad zip file"}
