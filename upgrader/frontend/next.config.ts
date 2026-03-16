@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  basePath: "/upgrader",
+  basePath: process.env.NEXT_PUBLIC_BASE_PATH || "/upgrader",
   async rewrites() {
     return [
       {

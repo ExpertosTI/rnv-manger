@@ -38,9 +38,11 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY docker-entrypoint.sh ./
 
 # Set permissions
 RUN chown -R nextjs:nodejs /app
+RUN chmod +x docker-entrypoint.sh
 
 # Install prisma globally for migrations
 RUN npm install -g prisma
@@ -53,4 +55,4 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 # Start with migration
-CMD sh -c "npx prisma migrate deploy && node server.js"
+CMD ["./docker-entrypoint.sh"]

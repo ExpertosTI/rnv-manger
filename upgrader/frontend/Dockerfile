@@ -16,5 +16,7 @@ COPY . .
 # Expose port
 EXPOSE 3000
 
+ENV HOSTNAME="0.0.0.0"
+
 # Start development server
 CMD ["npm", "run", "dev"]

@@ -112,19 +112,16 @@ services:
     image: rnv-upgrader-frontend:latest
     environment:
       - NEXT_PUBLIC_API_URL=
+      - NEXT_PUBLIC_BASE_PATH=/upgrader-service
     networks:
       - rnv_internal
       - RenaceNet
     deploy:
       replicas: 1
-      labels:
-        - "traefik.enable=true"
-        - "traefik.http.routers.upgrader.rule=Host(`rnv.renace.tech`) && PathPrefix(`/upgrader`)"
-        - "traefik.http.routers.upgrader.entrypoints=websecure"
-        - "traefik.http.routers.upgrader.tls=true"
-        - "traefik.http.routers.upgrader.tls.certresolver=letsencryptresolver"
-        - "traefik.http.services.upgrader.loadbalancer.server.port=3000"
-        - "traefik.docker.network=RenaceNet"
+      # Traefik labels removed to use Next.js rewrites from main app
+      # labels:
+      #   - "traefik.enable=true"
+      #   - "traefik.http.routers.upgrader.rule=Host(`rnv.renace.tech`) && PathPrefix(`/upgrader`)"
 
 networks:
   rnv_internal:

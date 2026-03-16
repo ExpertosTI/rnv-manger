@@ -15,6 +15,18 @@ const nextConfig: NextConfig = {
   compress: true,
   // Exclude native modules from webpack bundling
   serverExternalPackages: ["ssh2", "cpu-features", "nodemailer"],
+  async rewrites() {
+    return [
+      {
+        source: "/upgrader-service",
+        destination: "http://upgrader_frontend:3000/upgrader-service",
+      },
+      {
+        source: "/upgrader-service/:path*",
+        destination: "http://upgrader_frontend:3000/upgrader-service/:path*",
+      },
+    ];
+  },
   async headers() {
     return [
       {

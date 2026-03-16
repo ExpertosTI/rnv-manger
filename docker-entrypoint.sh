@@ -8,5 +8,11 @@ npx prisma migrate deploy --schema=/app/prisma/schema.prisma || {
     echo "⚠️ Migration failed or no migrations needed. Continuing..."
 }
 
+# Run seed script
+echo "🌱 Seeding initial data..."
+node /app/prisma/seed.js || {
+    echo "⚠️ Seeding failed. Continuing..."
+}
+
 echo "✅ Starting server..."
 exec node server.js

@@ -6,7 +6,7 @@
 import { GoogleGenerativeAI, Tool, SchemaType } from "@google/generative-ai";
 import { prisma } from "@/lib/prisma";
 
-export async function getGeminiClient() {
+async function getGeminiApiKey() {
     let apiKey = process.env.GEMINI_API_KEY;
 
     // Ignorar valor por defecto del template
@@ -16,13 +16,22 @@ export async function getGeminiClient() {
 
     // Si no hay key en entorno, buscar en AppSettings
     if (!apiKey) {
-        const setting = await prisma.appSettings.findUnique({
-            where: { key: "gemini_api_key" }
-        });
-        if (setting?.value && setting.value !== "__HIDDEN__") {
-            apiKey = setting.value;
+        try {
+            const setting = await prisma.appSettings.findUnique({
+                where: { key: "gemini_api_key" }
+            });
+            if (setting?.value && setting.value !== "__HIDDEN__") {
+                apiKey = setting.value;
+            }
+        } catch (error) {
+            // console.warn("Failed to fetch gemini_api_key from DB", error);
         }
     }
+    return apiKey;
+}
+
+export async function getGeminiClient() {
+    const apiKey = await getGeminiApiKey();
 
     if (!apiKey) {
         console.warn("⚠️ GEMINI_API_KEY no configurada");
