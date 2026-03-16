@@ -6,9 +6,10 @@ echo "🔧 Database URL: ${DATABASE_URL:0:50}..."
 echo "⏳ Waiting for database..."
 max_retries=30
 count=0
+DATABASE_URL_CLEAN="${DATABASE_URL%%\?*}"
 
 if command -v pg_isready >/dev/null; then
-  until pg_isready -d "$DATABASE_URL"; do
+  until pg_isready -d "$DATABASE_URL_CLEAN"; do
     echo "zzz Waiting for database connection..."
     sleep 2
     count=$((count+1))

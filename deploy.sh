@@ -54,6 +54,23 @@ generate_password() {
     openssl rand -base64 30 | tr -d '\n' | tr '/+' 'AZ'
 }
 
+get_service_env() {
+    docker service inspect "${STACK_NAME}_db" --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' 2>/dev/null || true
+}
+
+get_env_value() {
+    echo "$1" | awk -F= -v key="$2" '$1==key{print substr($0,index($0,"=")+1); exit}'
+}
+
+sync_db_credentials() {
+    db_container="$(docker ps --filter "name=${STACK_NAME}_db" --format "{{.ID}}" | head -n 1)"
+    if [ -n "$db_container" ]; then
+        run_as_root docker exec -u postgres "$db_container" psql -v ON_ERROR_STOP=1 -v "db_user=$DB_USER" -v "db_pass=$DB_PASSWORD" -v "db_name=$DB_NAME" -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = :'db_user') THEN EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'db_user', :'db_pass'); ELSE EXECUTE format('ALTER ROLE %I WITH PASSWORD %L', :'db_user', :'db_pass'); END IF; END \$\$;" >/dev/null
+        run_as_root docker exec -u postgres "$db_container" psql -v ON_ERROR_STOP=1 -v "db_user=$DB_USER" -v "db_name=$DB_NAME" -c "DO \$\$ BEGIN IF EXISTS (SELECT FROM pg_database WHERE datname = :'db_name') THEN EXECUTE format('ALTER DATABASE %I OWNER TO %I', :'db_name', :'db_user'); END IF; END \$\$;" >/dev/null || true
+        run_as_root docker exec -u postgres "$db_container" psql -v ON_ERROR_STOP=1 -v "db_user=$DB_USER" -v "db_name=$DB_NAME" -c "DO \$\$ BEGIN IF EXISTS (SELECT FROM pg_database WHERE datname = :'db_name') THEN EXECUTE format('GRANT ALL PRIVILEGES ON DATABASE %I TO %I', :'db_name', :'db_user'); END IF; END \$\$;" >/dev/null || true
+    fi
+}
+
 require_command docker
 require_command openssl
 require_command curl
@@ -154,15 +171,20 @@ if [ ! -f "$STACK_FILE" ]; then
     exit 1
 fi
 
+service_env="$(get_service_env)"
+service_db_user="$(get_env_value "$service_env" "POSTGRES_USER")"
+service_db_password="$(get_env_value "$service_env" "POSTGRES_PASSWORD")"
+service_db_name="$(get_env_value "$service_env" "POSTGRES_DB")"
+
 if [ ! -f "$ENV_FILE" ]; then
     run_as_root mkdir -p "$(dirname "$ENV_FILE")"
-    DB_USER_VALUE="rnvadmin"
-    DB_PASSWORD_VALUE="$(generate_password)"
-    DB_NAME_VALUE="rnv_manager"
-    APP_PORT_VALUE="3000"
+    DB_USER_VALUE="${DB_USER:-${service_db_user:-rnvadmin}}"
+    DB_PASSWORD_VALUE="${DB_PASSWORD:-${service_db_password:-$(generate_password)}}"
+    DB_NAME_VALUE="${DB_NAME:-${service_db_name:-rnv_manager}}"
+    APP_PORT_VALUE="${APP_PORT:-3000}"
     MASTER_PASSWORD_VALUE="${MASTER_PASSWORD:-JustWork2027@}"
     MAESTRO_PIN_VALUE="${MAESTRO_PIN:-101284}"
-    SESSION_SECRET_VALUE="$(generate_secret)"
+    SESSION_SECRET_VALUE="${SESSION_SECRET:-$(generate_secret)}"
     SMTP_HOST_VALUE="${SMTP_HOST:-}"
     SMTP_PORT_VALUE="${SMTP_PORT:-}"
     SMTP_USER_VALUE="${SMTP_USER:-}"
@@ -226,6 +248,8 @@ if [ "${#SESSION_SECRET}" -lt 32 ]; then
     echo "SESSION_SECRET debe tener al menos 32 caracteres"
     exit 1
 fi
+
+sync_db_credentials
 
 run_as_root sed -i "s|rnv\.renace\.tech|${APP_DOMAIN}|g" "$STACK_FILE"
 
