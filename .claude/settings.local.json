@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(rustc --version)",
+      "Bash(cargo --version)",
+      "Bash(xcode-select -p)",
+      "Bash(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)",
+      "Bash(sh -s -- -y --default-toolchain stable)",
+      "Bash(source \"$HOME/.cargo/env\")",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(. \"$HOME/.cargo/env\")",
+      "Bash(go version:*)",
+      "Bash(go get:*)",
+      "Bash(go build:*)",
+      "Bash(/Users/brainiac/Downloads/rnv-manger-mac-migration/Dockerfile:*)",
+      "Bash(head -100 /Users/brainiac/Downloads/rnv-manger-mac-migration/src/lib/*)"
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 # RNV Manager - Stack: PostgreSQL + Go API + Next.js
-# nginx/SSL es manejado por el host (no incluido aquí)
+# Traefik handles routing/SSL via RenaceNet overlay network
 services:
 
   # ── PostgreSQL 16 ──────────────────────────────────────────────────────────
@@ -19,6 +19,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - default
 
   # ── Go API Backend ─────────────────────────────────────────────────────────
   go-api:
@@ -54,9 +56,19 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+    networks:
+      - default
+      - RenaceNet
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rnv-api.rule=Host(`rnv.renace.tech`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.rnv-api.entrypoints=websecure"
+      - "traefik.http.routers.rnv-api.tls=true"
+      - "traefik.http.routers.rnv-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.rnv-api.loadbalancer.server.port=8080"
+      - "traefik.http.routers.rnv-api.priority=100"
 
-  # ── Next.js Frontend (UI puro, sin rutas API) ──────────────────────────────
+  # ── Next.js Frontend (UI) ──────────────────────────────────────────────────
   app:
     build:
       context: .
@@ -73,7 +85,17 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+    networks:
+      - default
+      - RenaceNet
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rnv-app.rule=Host(`rnv.renace.tech`)"
+      - "traefik.http.routers.rnv-app.entrypoints=websecure"
+      - "traefik.http.routers.rnv-app.tls=true"
+      - "traefik.http.routers.rnv-app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.rnv-app.loadbalancer.server.port=3000"
+      - "traefik.http.routers.rnv-app.priority=50"
 
   # ── Daily DB Backup ────────────────────────────────────────────────────────
   backup:
@@ -93,13 +115,20 @@ services:
     command: >
       -c "
         while true; do
-          echo '[Backup] Iniciando backup: $$(date)'
           pg_dump -Fc > /backups/rnv_manager_$$(date +%Y%m%d_%H%M%S).dump
-          echo '[Backup] Completado'
           ls -t /backups/*.dump 2>/dev/null | tail -n +8 | xargs -r rm
           sleep 86400
         done
       "
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
+  RenaceNet:
+    external: true
+    name: RenaceNet
 
 volumes:
   postgres_data:

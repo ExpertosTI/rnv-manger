@@ -24,6 +24,9 @@ type Config struct {
 	SMTPFrom          string
 	MasterPassword    string
 	GinMode           string
+	VaultMasterKey    string
+	VaultMasterKeyOld string
+	NotificationEmail string
 }
 
 func Load() *Config {
@@ -50,10 +53,17 @@ func Load() *Config {
 		SMTPFrom:          getEnv("SMTP_FROM", ""),
 		MasterPassword:    getEnv("MASTER_PASSWORD", ""),
 		GinMode:           getEnv("GIN_MODE", "debug"),
+		VaultMasterKey:    getEnv("VAULT_MASTER_KEY", ""),
+		VaultMasterKeyOld: getEnv("VAULT_MASTER_KEY_OLD", ""),
+		NotificationEmail: getEnv("NOTIFICATION_EMAIL", ""),
 	}
 
 	if cfg.JWTSecret == "change-me-in-production-use-32-chars-min" {
 		log.Println("[WARNING] Using default JWT secret. Set JWT_SECRET env var in production!")
+	}
+
+	if cfg.VaultMasterKey == "" {
+		log.Println("[WARNING] VAULT_MASTER_KEY not set. Vault encryption will not work!")
 	}
 
 	return cfg

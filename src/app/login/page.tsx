@@ -10,36 +10,33 @@ import { useToast } from "@/components/ui/toast";
 import { motion } from "framer-motion";
 
 function LoginForm() {
-    const [username, setUsername] = useState("");
-    const [password, setPassword] = useState("");
+    const [mode, setMode] = useState<"email" | "otp">("email");
+    const [email, setEmail] = useState("expertostird@gmail.com");
+    const [code, setCode] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
     const searchParams = useSearchParams();
     const { addToast } = useToast();
     const redirect = searchParams.get("redirect") || "/";
 
-    const handleLogin = async (e: React.FormEvent) => {
+    const requestOTP = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
 
         try {
-            const body: Record<string, string> = { password };
-            if (username) body.username = username;
-
-            const res = await fetch("/api/auth/login", {
+            const res = await fetch("/api/auth/request-otp", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
+                body: JSON.stringify({ email }),
             });
 
             const data = await res.json();
 
             if (data.success) {
-                addToast(`Bienvenido${data.user?.name ? ", " + data.user.name : ""}`, "success");
-                router.push(redirect);
-                router.refresh();
+                addToast("Código enviado correctamente", "success");
+                setMode("otp");
             } else {
-                addToast(data.message || "Credenciales incorrectas", "error");
+                addToast(data.error || "Error al enviar el código", "error");
             }
         } catch {
             addToast("Error de conexión con el servidor", "error");
@@ -48,50 +45,105 @@ function LoginForm() {
         }
     };
 
+    const verifyOTP = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+
+        try {
+            const res = await fetch("/api/auth/verify-otp", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, code }),
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                addToast("Bienvenido, " + (data.user?.name || email), "success");
+                router.push(redirect);
+                router.refresh();
+            } else {
+                addToast(data.error || "Código incorrecto o expirado", "error");
+            }
+        } catch {
+            addToast("Error de conexión", "error");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    if (mode === "email") {
+        return (
+            <form onSubmit={requestOTP} className="space-y-6">
+                <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700 ml-1">Email de acceso</label>
+                    <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        <Input
+                            type="email"
+                            placeholder="tu@email.com"
+                            className="pl-10 h-14 border-gray-200 focus:border-violet-500 focus:ring-violet-500 text-lg transition-all"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            required
+                        />
+                    </div>
+                </div>
+                <Button
+                    type="submit"
+                    className="w-full h-14 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-bold text-lg rounded-2xl shadow-xl shadow-indigo-200 transition-all active:scale-[0.98]"
+                    disabled={isLoading}
+                >
+                    {isLoading ? (
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    ) : (
+                        <>
+                            Enviar Código de Acceso
+                            <ArrowRight className="ml-2 h-5 h-5" />
+                        </>
+                    )}
+                </Button>
+            </form>
+        );
+    }
+
     return (
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={verifyOTP} className="space-y-6">
             <div className="space-y-3">
-                <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                        type="text"
-                        placeholder="Usuario o email (opcional)"
-                        className="pl-10 h-12 border-gray-200 focus:border-violet-500 focus:ring-violet-500"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        autoComplete="username"
-                    />
+                <div className="text-center mb-2">
+                    <p className="text-sm text-gray-500">Hemos enviado un código a:</p>
+                    <p className="text-sm font-bold text-violet-600">{email}</p>
                 </div>
                 <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <Input
-                        type="password"
-                        placeholder="Contraseña"
-                        className="pl-10 h-12 border-gray-200 focus:border-violet-500 focus:ring-violet-500"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        type="text"
+                        placeholder="Ingresa el código (6 dígitos)"
+                        className="pl-10 h-14 border-gray-200 focus:border-violet-500 focus:ring-violet-500 text-center text-2xl tracking-[0.5em] font-mono"
+                        value={code}
+                        onChange={(e) => setCode(e.target.value)}
                         required
-                        autoComplete="current-password"
+                        maxLength={6}
+                        autoFocus
                     />
                 </div>
             </div>
-            <Button
-                type="submit"
-                className="w-full h-12 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white font-semibold shadow-lg shadow-purple-200 transition-all active:scale-[0.98]"
-                disabled={isLoading}
-            >
-                {isLoading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                    <>
-                        Iniciar Sesión
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                    </>
-                )}
-            </Button>
-            <p className="text-xs text-center text-gray-400">
-                Sin usuario: usa solo la contraseña maestra
-            </p>
+            <div className="flex flex-col gap-3">
+                <Button
+                    type="submit"
+                    className="w-full h-14 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold text-lg rounded-2xl shadow-xl shadow-indigo-200 transition-all active:scale-[0.98]"
+                    disabled={isLoading}
+                >
+                    {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : "Verificar y Entrar"}
+                </Button>
+                <button
+                    type="button"
+                    onClick={() => setMode("email")}
+                    className="text-sm text-gray-400 hover:text-violet-600 font-medium transition-colors"
+                >
+                    &larr; Volver a ingresar email
+                </button>
+            </div>
         </form>
     );
 }

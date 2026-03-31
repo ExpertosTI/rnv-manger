@@ -241,14 +241,15 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 
 // Session model
 type Session struct {
-	ID        string    `gorm:"type:text;primaryKey" json:"id"`
-	Token     string    `gorm:"uniqueIndex;not null" json:"token"`
-	UserID    string    `gorm:"not null" json:"userId"`
-	User      *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	IPAddress *string   `json:"ipAddress,omitempty"`
-	UserAgent *string   `json:"userAgent,omitempty"`
-	ExpiresAt time.Time `json:"expiresAt"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID             string    `gorm:"type:text;primaryKey" json:"id"`
+	Token          string    `gorm:"uniqueIndex;not null" json:"token"`
+	UserID         string    `json:"userId"`
+	User           *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	AllowedEmailID *string   `json:"allowedEmailId,omitempty"`
+	IPAddress      *string   `json:"ipAddress,omitempty"`
+	UserAgent      *string   `json:"userAgent,omitempty"`
+	ExpiresAt      time.Time `json:"expiresAt"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 func (s *Session) BeforeCreate(tx *gorm.DB) error {
@@ -269,6 +270,7 @@ type AuditLog struct {
 	IPAddress   *string   `json:"ipAddress,omitempty"`
 	UserID      *string   `gorm:"index" json:"userId,omitempty"`
 	User        *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	ActorEmail  *string   `gorm:"index" json:"actorEmail,omitempty"`
 	CreatedAt   time.Time `gorm:"index" json:"createdAt"`
 }
 
@@ -293,6 +295,90 @@ type Notification struct {
 func (n *Notification) BeforeCreate(tx *gorm.DB) error {
 	if n.ID == "" {
 		n.ID = cuid.New()
+	}
+	return nil
+}
+
+// AllowedEmail model — authorized emails for OTP login
+type AllowedEmail struct {
+	ID        string    `gorm:"type:text;primaryKey" json:"id"`
+	Email     string    `gorm:"uniqueIndex;not null" json:"email"`
+	Role      string    `gorm:"default:'admin'" json:"role"`
+	Active    bool      `gorm:"default:true" json:"active"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+func (a *AllowedEmail) BeforeCreate(tx *gorm.DB) error {
+	if a.ID == "" {
+		a.ID = cuid.New()
+	}
+	return nil
+}
+
+// OTPCode model — one-time codes for passwordless login
+type OTPCode struct {
+	ID        string    `gorm:"type:text;primaryKey" json:"id"`
+	Email     string    `gorm:"not null;index" json:"email"`
+	CodeHash  string    `gorm:"not null" json:"-"`
+	ExpiresAt time.Time `gorm:"not null" json:"expiresAt"`
+	Used      bool      `gorm:"default:false" json:"used"`
+	Attempts  int       `gorm:"default:0" json:"attempts"`
+	IPAddress *string   `json:"ipAddress,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+func (o *OTPCode) BeforeCreate(tx *gorm.DB) error {
+	if o.ID == "" {
+		o.ID = cuid.New()
+	}
+	return nil
+}
+
+// Credential model — encrypted credentials for deployed services
+type Credential struct {
+	ID        string         `gorm:"type:text;primaryKey" json:"id"`
+	ServiceID *string        `json:"serviceId,omitempty"`
+	Service   *Service       `gorm:"foreignKey:ServiceID;constraint:OnDelete:SET NULL" json:"service,omitempty"`
+	ClientID  *string        `json:"clientId,omitempty"`
+	Client    *Client        `gorm:"foreignKey:ClientID;constraint:OnDelete:SET NULL" json:"client,omitempty"`
+	Label     string         `gorm:"not null" json:"label"`
+	URL       string         `json:"url"`
+	Username  string         `json:"username"`
+	Password  string         `json:"password"`
+	Port      *int           `json:"port,omitempty"`
+	Notes     string         `json:"notes,omitempty"`
+	CreatedBy string         `gorm:"not null" json:"createdBy"`
+	Creator   *AllowedEmail  `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"deletedAt,omitempty"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+}
+
+func (cr *Credential) BeforeCreate(tx *gorm.DB) error {
+	if cr.ID == "" {
+		cr.ID = cuid.New()
+	}
+	return nil
+}
+
+// ServiceToken model — API tokens for CLI access
+type ServiceToken struct {
+	ID        string     `gorm:"type:text;primaryKey" json:"id"`
+	Name      string     `gorm:"not null" json:"name"`
+	TokenHash string     `gorm:"not null" json:"-"`
+	Role      string     `gorm:"default:'viewer'" json:"role"`
+	CreatedBy string     `gorm:"not null" json:"createdBy"`
+	Creator   *AllowedEmail `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	LastUsed  *time.Time `json:"lastUsed,omitempty"`
+	Active    bool       `gorm:"default:true" json:"active"`
+	CreatedAt time.Time  `json:"createdAt"`
+}
+
+func (st *ServiceToken) BeforeCreate(tx *gorm.DB) error {
+	if st.ID == "" {
+		st.ID = cuid.New()
 	}
 	return nil
 }

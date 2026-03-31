@@ -69,6 +69,11 @@ func StartCleanupScheduler(db *gorm.DB) {
 			result = db.Where("is_read = true AND created_at < ?", time.Now().AddDate(0, -1, 0)).
 				Delete(&models.Notification{})
 			log.Printf("[Cleanup] Deleted %d old notifications", result.RowsAffected)
+
+			// Delete expired/used OTP codes (older than 1 hour)
+			result = db.Where("expires_at < ? OR used = true", time.Now().Add(-1*time.Hour)).
+				Delete(&models.OTPCode{})
+			log.Printf("[Cleanup] Deleted %d expired/used OTP codes", result.RowsAffected)
 		}()
 	}
 }

@@ -25,6 +25,7 @@ import (
 	sshHandler "github.com/renace/rnv-go-api/handlers/ssh"
 	statsHandler "github.com/renace/rnv-go-api/handlers/stats"
 	usersHandler "github.com/renace/rnv-go-api/handlers/users"
+	vaultHandler "github.com/renace/rnv-go-api/handlers/vault"
 	vpsHandler "github.com/renace/rnv-go-api/handlers/vps"
 	"github.com/renace/rnv-go-api/middleware"
 	"github.com/renace/rnv-go-api/scheduler"
@@ -37,8 +38,9 @@ func main() {
 	db := database.Connect(cfg.DatabaseURL)
 	database.AutoMigrate(db)
 
-	// Seed default admin if no users exist
+	// Seed defaults
 	serviceslayer.EnsureDefaultAdmin(db, cfg.MasterPassword)
+	serviceslayer.EnsureDefaultAllowedEmail(db, cfg.NotificationEmail)
 
 	// Background goroutines
 	go scheduler.StartMonitorScheduler(db, cfg)
@@ -60,10 +62,15 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
+	// Inject DB for service token auth
+	r.Use(middleware.InjectDB(db))
+
 	// ─── Public routes ────────────────────────────────────────────────
 	api := r.Group("/api")
 	{
 		api.POST("/auth/login", authHandler.Login(db, cfg))
+		api.POST("/auth/request-otp", authHandler.RequestOTP(db, cfg))
+		api.POST("/auth/verify-otp", authHandler.VerifyOTP(db, cfg))
 		api.GET("/health", healthHandler.Check(db))
 		api.GET("/services/import", servicesHandler.Import(db))
 	}
@@ -75,6 +82,21 @@ func main() {
 		// Auth
 		auth.GET("/auth/me", authHandler.Me(db))
 		auth.POST("/auth/logout", authHandler.Logout(db))
+
+		// Service Tokens (superadmin only)
+		auth.POST("/auth/service-tokens", middleware.RequireRole("superadmin"), authHandler.CreateServiceToken(db))
+		auth.GET("/auth/service-tokens", middleware.RequireRole("superadmin"), authHandler.ListServiceTokens(db))
+		auth.DELETE("/auth/service-tokens/:id", middleware.RequireRole("superadmin"), authHandler.RevokeServiceToken(db))
+
+		// Vault
+		auth.GET("/vault", vaultHandler.List(db, cfg))
+		auth.GET("/vault/:id", vaultHandler.Get(db, cfg))
+		auth.POST("/vault", middleware.RequireRole("superadmin", "admin"), vaultHandler.Create(db, cfg))
+		auth.PUT("/vault/:id", middleware.RequireRole("superadmin", "admin"), vaultHandler.Update(db, cfg))
+		auth.DELETE("/vault/:id", middleware.RequireRole("superadmin"), vaultHandler.Delete(db, cfg))
+		auth.POST("/vault/generate", vaultHandler.Generate(db))
+		auth.POST("/vault/generate-and-save", middleware.RequireRole("superadmin", "admin"), vaultHandler.GenerateAndSave(db, cfg))
+		auth.POST("/vault/rotate-key", middleware.RequireRole("superadmin"), vaultHandler.RotateKey(db, cfg))
 
 		// VPS
 		auth.GET("/vps", vpsHandler.List(db))
