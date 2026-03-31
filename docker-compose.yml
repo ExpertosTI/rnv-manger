@@ -41,14 +41,12 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-    networks:
-      - rnv_internal
-      - RenaceNet
     deploy:
       restart_policy:
         condition: on-failure
       labels:
         - "traefik.enable=true"
+        - "traefik.docker.network=RenaceNet"
         - "traefik.http.routers.rnv-api.rule=Host(`rnv.renace.tech`) && PathPrefix(`/api`)"
         - "traefik.http.routers.rnv-api.entrypoints=websecure"
         - "traefik.http.routers.rnv-api.tls=true"
@@ -78,6 +76,7 @@ services:
         condition: on-failure
       labels:
         - "traefik.enable=true"
+        - "traefik.docker.network=RenaceNet"
         - "traefik.http.routers.rnv-app.rule=Host(`rnv.renace.tech`)"
         - "traefik.http.routers.rnv-app.entrypoints=websecure"
         - "traefik.http.routers.rnv-app.tls=true"
