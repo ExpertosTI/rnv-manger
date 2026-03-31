@@ -20,7 +20,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - rnv_internal
+      - default
 
   # ── Go API Backend ─────────────────────────────────────────────────────────
   go-api:
@@ -41,6 +41,9 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    networks:
+      - default
+      - RenaceNet
     deploy:
       restart_policy:
         condition: on-failure
@@ -69,7 +72,7 @@ services:
       timeout: 10s
       retries: 3
     networks:
-      - rnv_internal
+      - default
       - RenaceNet
     deploy:
       restart_policy:
@@ -80,7 +83,7 @@ services:
         - "traefik.http.routers.rnv-app.rule=Host(`rnv.renace.tech`)"
         - "traefik.http.routers.rnv-app.entrypoints=websecure"
         - "traefik.http.routers.rnv-app.tls=true"
-        - "traefik.http.routers.rnv-app.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.rnv-app.tls.certresolver=letsencryptresolver"
         - "traefik.http.services.rnv-app.loadbalancer.server.port=3000"
         - "traefik.http.routers.rnv-app.priority=50"
 
@@ -104,10 +107,10 @@ services:
         done
       "
     networks:
-      - rnv_internal
+      - default
 
 networks:
-  rnv_internal:
+  default:
     driver: overlay
     attachable: true
   RenaceNet:
