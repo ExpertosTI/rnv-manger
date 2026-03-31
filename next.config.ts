@@ -1,20 +1,26 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone", // Required for Docker deployment
-  eslint: {
-    // Allow production builds to complete even if there are ESLint warnings
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    // Allow production builds to complete even if there are type errors
-    ignoreBuildErrors: true,
-  },
-  // Optimize for production
+  output: "standalone",
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
   poweredByHeader: false,
   compress: true,
-  // Exclude native modules from webpack bundling
-  serverExternalPackages: ["ssh2", "cpu-features", "nodemailer"],
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          // Allow Tauri webview and same origin to frame the app
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'self' tauri://localhost tauri://rnv.renace.tech",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

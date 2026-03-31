@@ -1,4 +1,5 @@
-# RNV Manager - Stack completo: PostgreSQL + Go API + Next.js + Nginx
+# RNV Manager - Stack: PostgreSQL + Go API + Next.js
+# nginx/SSL es manejado por el host (no incluido aquí)
 services:
 
   # ── PostgreSQL 16 ──────────────────────────────────────────────────────────
@@ -29,6 +30,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    ports:
+      - "8081:8080"
     environment:
       DATABASE_URL: postgresql://${DB_USER:-rnvadmin}:${DB_PASSWORD:-rnv_secure_password_2025}@db:5432/${DB_NAME:-rnv_manager}?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-rnv-super-secret-jwt-key-change-in-production}
@@ -53,13 +56,15 @@ services:
       retries: 3
       start_period: 10s
 
-  # ── Next.js Frontend (pure UI, no API routes) ──────────────────────────────
-  nextjs:
+  # ── Next.js Frontend (UI puro, sin rutas API) ──────────────────────────────
+  app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: rnv-nextjs
     restart: unless-stopped
+    ports:
+      - "${APP_PORT:-4200}:3000"
     environment:
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: 1
@@ -69,21 +74,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-
-  # ── Nginx Reverse Proxy ────────────────────────────────────────────────────
-  nginx:
-    image: nginx:alpine
-    container_name: rnv-nginx
-    restart: unless-stopped
-    depends_on:
-      - go-api
-      - nextjs
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
 
   # ── Daily DB Backup ────────────────────────────────────────────────────────
   backup:
