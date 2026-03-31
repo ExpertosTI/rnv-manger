@@ -29,8 +29,7 @@
       }
     ],
     "security": {
-      "csp": null,
-      "dangerousDisableAssetCspModification": true
+      "csp": null
     },
     "trayIcon": {
       "id": "main",

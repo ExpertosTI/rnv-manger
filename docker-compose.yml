@@ -1,6 +1,7 @@
-# RNV Manager - Docker Compose Configuration
+# RNV Manager - Stack completo: PostgreSQL + Go API + Next.js + Nginx
 services:
-  # PostgreSQL Database
+
+  # ── PostgreSQL 16 ──────────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     container_name: rnv-postgres
@@ -12,42 +13,83 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backups:/backups
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rnvadmin} -d ${DB_NAME:-rnv_manager}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # RNV Manager App
-  app:
+  # ── Go API Backend ─────────────────────────────────────────────────────────
+  go-api:
     build:
-      context: .
+      context: ./rnv-go-api
       dockerfile: Dockerfile
-    container_name: rnv-manager
+    container_name: rnv-go-api
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${DB_USER:-rnvadmin}:${DB_PASSWORD:-rnv_secure_password_2025}@db:5432/${DB_NAME:-rnv_manager}?schema=public
-      MASTER_PASSWORD: ${MASTER_PASSWORD:-admin123}
+      DATABASE_URL: postgresql://${DB_USER:-rnvadmin}:${DB_PASSWORD:-rnv_secure_password_2025}@db:5432/${DB_NAME:-rnv_manager}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-rnv-super-secret-jwt-key-change-in-production}
+      PORT: 8080
+      GIN_MODE: release
+      APP_URL: ${APP_URL:-https://rnv.renace.tech}
+      MASTER_PASSWORD: ${MASTER_PASSWORD:-}
       HOSTINGER_API_TOKEN: ${HOSTINGER_API_TOKEN:-}
       ODOO_URL: ${ODOO_URL:-}
       ODOO_DB: ${ODOO_DB:-}
       ODOO_USERNAME: ${ODOO_USERNAME:-}
       ODOO_API_KEY: ${ODOO_API_KEY:-}
-      NODE_ENV: production
-    ports:
-      - "${APP_PORT:-4200}:3000"
-    volumes:
-      - app_data:/app/data
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
-  # Backup service (runs daily at 3am)
+  # ── Next.js Frontend (pure UI, no API routes) ──────────────────────────────
+  nextjs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rnv-nextjs
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: 1
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Nginx Reverse Proxy ────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: rnv-nginx
+    restart: unless-stopped
+    depends_on:
+      - go-api
+      - nextjs
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+
+  # ── Daily DB Backup ────────────────────────────────────────────────────────
   backup:
     image: postgres:16-alpine
     container_name: rnv-backup
+    restart: unless-stopped
     depends_on:
       - db
     environment:
@@ -57,24 +99,18 @@ services:
       PGDATABASE: ${DB_NAME:-rnv_manager}
     volumes:
       - ./backups:/backups
-      - ./scripts:/scripts:ro
     entrypoint: /bin/sh
     command: >
       -c "
         while true; do
-          echo '[RNV Backup] Starting backup at $$(date)'
+          echo '[Backup] Iniciando backup: $$(date)'
           pg_dump -Fc > /backups/rnv_manager_$$(date +%Y%m%d_%H%M%S).dump
-          echo '[RNV Backup] Backup completed'
-          # Keep only last 7 backups
+          echo '[Backup] Completado'
           ls -t /backups/*.dump 2>/dev/null | tail -n +8 | xargs -r rm
-          # Sleep 24 hours
           sleep 86400
         done
       "
-    restart: unless-stopped
 
 volumes:
   postgres_data:
     name: rnv_postgres_data
-  app_data:
-    name: rnv_app_data
