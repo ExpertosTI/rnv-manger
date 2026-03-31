@@ -14,13 +14,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backups:/backups
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rnvadmin} -d ${DB_NAME:-rnv_manager}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
-      - default
+      - rnv_net
 
   # ── Go API Backend ─────────────────────────────────────────────────────────
   go-api:
@@ -36,13 +31,8 @@ services:
       PORT: 8080
       GIN_MODE: release
       APP_URL: ${APP_URL:-https://rnv.renace.tech}
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
     networks:
-      - default
+      - rnv_net
       - RenaceNet
     deploy:
       restart_policy:
@@ -66,13 +56,8 @@ services:
     environment:
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: 1
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     networks:
-      - default
+      - rnv_net
       - RenaceNet
     deploy:
       restart_policy:
@@ -107,10 +92,10 @@ services:
         done
       "
     networks:
-      - default
+      - rnv_net
 
 networks:
-  default:
+  rnv_net:
     driver: overlay
     attachable: true
   RenaceNet:
