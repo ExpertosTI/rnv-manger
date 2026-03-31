@@ -25,6 +25,8 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - db
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql://${DB_USER:-rnvadmin}:${DB_PASSWORD:-rnv_secure_password_2025}@db:5432/${DB_NAME:-rnv_manager}?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-rnv-super-secret-jwt-key-change-in-production}
