@@ -77,10 +77,11 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
 ];
 
 export default function SettingsPage() {
-    const { toast } = useToast();
+    const { addToast } = useToast();
     const [settings, setSettings] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [restoring, setRestoring] = useState(false);
     const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
     const [smtpStatus, setSmtpStatus] = useState<"unknown" | "ok" | "error">("unknown");
 
@@ -124,13 +125,13 @@ export default function SettingsPage() {
             const data = await res.json();
 
             if (data.success) {
-                toast({ title: "✅ Configuración guardada", description: "Los cambios se aplicarán inmediatamente" });
+                addToast("✅ Configuración guardada", "success");
                 checkSmtpStatus();
             } else {
-                toast({ title: "Error", description: data.error, variant: "destructive" });
+                addToast(data.error || "Error al guardar", "error");
             }
         } catch (err) {
-            toast({ title: "Error", description: "No se pudo guardar", variant: "destructive" });
+            addToast("No se pudo guardar la configuración", "error");
         } finally {
             setSaving(false);
         }
@@ -247,6 +248,73 @@ export default function SettingsPage() {
                         </div>
                     </div>
                 ))}
+
+                {/* Backup & Restore Section */}
+                <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <div className="px-6 py-4 bg-gray-900 border-b border-gray-700 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <RefreshCw className="w-5 h-5 text-violet-400" />
+                            <div>
+                                <h2 className="font-bold text-white">Copia de Seguridad y Restauración</h2>
+                                <p className="text-sm text-gray-500">Restaura datos de clientes, VPS y servicios desde un archivo JSON</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="p-6">
+                        <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-700 rounded-xl p-8 bg-gray-900/50 hover:bg-gray-900/80 transition-colors">
+                            <div className="p-4 rounded-full bg-violet-500/10 mb-4">
+                                <RefreshCw className={`w-8 h-8 text-violet-500 ${restoring ? "animate-spin" : ""}`} />
+                            </div>
+                            <h3 className="text-lg font-medium text-white mb-2">Restaurar desde JSON</h3>
+                            <p className="text-sm text-gray-500 text-center max-w-md mb-6">
+                                Selecciona un archivo de respaldo (.json) para restaurar la base de datos.
+                                Este proceso actualizará los registros existentes y creará los nuevos.
+                            </p>
+
+                            <label className="relative cursor-pointer">
+                                <input
+                                    type="file"
+                                    accept=".json"
+                                    className="hidden"
+                                    disabled={restoring}
+                                    onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+
+                                        const reader = new FileReader();
+                                        reader.onload = async (event) => {
+                                            try {
+                                                const json = JSON.parse(event.target?.result as string);
+                                                setRestoring(true);
+                                                const res = await fetch("/api/backup/restore", {
+                                                    method: "POST",
+                                                    headers: { "Content-Type": "application/json" },
+                                                    body: JSON.stringify(json),
+                                                });
+                                                const data = await res.json();
+
+                                                if (data.success) {
+                                                    addToast(`✅ Restauración Exitosa: ${data.counts.clients} clientes, ${data.counts.vps} VPS.`, "success");
+                                                } else {
+                                                    addToast(data.error || "Error en restauración", "error");
+                                                }
+                                            } catch (err) {
+                                                addToast("El archivo no es un JSON válido", "error");
+                                            } finally {
+                                                setRestoring(false);
+                                            }
+                                        };
+                                        reader.readAsText(file);
+                                    }}
+                                />
+                                <div className="px-6 py-2.5 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition border border-gray-600 flex items-center gap-2">
+                                    <Save className="w-4 h-4" />
+                                    {restoring ? "Restaurando..." : "Seleccionar Archivo y Restaurar"}
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* Info */}

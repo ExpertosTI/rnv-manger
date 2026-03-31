@@ -132,6 +132,7 @@ func main() {
 		// Backup
 		auth.POST("/backup", backupHandler.Run(db))
 		auth.GET("/backup", backupHandler.List(db))
+		auth.POST("/backup/restore", middleware.RequireRole("superadmin"), backupHandler.Restore(db))
 
 		// Health (authenticated version)
 		auth.POST("/health", healthHandler.Check(db))
