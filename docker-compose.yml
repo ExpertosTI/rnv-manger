@@ -1,3 +1,5 @@
+version: '3.8'
+
 # RNV Manager - Stack: PostgreSQL + Go API + Next.js
 # Traefik handles routing/SSL via RenaceNet overlay network
 services:
@@ -5,8 +7,6 @@ services:
   # ── PostgreSQL 16 ──────────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
-    container_name: rnv-postgres
-    restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-rnvadmin}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-rnv_secure_password_2025}
@@ -20,62 +20,48 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - default
+      - rnv_internal
 
   # ── Go API Backend ─────────────────────────────────────────────────────────
   go-api:
+    image: rnv-manger-go-api:latest
     build:
       context: ./rnv-go-api
       dockerfile: Dockerfile
-    container_name: rnv-go-api
-    restart: unless-stopped
     depends_on:
       - db
-    ports:
-      - "8081:8080"
     environment:
       DATABASE_URL: postgresql://${DB_USER:-rnvadmin}:${DB_PASSWORD:-rnv_secure_password_2025}@db:5432/${DB_NAME:-rnv_manager}?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-rnv-super-secret-jwt-key-change-in-production}
       PORT: 8080
       GIN_MODE: release
       APP_URL: ${APP_URL:-https://rnv.renace.tech}
-      MASTER_PASSWORD: ${MASTER_PASSWORD:-}
-      HOSTINGER_API_TOKEN: ${HOSTINGER_API_TOKEN:-}
-      ODOO_URL: ${ODOO_URL:-}
-      ODOO_DB: ${ODOO_DB:-}
-      ODOO_USERNAME: ${ODOO_USERNAME:-}
-      ODOO_API_KEY: ${ODOO_API_KEY:-}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
     networks:
-      - default
+      - rnv_internal
       - RenaceNet
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.rnv-api.rule=Host(`rnv.renace.tech`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.rnv-api.entrypoints=websecure"
-      - "traefik.http.routers.rnv-api.tls=true"
-      - "traefik.http.routers.rnv-api.tls.certresolver=letsencrypt"
-      - "traefik.http.services.rnv-api.loadbalancer.server.port=8080"
-      - "traefik.http.routers.rnv-api.priority=100"
+    deploy:
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.rnv-api.rule=Host(`rnv.renace.tech`) && PathPrefix(`/api`)"
+        - "traefik.http.routers.rnv-api.entrypoints=websecure"
+        - "traefik.http.routers.rnv-api.tls=true"
+        - "traefik.http.routers.rnv-api.tls.certresolver=letsencrypt"
+        - "traefik.http.services.rnv-api.loadbalancer.server.port=8080"
+        - "traefik.http.routers.rnv-api.priority=100"
 
   # ── Next.js Frontend (UI) ──────────────────────────────────────────────────
   app:
+    image: rnv-manger-app:latest
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: rnv-nextjs
-    restart: unless-stopped
-    ports:
-      - "${APP_PORT:-4200}:3000"
     environment:
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: 1
@@ -85,24 +71,23 @@ services:
       timeout: 10s
       retries: 3
     networks:
-      - default
+      - rnv_internal
       - RenaceNet
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.rnv-app.rule=Host(`rnv.renace.tech`)"
-      - "traefik.http.routers.rnv-app.entrypoints=websecure"
-      - "traefik.http.routers.rnv-app.tls=true"
-      - "traefik.http.routers.rnv-app.tls.certresolver=letsencrypt"
-      - "traefik.http.services.rnv-app.loadbalancer.server.port=3000"
-      - "traefik.http.routers.rnv-app.priority=50"
+    deploy:
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.rnv-app.rule=Host(`rnv.renace.tech`)"
+        - "traefik.http.routers.rnv-app.entrypoints=websecure"
+        - "traefik.http.routers.rnv-app.tls=true"
+        - "traefik.http.routers.rnv-app.tls.certresolver=letsencrypt"
+        - "traefik.http.services.rnv-app.loadbalancer.server.port=3000"
+        - "traefik.http.routers.rnv-app.priority=50"
 
   # ── Daily DB Backup ────────────────────────────────────────────────────────
   backup:
     image: postgres:16-alpine
-    container_name: rnv-backup
-    restart: unless-stopped
-    depends_on:
-      - db
     environment:
       PGHOST: db
       PGUSER: ${DB_USER:-rnvadmin}
@@ -120,14 +105,14 @@ services:
         done
       "
     networks:
-      - default
+      - rnv_internal
 
 networks:
-  default:
-    driver: bridge
+  rnv_internal:
+    driver: overlay
+    attachable: true
   RenaceNet:
     external: true
-    name: RenaceNet
 
 volumes:
   postgres_data:
