@@ -48,15 +48,30 @@ case "$1" in
         ;;
 
     restart)
-        echo -e "${YELLOW}🔄 Reiniciando RNV Manager...${NC}"
-        docker compose down
-        docker compose up -d --build
-        echo -e "${GREEN}✅ Reiniciado en: http://localhost:${APP_PORT}${NC}"
+        echo -e "${YELLOW}🔄 Reiniciando todo el stack...${NC}"
+        docker compose restart
+        echo -e "${GREEN}✅ Reiniciado.${NC}"
+        ;;
+
+    rebuild-app)
+        echo -e "${YELLOW}🔄 Reconstruyendo y reiniciando solo la App...${NC}"
+        docker compose up -d --build app
+        echo -e "${GREEN}✅ App reconstruida.${NC}"
         ;;
 
     logs)
-        echo -e "${GREEN}📋 Logs en vivo (Ctrl+C para salir)...${NC}"
+        echo -e "${GREEN}📋 Logs de la App (Ctrl+C para salir)...${NC}"
         docker compose logs -f app
+        ;;
+
+    logs-db)
+        echo -e "${GREEN}📋 Logs de la Base de Datos (Ctrl+C para salir)...${NC}"
+        docker compose logs -f db
+        ;;
+
+    logs-backup)
+        echo -e "${GREEN}📋 Logs del servicio de Backup (Ctrl+C para salir)...${NC}"
+        docker compose logs -f backup
         ;;
 
     logs-all)
@@ -156,7 +171,7 @@ case "$1" in
         ;;
 
     update)
-        echo -e "${GREEN}⬆️  Actualizando RNV Manager...${NC}"
+        echo -e "${GREEN}⬆️  Actualizando RNV Manager (Solo App)...${NC}"
 
         # Pull from git if it's a repo
         if git rev-parse --git-dir > /dev/null 2>&1; then
@@ -167,26 +182,47 @@ case "$1" in
         fi
 
         # Backup before update
-        echo -e "${BLUE}💾 Creando backup previo a la actualización...${NC}"
+        echo -e "${BLUE}💾 Creando backup de seguridad previo a la actualización...${NC}"
         mkdir -p backups
         docker compose exec -T db pg_dump \
             -U ${DB_USER:-rnvadmin} \
             -Fc ${DB_NAME:-rnv_manager} > "backups/pre_update_$(date +%Y%m%d_%H%M%S).dump" 2>/dev/null || true
 
-        # Rebuild and restart
-        echo -e "${BLUE}🔨 Reconstruyendo imagen...${NC}"
-        docker compose up -d --build
+        # Rebuild and restart ONLY app
+        echo -e "${BLUE}🔨 Reconstruyendo y reiniciando contenedor 'app'...${NC}"
+        docker compose up -d --build app
+
+        # Wait a bit and show migration status
+        echo -e "${BLUE}🔄 Verificando migraciones de base de datos...${NC}"
+        sleep 5
+        if docker compose logs --tail=50 app | grep -iE "migration|prisma"; then
+            echo -e "${GREEN}✅ Proceso de migración detectado en los logs.${NC}"
+        else
+            echo -e "${YELLOW}ℹ️ Revisa los logs para confirmar las migraciones: ./deploy.sh logs${NC}"
+        fi
 
         echo ""
-        echo -e "${GREEN}✅ Actualización completada!${NC}"
+        echo -e "${GREEN}✅ Actualización de App completada!${NC}"
         echo -e "   App en: http://localhost:${APP_PORT}"
+        ;;
+
+    update-all)
+        echo -e "${GREEN}⬆️  Actualizando TODO el stack (App + DB)...${NC}"
+        git pull || true
+        docker compose up -d --build
+        echo -e "${GREEN}✅ Actualización total completada.${NC}"
         ;;
 
     clean)
         echo -e "${YELLOW}🧹 Limpiando imágenes Docker antiguas...${NC}"
-        docker compose down
         docker image prune -f
-        echo -e "${GREEN}✅ Limpieza completada.${NC}"
+        echo -e "${GREEN}✅ Limpieza de imágenes completada.${NC}"
+        ;;
+
+    prune)
+        echo -e "${YELLOW}🧹 Limpieza profunda de Docker (imágenes y volúmenes huérfanos)...${NC}"
+        docker system prune -a --volumes -f
+        echo -e "${GREEN}✅ Limpieza total completada.${NC}"
         ;;
 
     *)
@@ -196,25 +232,29 @@ case "$1" in
         echo "  Principales:"
         echo -e "  ${GREEN}start${NC}       Iniciar RNV Manager (build + run)"
         echo -e "  ${GREEN}stop${NC}        Detener todos los contenedores"
-        echo -e "  ${GREEN}restart${NC}     Detener y volver a iniciar con rebuild"
-        echo -e "  ${GREEN}update${NC}      Backup + git pull + rebuild"
+        echo -e "  ${GREEN}restart${NC}     Reiniciar servicios actuales (sin rebuild)"
+        echo -e "  ${GREEN}update${NC}      Git pull + Backup + Rebuild App (Recomendado)"
+        echo -e "  ${GREEN}update-all${NC}  Git pull + Rebuild todo el stack"
         echo -e "  ${GREEN}health${NC}      Verificar estado de todos los servicios"
         echo ""
         echo "  Logs:"
-        echo -e "  ${CYAN}logs${NC}        Ver logs del app en vivo"
-        echo -e "  ${CYAN}logs-all${NC}    Ver todos los logs (app + db + backup)"
+        echo -e "  ${CYAN}logs${NC}        Logs de la app (Next.js)"
+        echo -e "  ${CYAN}logs-db${NC}     Logs de la base de datos"
+        echo -e "  ${CYAN}logs-backup${NC} Logs del servicio de backup"
+        echo -e "  ${CYAN}logs-all${NC}    Todos los logs combinados"
         echo -e "  ${CYAN}status${NC}      Estado de los contenedores"
         echo ""
-        echo "  Base de datos:"
+        echo "  Mantenimiento:"
         echo -e "  ${YELLOW}backup${NC}      Crear backup manual"
         echo -e "  ${YELLOW}restore${NC}     Restaurar desde backup"
-        echo -e "  ${YELLOW}migrate${NC}     Correr migraciones (prisma migrate deploy)"
-        echo -e "  ${YELLOW}push${NC}        Sync schema a DB (solo desarrollo)"
-        echo -e "  ${YELLOW}db${NC}          Abrir consola PostgreSQL"
+        echo -e "  ${YELLOW}migrate${NC}     Correr migraciones manualmente"
+        echo -e "  ${YELLOW}rebuild-app${NC} Reconstruir solo la app"
+        echo -e "  ${YELLOW}clean${NC}       Borrar imágenes 'dangling'"
+        echo -e "  ${YELLOW}prune${NC}       Borrar TODO lo que no esté en uso"
         echo ""
         echo "  Utilidades:"
         echo -e "  ${CYAN}shell${NC}       Shell dentro del contenedor app"
-        echo -e "  ${CYAN}clean${NC}       Limpiar imágenes Docker antiguas"
+        echo -e "  ${CYAN}db${NC}          Consola PostgreSQL"
         echo ""
         ;;
 esac
