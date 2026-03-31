@@ -50,7 +50,7 @@ services:
         - "traefik.http.routers.rnv-api.rule=Host(`rnv.renace.tech`) && PathPrefix(`/api`)"
         - "traefik.http.routers.rnv-api.entrypoints=websecure"
         - "traefik.http.routers.rnv-api.tls=true"
-        - "traefik.http.routers.rnv-api.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.rnv-api.tls.certresolver=letsencryptresolver"
         - "traefik.http.services.rnv-api.loadbalancer.server.port=8080"
         - "traefik.http.routers.rnv-api.priority=100"
 
