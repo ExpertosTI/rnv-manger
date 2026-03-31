@@ -161,7 +161,7 @@ export default function AuditPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-gray-500">{stat.label}</p>
-                      <p className="text-3xl font-bold text-gray-900 mt-1">{stat.value.toLocaleString()}</p>
+                      <p className="text-3xl font-bold text-gray-900 mt-1">{(stat.value || 0).toLocaleString()}</p>
                     </div>
                     <div className={`p-2.5 rounded-xl bg-${stat.color}-50`}>
                       <stat.icon size={20} className={`text-${stat.color}-600`} />

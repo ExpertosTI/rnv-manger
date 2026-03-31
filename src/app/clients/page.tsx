@@ -145,7 +145,7 @@ export default function ClientsPage() {
                             </div>
                             <div>
                                 <p className="text-sm text-muted-foreground">Ingresos Mensuales</p>
-                                <p className="text-2xl font-bold">${totalRevenue.toLocaleString()}</p>
+                                <p className="text-2xl font-bold">${(totalRevenue || 0).toLocaleString()}</p>
                             </div>
                         </div>
                     </CardContent>
