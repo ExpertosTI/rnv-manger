@@ -155,11 +155,12 @@ export default function Home() {
         vps: 0, clients: 0, services: 0, activeClients: 0,
         monthlyRevenue: 0, monthlyExpense: 0, netProfit: 0 
     };
-    const vpsData = vpsResponse?.data || [];
+    const rawVpsData = vpsResponse?.data;
+    const vpsData = Array.isArray(rawVpsData) ? rawVpsData : [];
 
-    const billingData = billingResponse?.success && billingResponse.data
+    const billingData = billingResponse?.success && Array.isArray(billingResponse.data)
         ? billingResponse.data
-            .filter((c) => c.totalMonthlyCost > 0)
+            .filter((c) => c && typeof c.totalMonthlyCost === "number" && c.totalMonthlyCost > 0)
             .sort((a, b) => b.totalMonthlyCost - a.totalMonthlyCost)
             .slice(0, 6)
             .map((c) => ({

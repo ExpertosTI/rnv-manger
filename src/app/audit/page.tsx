@@ -105,7 +105,14 @@ export default function AuditPage() {
     try {
       const res = await fetch("/api/audit/stats");
       const data = await res.json();
-      if (data.success) setStats(data.data);
+      if (data.success && data.data) {
+        setStats({
+          totals: data.data.totals || { total: 0, today: 0, week: 0, month: 0 },
+          actionBreakdown: Array.isArray(data.data.actionBreakdown) ? data.data.actionBreakdown : [],
+          entityBreakdown: Array.isArray(data.data.entityBreakdown) ? data.data.entityBreakdown : [],
+          recentActivity: Array.isArray(data.data.recentActivity) ? data.data.recentActivity : []
+        });
+      }
     } catch (e) {
       console.error("Error fetching audit stats:", e);
     }
