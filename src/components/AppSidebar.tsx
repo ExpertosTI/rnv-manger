@@ -28,8 +28,8 @@ export function AppSidebar() {
         fetch("/api/stats")
             .then(res => res.json())
             .then(data => {
-                if (data.success) {
-                    setVpsCount(data.data.vps);
+                if (data.success && data.data?.totals) {
+                    setVpsCount(data.data.totals.vps || 0);
                 }
             })
             .catch(() => setVpsCount(0));

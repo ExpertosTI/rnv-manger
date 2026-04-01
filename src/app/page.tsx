@@ -38,7 +38,10 @@ interface StatsData {
     vps: number;
     clients: number;
     services: number;
-    revenue: number;
+    activeClients: number;
+    monthlyRevenue: number;
+    monthlyExpense: number;
+    netProfit: number;
 }
 
 interface ClientData {
@@ -123,7 +126,7 @@ export default function Home() {
     const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
     // SWR hooks with auto-refresh every 30 seconds
-    const { data: statsResponse, error: statsError, isLoading: statsLoading, mutate: mutateStats } = useSWR<{ success: boolean; data: StatsData }>(
+    const { data: statsResponse, error: statsError, isLoading: statsLoading, mutate: mutateStats } = useSWR<{ success: boolean; data: { totals: StatsData } }>(
         "/api/stats",
         fetcher,
         { refreshInterval: 30000, revalidateOnFocus: true }
@@ -148,7 +151,10 @@ export default function Home() {
     );
 
     // Derived data
-    const statsData = statsResponse?.data || { vps: 0, clients: 0, services: 0, revenue: 0 };
+    const statsData = statsResponse?.data?.totals || { 
+        vps: 0, clients: 0, services: 0, activeClients: 0,
+        monthlyRevenue: 0, monthlyExpense: 0, netProfit: 0 
+    };
     const vpsData = vpsResponse?.data || [];
 
     const billingData = billingResponse?.success && billingResponse.data
@@ -218,7 +224,7 @@ export default function Home() {
     const stats = [
         {
             title: "VPS Managed",
-            value: statsData.vps,
+            value: statsData.vps || 0,
             subtitle: `${vpsData.filter((v) => v.status === "running").length} activos ahora`,
             icon: Server,
             color: "from-violet-500 to-purple-600",
@@ -228,7 +234,7 @@ export default function Home() {
         },
         {
             title: "Clientes",
-            value: statsData.clients,
+            value: statsData.clients || 0,
             subtitle: "En base de datos",
             icon: Users,
             color: "from-blue-500 to-cyan-500",
@@ -238,7 +244,7 @@ export default function Home() {
         },
         {
             title: "Ingresos",
-            value: `$${(statsData?.revenue || 0).toLocaleString()}`,
+            value: `$${(statsData.monthlyRevenue || 0).toLocaleString()}`,
             subtitle: "Total mensual",
             icon: DollarSign,
             color: "from-green-500 to-emerald-500",
@@ -248,7 +254,7 @@ export default function Home() {
         },
         {
             title: "Servicios",
-            value: statsData.services,
+            value: statsData.services || 0,
             subtitle: "Instancias activas",
             icon: Activity,
             color: "from-orange-500 to-rose-500",
@@ -286,10 +292,10 @@ export default function Home() {
                     </Tooltip>
 
                     {/* Last Updated */}
-                    <Tooltip content={`Última actualización: ${lastRefresh.toLocaleTimeString()}`}>
+                    <Tooltip content={`Última actualización: ${lastRefresh ? lastRefresh.toLocaleTimeString() : ""}`}>
                         <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
                             <Clock size={14} />
-                            {lastRefresh.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                            {lastRefresh ? lastRefresh.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }) : "--:--"}
                         </div>
                     </Tooltip>
 
@@ -400,7 +406,7 @@ export default function Home() {
                                         <div>
                                             <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">{stat.title}</p>
                                             <p className="text-2xl sm:text-4xl font-bold text-gray-900 dark:text-white mt-1 sm:mt-2">
-                                                {typeof stat.value === "number" ? stat.value : stat.value}
+                                                {stat.value}
                                             </p>
                                             <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1 sm:mt-2 flex items-center gap-1">
                                                 <TrendingUp size={14} className="text-green-500" />
