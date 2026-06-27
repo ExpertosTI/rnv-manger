@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ToastProvider } from "@/components/ui/toast";
 import { TopHeader } from "@/components/TopHeader";
+import { AIAssistantShell } from "@/components/AIAssistantShell";
 
 const inter = Inter({
     subsets: ["latin"],
@@ -33,6 +34,7 @@ export default function RootLayout({
                             </div>
                         </main>
                     </div>
+                    <AIAssistantShell />
                 </ToastProvider>
             </body>
         </html>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Bell, X, Check, CheckCheck } from "lucide-react";
+import { Bell, X, CheckCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Notification {

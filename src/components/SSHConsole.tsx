@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Terminal, Loader2, Play, X, Info } from "lucide-react";
+import { Terminal, Loader2, Play, X } from "lucide-react";
 
 interface SSHConsoleProps {
     host: string;

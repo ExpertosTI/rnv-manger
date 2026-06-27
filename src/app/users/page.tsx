@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  UsersRound, Plus, Shield, Mail, Clock, MoreVertical,
-  Trash2, Edit, Key, CheckCircle, XCircle, RefreshCw, X
+  UsersRound, Plus, Shield, Mail, Clock,
+  CheckCircle, XCircle, RefreshCw, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

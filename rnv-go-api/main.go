@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/renace/rnv-go-api/config"
 	"github.com/renace/rnv-go-api/database"
+	aiHandler "github.com/renace/rnv-go-api/handlers/ai"
 	authHandler "github.com/renace/rnv-go-api/handlers/auth"
 	auditHandler "github.com/renace/rnv-go-api/handlers/audit"
 	backupHandler "github.com/renace/rnv-go-api/handlers/backup"
@@ -171,10 +172,14 @@ func main() {
 		auth.POST("/hostinger/vps", hostingerHandler.SyncVPS(db, cfg))
 
 		// Odoo
-		auth.GET("/odoo", odooHandler.Test(cfg))
-		auth.POST("/odoo", odooHandler.Test(cfg))
-		auth.GET("/odoo/partners", odooHandler.Partners(cfg))
-		auth.POST("/odoo/partners", odooHandler.Partners(cfg))
+		auth.GET("/odoo", odooHandler.Test(db, cfg))
+		auth.POST("/odoo", odooHandler.Test(db, cfg))
+		auth.GET("/odoo/partners", odooHandler.Partners(db, cfg))
+		auth.POST("/odoo/partners", odooHandler.Partners(db, cfg))
+		auth.GET("/odoo/products", odooHandler.Products(db, cfg))
+		auth.POST("/odoo/products", odooHandler.CreateProduct(db, cfg))
+		auth.GET("/odoo/products/:id", odooHandler.ProductDetail(db, cfg))
+		auth.PUT("/odoo/products/:id", odooHandler.UpdateProduct(db, cfg))
 		auth.GET("/odoo/invoices", odooHandler.Invoices(cfg))
 		auth.POST("/odoo/invoices", odooHandler.Invoices(cfg))
 		auth.GET("/odoo/sync", odooHandler.Sync(db, cfg))
@@ -183,6 +188,9 @@ func main() {
 		// Email
 		auth.GET("/email", emailHandler.Config(cfg))
 		auth.POST("/email", emailHandler.Send(db, cfg))
+
+		// AI Assistant
+		auth.POST("/ai/chat", aiHandler.Chat(db, cfg))
 	}
 
 	log.Printf("[RNV Go API] Starting on :%s (mode: %s)", cfg.Port, cfg.GinMode)

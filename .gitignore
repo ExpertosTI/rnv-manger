@@ -18,6 +18,12 @@
 # misc
 .DS_Store
 *.pem
+.claude/
+
+# debug / build artifacts
+tsc_errors.txt
+tsconfig.tsbuildinfo
+rnv_manager_backup_*.json
 
 # env files
 .env*
@@ -26,10 +32,7 @@
 .vercel
 
 # typescript
-*.tsbuildinfo
 next-env.d.ts
-
-/src/generated/prisma
 
 # Tauri
 /src-tauri/target/

@@ -11,7 +11,8 @@ interface DialogProps {
     children: React.ReactNode;
 }
 
-interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement> {
+interface DialogContentProps {
+    className?: string;
     children: React.ReactNode;
 }
 
@@ -28,7 +29,7 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
     );
 }
 
-function DialogContent({ className, children, ...props }: DialogContentProps) {
+function DialogContent({ className, children }: DialogContentProps) {
     const { open, onOpenChange } = React.useContext(DialogContext);
 
     return (
@@ -50,7 +51,6 @@ function DialogContent({ className, children, ...props }: DialogContentProps) {
                             "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-background p-6 shadow-xl",
                             className
                         )}
-                        {...props}
                     >
                         <button
                             onClick={() => onOpenChange(false)}

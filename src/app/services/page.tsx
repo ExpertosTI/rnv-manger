@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Database, Settings, Search, Play, Pause, RotateCw, FileCode, Plus, Server, Globe, ExternalLink } from "lucide-react";
+import { Database, Settings, Search, Play, Pause, RotateCw, Plus, Server, Globe, ExternalLink } from "lucide-react";
 import { motion } from "framer-motion";
 import { useToast } from "@/components/ui/toast";
 

@@ -1,116 +1,134 @@
 package odoo
 
 import (
-	"bytes"
-	"encoding/xml"
-	"fmt"
-	"io"
 	"net/http"
-	"strings"
-	"time"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/renace/rnv-go-api/config"
+	"github.com/renace/rnv-go-api/serviceslayer"
 	gorm_db "gorm.io/gorm"
 )
 
-// Minimal XML-RPC client for Odoo (ported from TypeScript version)
-
-type odooClient struct {
-	URL      string
-	DB       string
-	Username string
-	APIKey   string
-	uid      int
-}
-
-func newClient(cfg *config.Config) *odooClient {
-	return &odooClient{
-		URL:      cfg.OdooURL,
-		DB:       cfg.OdooDB,
-		Username: cfg.OdooUsername,
-		APIKey:   cfg.OdooAPIKey,
-	}
-}
-
-func (o *odooClient) xmlrpcCall(endpoint, method string, params string) (string, error) {
-	url := strings.TrimRight(o.URL, "/") + endpoint
-	body := fmt.Sprintf(`<?xml version="1.0"?><methodCall><methodName>%s</methodName><params>%s</params></methodCall>`,
-		method, params)
-
-	resp, err := (&http.Client{Timeout: 15 * time.Second}).Post(url, "text/xml", bytes.NewBufferString(body))
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	return string(b), nil
-}
-
-func (o *odooClient) authenticate() (int, error) {
-	params := fmt.Sprintf(`<value><string>%s</string></value><value><string>%s</string></value><value><string>%s</string></value><value><struct></struct></value>`,
-		o.DB, o.Username, o.APIKey)
-	resp, err := o.xmlrpcCall("/xmlrpc/2/common", "authenticate", params)
-	if err != nil {
-		return 0, err
-	}
-	// Parse uid from response
-	var uid int
-	decoder := xml.NewDecoder(strings.NewReader(resp))
-	for {
-		tok, err := decoder.Token()
-		if err != nil {
-			break
-		}
-		if se, ok := tok.(xml.StartElement); ok && se.Name.Local == "int" {
-			var val int
-			decoder.DecodeElement(&val, &se)
-			uid = val
-			break
-		}
-	}
-	if uid == 0 {
-		return 0, fmt.Errorf("authentication failed")
-	}
-	return uid, nil
-}
-
-func Test(cfg *config.Config) gin.HandlerFunc {
+func Test(db *gorm_db.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cfg.OdooURL == "" {
-			c.JSON(http.StatusOK, gin.H{"success": false, "connected": false, "error": "Odoo no configurado"})
-			return
-		}
-		client := newClient(cfg)
-		uid, err := client.authenticate()
+		client, err := serviceslayer.NewOdooClient(db, cfg)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{"success": false, "connected": false, "error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"success": true, "connected": true, "uid": uid, "url": cfg.OdooURL, "db": cfg.OdooDB})
+		info, err := client.TestConnection()
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "connected": false, "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "connected": true, "data": info})
 	}
 }
 
-func Partners(cfg *config.Config) gin.HandlerFunc {
+func Partners(db *gorm_db.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cfg.OdooURL == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Odoo no configurado"})
-			return
-		}
-		client := newClient(cfg)
-		uid, err := client.authenticate()
+		client, err := serviceslayer.NewOdooClient(db, cfg)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Auth Odoo falló: " + err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 			return
 		}
-		client.uid = uid
+		query := c.Query("q")
+		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+		partners, err := client.SearchPartners(query, limit)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": partners, "count": len(partners)})
+	}
+}
 
-		// Return placeholder - full XML-RPC partner search would go here
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"data":    []interface{}{},
-			"message": "Conectado como uid " + fmt.Sprintf("%d", uid),
-		})
+func Products(db *gorm_db.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		client, err := serviceslayer.NewOdooClient(db, cfg)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		query := c.Query("q")
+		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+		products, err := client.SearchProducts(query, limit)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": products, "count": len(products)})
+	}
+}
+
+func ProductDetail(db *gorm_db.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		client, err := serviceslayer.NewOdooClient(db, cfg)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil || id <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "ID inválido"})
+			return
+		}
+		product, err := client.GetProduct(id)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": product})
+	}
+}
+
+func CreateProduct(db *gorm_db.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		client, err := serviceslayer.NewOdooClient(db, cfg)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		var body map[string]interface{}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		id, err := client.CreateProduct(body)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		product, _ := client.GetProduct(id)
+		c.JSON(http.StatusCreated, gin.H{"success": true, "id": id, "data": product})
+	}
+}
+
+func UpdateProduct(db *gorm_db.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		client, err := serviceslayer.NewOdooClient(db, cfg)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil || id <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "ID inválido"})
+			return
+		}
+		var body map[string]interface{}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		ok, err := client.UpdateProduct(id, body)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		product, _ := client.GetProduct(id)
+		c.JSON(http.StatusOK, gin.H{"success": ok, "data": product})
 	}
 }
 
@@ -126,16 +144,16 @@ func Invoices(cfg *config.Config) gin.HandlerFunc {
 
 func Sync(db *gorm_db.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cfg.OdooURL == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Odoo no configurado"})
+		client, err := serviceslayer.NewOdooClient(db, cfg)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 			return
 		}
-		client := newClient(cfg)
-		_, err := client.authenticate()
+		info, err := client.TestConnection()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"success": true, "message": "Sync con Odoo completado"})
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "Conexión Odoo verificada", "data": info})
 	}
 }

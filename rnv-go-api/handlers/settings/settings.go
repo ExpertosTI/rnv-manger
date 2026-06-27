@@ -34,6 +34,18 @@ func Get(db *gorm.DB) gin.HandlerFunc {
 
 func Set(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Bulk update: { "settings": { "odoo_url": "...", ... } }
+		var bulk struct {
+			Settings map[string]string `json:"settings"`
+		}
+		if err := c.ShouldBindJSON(&bulk); err == nil && len(bulk.Settings) > 0 {
+			for key, value := range bulk.Settings {
+				upsertSetting(db, key, value, "general")
+			}
+			c.JSON(http.StatusOK, gin.H{"success": true, "message": "Configuración guardada"})
+			return
+		}
+
 		var body struct {
 			Key      string `json:"key" binding:"required"`
 			Value    string `json:"value"`
@@ -46,17 +58,21 @@ func Set(db *gorm.DB) gin.HandlerFunc {
 		if body.Category == "" {
 			body.Category = "general"
 		}
-
-		var setting models.AppSettings
-		result := db.Where("key = ?", body.Key).First(&setting)
-		if result.Error != nil {
-			setting = models.AppSettings{Key: body.Key, Value: body.Value, Category: body.Category}
-			db.Create(&setting)
-		} else {
-			db.Model(&setting).Updates(map[string]interface{}{"value": body.Value, "category": body.Category})
-		}
+		setting := upsertSetting(db, body.Key, body.Value, body.Category)
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": setting})
 	}
+}
+
+func upsertSetting(db *gorm.DB, key, value, category string) models.AppSettings {
+	var setting models.AppSettings
+	result := db.Where("key = ?", key).First(&setting)
+	if result.Error != nil {
+		setting = models.AppSettings{Key: key, Value: value, Category: category}
+		db.Create(&setting)
+	} else {
+		db.Model(&setting).Updates(map[string]interface{}{"value": value, "category": category})
+	}
+	return setting
 }
 
 func Delete(db *gorm.DB) gin.HandlerFunc {

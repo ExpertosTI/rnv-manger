@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Maximize2, Minimize2, ExternalLink, Moon, Sun } from "lucide-react";
+import { Maximize2, Minimize2, ExternalLink } from "lucide-react";
 
 export default function WhiteboardPage() {
     const [isFullscreen, setIsFullscreen] = useState(false);
-    const [isDarkMode, setIsDarkMode] = useState(true);
 
     const toggleFullscreen = () => {
         setIsFullscreen(!isFullscreen);

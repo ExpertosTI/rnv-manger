@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
-import { Server, Plus, Search, RefreshCw, Copy, MoreHorizontal, Check, AlertCircle, Clock, Zap, Terminal, Power, ExternalLink } from "lucide-react";
+import { Server, Plus, Search, RefreshCw, Copy, MoreHorizontal, Check, AlertCircle, Clock, Terminal, Power, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useCallback } from "react";
 

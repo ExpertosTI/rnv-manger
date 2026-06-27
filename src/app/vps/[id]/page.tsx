@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Terminal, Download, Activity } from "lucide-react";
@@ -45,7 +45,6 @@ interface Client {
 
 export default function VPSDetailPage() {
     const params = useParams();
-    const router = useRouter();
     const vpsId = params.id as string;
 
     const [vps, setVps] = useState<VPS | null>(null);

@@ -3,14 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Shield, Activity, Clock, Search, Filter, RefreshCw,
+  Shield, Activity, Clock, Search, RefreshCw,
   ChevronLeft, ChevronRight, User, Server, Database,
   CreditCard, Settings, Terminal, Download, AlertTriangle,
   CheckCircle, XCircle, LogIn, LogOut, Eye
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface AuditLog {
   id: string;

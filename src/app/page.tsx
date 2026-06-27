@@ -138,7 +138,7 @@ export default function Home() {
         { refreshInterval: 30000 }
     );
 
-    const { data: clientsResponse, error: clientsError, isLoading: clientsLoading, mutate: mutateClients } = useSWR<{ success: boolean; data: ClientData[] } | ClientData[]>(
+    const { data: clientsResponse, error: clientsError, mutate: mutateClients } = useSWR<{ success: boolean; data: ClientData[] } | ClientData[]>(
         "/api/clients",
         fetcher,
         { refreshInterval: 60000 }

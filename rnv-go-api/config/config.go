@@ -27,6 +27,8 @@ type Config struct {
 	VaultMasterKey    string
 	VaultMasterKeyOld string
 	NotificationEmail string
+	GeminiAPIKey      string
+	GeminiModel       string
 }
 
 func Load() *Config {
@@ -56,6 +58,8 @@ func Load() *Config {
 		VaultMasterKey:    getEnv("VAULT_MASTER_KEY", ""),
 		VaultMasterKeyOld: getEnv("VAULT_MASTER_KEY_OLD", ""),
 		NotificationEmail: getEnv("NOTIFICATION_EMAIL", ""),
+		GeminiAPIKey:      getEnv("GEMINI_API_KEY", ""),
+		GeminiModel:       getEnv("GEMINI_MODEL", "gemini-2.0-flash"),
 	}
 
 	if cfg.JWTSecret == "change-me-in-production-use-32-chars-min" {

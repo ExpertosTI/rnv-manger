@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation";
 import { NotificationBell } from "./NotificationBell";
 import { UserMenu } from "./UserMenu";
-import { Search } from "lucide-react";
 
 const pageTitles: Record<string, string> = {
     "/": "Panel Principal",

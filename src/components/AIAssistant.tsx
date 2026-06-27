@@ -607,12 +607,13 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
     const contextualSuggestions = useMemo(() => {
         if (typeof window === "undefined") return [];
         const path = window.location.pathname;
-        if (path.includes("/clients")) return ["Resumen de este cliente", "Registrar pago", "Ver servicios"];
+        if (path.includes("/clients")) return ["Resumen de este cliente", "Buscar contacto en Odoo", "Ver servicios"];
         if (path.includes("/vps")) return ["Estado de este VPS", "Listar servicios", "Ver gastos"];
-        if (path.includes("/services")) return ["Detalle del servicio", "Asignar cliente", "Ver costos"];
-        if (path.includes("/payments")) return ["Pagos pendientes", "Resumen financiero", "Exportar reporte"];
-        if (path === "/") return ["Resumen general", "Clientes activos", "Estado servidores"];
-        return ["¿Qué puedo hacer?", "Resumen financiero"];
+        if (path.includes("/services")) return ["Detalle del servicio", "Productos Odoo", "Ver costos"];
+        if (path.includes("/billing")) return ["Pagos pendientes", "Contactos Odoo", "Resumen financiero"];
+        if (path.includes("/settings")) return ["Probar conexión Odoo", "Buscar productos", "Resumen RNV"];
+        if (path === "/") return ["Resumen general", "Buscar productos Odoo", "Estado servidores"];
+        return ["Conectar a Odoo", "Buscar productos", "¿Qué puedo hacer?"];
     }, []);
 
     /* ────────────── Message partitioning ──────────────── */

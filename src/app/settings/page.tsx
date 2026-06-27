@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import {
-    Settings, Save, Mail, Key, Bell, Server, RefreshCw,
-    CheckCircle, AlertTriangle, Eye, EyeOff, Shield
+    Save, Mail, Key, Bell, Server, RefreshCw,
+    CheckCircle, AlertTriangle, Eye, EyeOff, Shield, Sparkles
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 
@@ -47,8 +47,15 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
             { key: "odoo_url", label: "Odoo URL", type: "text", placeholder: "https://odoo.tuempresa.com" },
             { key: "odoo_db", label: "Odoo Database", type: "text", placeholder: "production" },
             { key: "odoo_user", label: "Odoo Usuario", type: "text", placeholder: "admin" },
-            { key: "odoo_key", label: "Odoo API Key", type: "password", placeholder: "API key..." },
+            { key: "odoo_key", label: "Odoo API Key", type: "password", placeholder: "API key...", description: "Usada por el asistente IA y facturación" },
         ],
+    },
+    {
+        id: "ai",
+        title: "Asistente IA",
+        icon: Sparkles,
+        description: "Motor Gemini — la API key va en el .env del servidor Go",
+        fields: [],
     },
     {
         id: "alerts",
@@ -84,6 +91,8 @@ export default function SettingsPage() {
     const [restoring, setRestoring] = useState(false);
     const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
     const [smtpStatus, setSmtpStatus] = useState<"unknown" | "ok" | "error">("unknown");
+    const [odooStatus, setOdooStatus] = useState<"unknown" | "ok" | "error">("unknown");
+    const [testingOdoo, setTestingOdoo] = useState(false);
 
     useEffect(() => {
         fetchSettings();
@@ -94,8 +103,12 @@ export default function SettingsPage() {
         try {
             const res = await fetch("/api/settings");
             const data = await res.json();
-            if (data.success) {
-                setSettings(data.data || {});
+            if (data.success && Array.isArray(data.data)) {
+                const map: Record<string, string> = {};
+                for (const item of data.data) {
+                    if (item?.key) map[item.key] = item.value ?? "";
+                }
+                setSettings(map);
             }
         } catch (err) {
             console.error("Error fetching settings:", err);
@@ -111,6 +124,36 @@ export default function SettingsPage() {
             setSmtpStatus(data.success ? "ok" : "error");
         } catch {
             setSmtpStatus("error");
+        }
+    };
+
+    const testOdooConnection = async () => {
+        setTestingOdoo(true);
+        try {
+            const resSave = await fetch("/api/settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ settings }),
+            });
+            const saveData = await resSave.json();
+            if (!saveData.success) {
+                addToast(saveData.error || "Error al guardar credenciales", "error");
+                return;
+            }
+            const res = await fetch("/api/odoo");
+            const data = await res.json();
+            if (data.success && data.connected) {
+                setOdooStatus("ok");
+                addToast("✅ Odoo conectado correctamente", "success");
+            } else {
+                setOdooStatus("error");
+                addToast(data.error || "No se pudo conectar a Odoo", "error");
+            }
+        } catch {
+            setOdooStatus("error");
+            addToast("Error al probar conexión Odoo", "error");
+        } finally {
+            setTestingOdoo(false);
         }
     };
 
@@ -205,6 +248,46 @@ export default function SettingsPage() {
                 </div>
             </div>
 
+            {/* Odoo Status */}
+            <div className={`p-4 rounded-xl border ${odooStatus === "ok"
+                    ? "bg-green-900/30 border-green-700"
+                    : odooStatus === "error"
+                        ? "bg-red-900/30 border-red-700"
+                        : "bg-gray-800 border-gray-700"
+                }`}>
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                        {odooStatus === "ok" ? (
+                            <CheckCircle className="w-5 h-5 text-green-400" />
+                        ) : odooStatus === "error" ? (
+                            <AlertTriangle className="w-5 h-5 text-red-400" />
+                        ) : (
+                            <Key className="w-5 h-5 text-gray-400" />
+                        )}
+                        <div>
+                            <p className={`font-medium ${odooStatus === "ok" ? "text-green-300" :
+                                    odooStatus === "error" ? "text-red-300" : "text-gray-300"
+                                }`}>
+                                {odooStatus === "ok" ? "Odoo conectado — el asistente puede editar productos" :
+                                    odooStatus === "error" ? "Odoo no conectado" :
+                                        "Odoo — guarda credenciales y prueba la conexión"}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                                URL, DB, usuario y API key en la sección API Tokens
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={testOdooConnection}
+                        disabled={testingOdoo}
+                        className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-600 text-white text-sm rounded-lg flex items-center gap-2"
+                    >
+                        {testingOdoo ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Key className="w-4 h-4" />}
+                        Probar Odoo
+                    </button>
+                </div>
+            </div>
+
             {/* Settings Sections */}
             <div className="grid gap-6">
                 {SETTINGS_SECTIONS.map((section) => (
@@ -245,6 +328,13 @@ export default function SettingsPage() {
                                     )}
                                 </div>
                             ))}
+                            {section.id === "ai" && (
+                                <div className="md:col-span-2 p-4 rounded-xl bg-violet-900/20 border border-violet-700/40 text-sm text-gray-300 space-y-2">
+                                    <p>El asistente flotante (cono violeta) usa <code className="bg-gray-700 px-1 rounded">GEMINI_API_KEY</code> en el servidor.</p>
+                                    <p>Puede buscar, crear y editar productos Odoo, consultar contactos y ver datos de RNV Manager.</p>
+                                    <p className="text-gray-500">Ejemplo en <code className="bg-gray-700 px-1 rounded">.env</code>: GEMINI_API_KEY=AIza... y GEMINI_MODEL=gemini-2.0-flash</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 ))}
