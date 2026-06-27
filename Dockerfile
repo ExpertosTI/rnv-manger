@@ -4,9 +4,13 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
-COPY . .
+# Copy only what Next.js needs (explicit paths — avoids missing src/app in build)
+COPY next.config.ts tsconfig.json postcss.config.mjs tailwind.config.js eslint.config.mjs ./
+COPY public ./public
+COPY src ./src
+
 RUN npm run build
 
 # ── Production stage ──────────────────────────────────────────────────────────

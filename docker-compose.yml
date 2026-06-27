@@ -33,6 +33,8 @@ services:
       PORT: 8080
       GIN_MODE: release
       APP_URL: ${APP_URL:-https://rnv.renace.tech}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
     networks:
       - rnv_net
       - RenaceNet

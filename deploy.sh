@@ -32,9 +32,14 @@ fi
 
 APP_PORT=${APP_PORT:-4200}
 
+# Sin argumento → despliegue completo (equivalente a "start")
+if [ -z "$1" ]; then
+    set -- start
+fi
+
 case "$1" in
     start)
-        echo -e "${GREEN}🚀 Iniciando RNV Manager...${NC}"
+        echo -e "${GREEN}🚀 Iniciando RNV Manager (go-api + app + db)...${NC}"
         docker compose up -d --build
         echo ""
         echo -e "${GREEN}✅ RNV Manager corriendo en: http://localhost:${APP_PORT}${NC}"
@@ -118,15 +123,20 @@ case "$1" in
         ;;
 
     migrate)
-        echo -e "${GREEN}🔄 Corriendo migraciones de base de datos...${NC}"
-        docker compose exec app npx prisma migrate deploy --schema=/app/prisma/schema.prisma
-        echo -e "${GREEN}✅ Migraciones aplicadas.${NC}"
+        echo -e "${GREEN}🔄 Sincronizando schema (Go API AutoMigrate)...${NC}"
+        docker compose restart go-api
+        sleep 3
+        if docker compose logs --tail=30 go-api | grep -iE "Schema migrated|AutoMigrate"; then
+            echo -e "${GREEN}✅ Schema sincronizado por go-api.${NC}"
+        else
+            echo -e "${YELLOW}ℹ️  Revisa logs: ./deploy.sh logs go-api${NC}"
+        fi
         ;;
 
     push)
-        echo -e "${GREEN}📦 Push del schema a la DB (development only)...${NC}"
-        docker compose exec app npx prisma db push --schema=/app/prisma/schema.prisma
-        echo -e "${GREEN}✅ Schema sincronizado.${NC}"
+        echo -e "${YELLOW}ℹ️  El schema lo gestiona go-api con GORM AutoMigrate al arrancar.${NC}"
+        echo -e "${GREEN}🔄 Reiniciando go-api...${NC}"
+        docker compose restart go-api
         ;;
 
     shell)
@@ -193,12 +203,12 @@ case "$1" in
         docker compose up -d --build app
 
         # Wait a bit and show migration status
-        echo -e "${BLUE}🔄 Verificando migraciones de base de datos...${NC}"
+        echo -e "${BLUE}🔄 Verificando schema en go-api...${NC}"
         sleep 5
-        if docker compose logs --tail=50 app | grep -iE "migration|prisma"; then
-            echo -e "${GREEN}✅ Proceso de migración detectado en los logs.${NC}"
+        if docker compose logs --tail=50 go-api | grep -iE "Schema migrated|AutoMigrate"; then
+            echo -e "${GREEN}✅ Schema sincronizado (go-api).${NC}"
         else
-            echo -e "${YELLOW}ℹ️ Revisa los logs para confirmar las migraciones: ./deploy.sh logs${NC}"
+            echo -e "${YELLOW}ℹ️ Revisa los logs: ./deploy.sh logs go-api${NC}"
         fi
 
         echo ""
@@ -247,7 +257,7 @@ case "$1" in
         echo "  Mantenimiento:"
         echo -e "  ${YELLOW}backup${NC}      Crear backup manual"
         echo -e "  ${YELLOW}restore${NC}     Restaurar desde backup"
-        echo -e "  ${YELLOW}migrate${NC}     Correr migraciones manualmente"
+        echo -e "  ${YELLOW}migrate${NC}     Reiniciar go-api (GORM AutoMigrate)"
         echo -e "  ${YELLOW}rebuild-app${NC} Reconstruir solo la app"
         echo -e "  ${YELLOW}clean${NC}       Borrar imágenes 'dangling'"
         echo -e "  ${YELLOW}prune${NC}       Borrar TODO lo que no esté en uso"

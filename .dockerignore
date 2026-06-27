@@ -1,0 +1,37 @@
+# Dependencies & build output
+node_modules
+.next
+out
+dist
+dist-tauri
+
+# Git & IDE
+.git
+.gitignore
+.claude
+.cursor
+.vscode
+
+# Backend Go (built separately via rnv-go-api/Dockerfile)
+rnv-go-api
+
+# Desktop / mobile wrappers (not needed in Next.js image)
+src-tauri
+electron-app
+android
+
+# Docs & local artifacts
+docs
+backups
+*.md
+tsc_errors.txt
+tsconfig.tsbuildinfo
+rnv_manager_backup_*.json
+eslint-report.json
+
+# Env (secrets injected at runtime)
+.env
+.env.*
+
+# Prisma legacy (schema managed by Go/GORM)
+prisma
