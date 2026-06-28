@@ -11,6 +11,7 @@ COPY next.config.ts tsconfig.json postcss.config.mjs tailwind.config.js eslint.c
 COPY public ./public
 COPY src ./src
 
+ENV API_INTERNAL_URL=http://go-api:8080
 RUN npm run build
 
 # ── Production stage ──────────────────────────────────────────────────────────

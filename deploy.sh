@@ -1,270 +1,339 @@
-#!/bin/bash
-# ===========================================
-# RNV Manager - Deploy Script for VPS
-# ===========================================
-# Usage: ./deploy.sh [command]
-set -e
+#!/usr/bin/env bash
+# RNV Manager — Deploy (producción: Docker Swarm + Traefik/RenaceNet)
+# Uso en servidor:  cd /opt/rnv-manager && ./deploy.sh update
+set -euo pipefail
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# ── Config ────────────────────────────────────────────────────────────────────
+STACK_NAME="rnv-manager"
+COMPOSE_FILE="docker-compose.yml"
+ENV_FILE="/etc/rnv-manager/rnv.env"
+APP_DOMAIN="${APP_DOMAIN:-rnv.renace.tech}"
+APP_URL="${APP_URL:-https://${APP_DOMAIN}}"
+NETWORK_PUBLIC="RenaceNet"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
 
-echo -e "${CYAN}╔═══════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║       RNV Manager - Deploy Tool       ║${NC}"
-echo -e "${CYAN}╚═══════════════════════════════════════╝${NC}"
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
 
-# Load .env if exists
-if [ -f .env ]; then
-    export $(grep -v '^#' .env | grep -v '^$' | xargs)
-fi
+log()  { echo -e "${GREEN}$*${NC}"; }
+warn() { echo -e "${YELLOW}$*${NC}"; }
+err()  { echo -e "${RED}$*${NC}" >&2; }
+die()  { err "$*"; exit 1; }
 
-# Check if .env exists
-if [ ! -f .env ]; then
-    echo -e "${YELLOW}⚠️  No .env file found. Creating from template...${NC}"
-    cp env.template .env
-    echo -e "${GREEN}✅ Created .env — edita los valores antes de continuar.${NC}"
-    exit 1
-fi
+banner() {
+    echo -e "${CYAN}╔═══════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║       RNV Manager — Deploy Tool       ║${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════╝${NC}"
+}
 
-APP_PORT=${APP_PORT:-4200}
+run_as_root() {
+    if [ "${EUID:-$(id -u)}" -eq 0 ]; then "$@"; else sudo "$@"; fi
+}
 
-# Sin argumento → despliegue completo (equivalente a "start")
-if [ -z "$1" ]; then
-    set -- start
-fi
+is_swarm_active() {
+    docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -qi active
+}
 
-case "$1" in
-    start)
-        echo -e "${GREEN}🚀 Iniciando RNV Manager (go-api + app + db)...${NC}"
-        docker compose up -d --build
-        echo ""
-        echo -e "${GREEN}✅ RNV Manager corriendo en: http://localhost:${APP_PORT}${NC}"
-        echo -e "${BLUE}   Logs: ./deploy.sh logs${NC}"
+use_swarm() {
+    is_swarm_active && docker network inspect "$NETWORK_PUBLIC" >/dev/null 2>&1
+}
+
+swarm_service() { echo "${STACK_NAME}_${1}"; }
+
+db_container_id() {
+    docker ps -q -f "name=$(swarm_service db)" | head -1
+}
+
+app_container_id() {
+    docker ps -q -f "name=$(swarm_service app)" | head -1
+}
+
+# ── Env ───────────────────────────────────────────────────────────────────────
+load_env() {
+    if [ -f "$ENV_FILE" ]; then
+        set -a
+        # shellcheck disable=SC1091
+        source "$ENV_FILE"
+        set +a
+    fi
+    if [ -f "$ROOT/.env" ]; then
+        set -a
+        # shellcheck disable=SC1091
+        source "$ROOT/.env"
+        set +a
+    fi
+
+    # Legacy: SESSION_SECRET → JWT_SECRET
+    if [ -z "${JWT_SECRET:-}" ] && [ -n "${SESSION_SECRET:-}" ]; then
+        export JWT_SECRET="$SESSION_SECRET"
+    fi
+
+    export APP_URL="${APP_URL:-https://${APP_DOMAIN}}"
+
+    if [ -z "${DATABASE_URL:-}" ] && [ -n "${DB_USER:-}" ] && [ -n "${DB_PASSWORD:-}" ] && [ -n "${DB_NAME:-}" ]; then
+        export DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable"
+    fi
+}
+
+ensure_env_file() {
+    if [ ! -f "$ENV_FILE" ] && [ ! -f "$ROOT/.env" ]; then
+        warn "⚠️  No hay $ENV_FILE ni .env — creando .env desde plantilla..."
+        cp env.template "$ROOT/.env"
+        die "Edita .env (o crea $ENV_FILE) y vuelve a ejecutar."
+    fi
+    # Mantener .env sincronizado con producción
+    if [ -f "$ENV_FILE" ] && [ ! -f "$ROOT/.env" ]; then
+        cp "$ENV_FILE" "$ROOT/.env"
+    fi
+}
+
+validate_env() {
+    load_env
+    local missing=()
+    for v in DB_USER DB_PASSWORD DB_NAME JWT_SECRET DATABASE_URL; do
+        if [ -z "${!v:-}" ]; then missing+=("$v"); fi
+    done
+    if [ ${#missing[@]} -gt 0 ]; then
+        die "Variables obligatorias vacías: ${missing[*]}"
+    fi
+    if [ "${#JWT_SECRET}" -lt 32 ]; then
+        die "JWT_SECRET debe tener al menos 32 caracteres"
+    fi
+    if [ -z "${SMTP_PASS:-}" ]; then
+        warn "⚠️  SMTP_PASS vacío — OTP por email no funcionará hasta configurarlo"
+    fi
+    if [ -z "${GEMINI_API_KEY:-}" ]; then
+        warn "⚠️  GEMINI_API_KEY vacío — asistente IA desactivado"
+    fi
+}
+
+# ── Infra ─────────────────────────────────────────────────────────────────────
+ensure_docker() {
+    command -v docker >/dev/null 2>&1 || die "docker no instalado"
+    docker info >/dev/null 2>&1 || die "docker no responde (¿servicio activo?)"
+}
+
+ensure_swarm() {
+    if ! is_swarm_active; then
+        log "Inicializando Docker Swarm..."
+        run_as_root docker swarm init 2>/dev/null || true
+    fi
+    if ! docker network inspect "$NETWORK_PUBLIC" >/dev/null 2>&1; then
+        log "Creando red overlay $NETWORK_PUBLIC..."
+        run_as_root docker network create --driver overlay --attachable "$NETWORK_PUBLIC"
+    fi
+}
+
+git_sync() {
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+        warn "No es repositorio git — omitiendo pull"
+        return 0
+    fi
+    log "📥 Sincronizando con origin/main..."
+    git fetch origin
+    git reset --hard origin/main
+}
+
+build_images() {
+    validate_env
+    log "🔨 Construyendo imágenes (app + go-api)..."
+    docker compose -f "$COMPOSE_FILE" build
+}
+
+stack_deploy() {
+    validate_env
+    log "🚀 Desplegando stack Swarm ($STACK_NAME)..."
+    docker stack deploy -c "$COMPOSE_FILE" "$STACK_NAME"
+    echo ""
+    docker stack services "$STACK_NAME"
+}
+
+compose_up() {
+    validate_env
+    log "🚀 Modo local: docker compose up..."
+    docker compose up -d --build
+    docker compose ps
+}
+
+wait_for_service() {
+    local svc="$1"
+    local max="${2:-120}"
+    local rep=""
+    echo -n "   Esperando ${svc} "
+    for _ in $(seq 1 "$max"); do
+        rep=$(docker service ls --filter "name=${svc}" --format '{{.Replicas}}' 2>/dev/null || echo "0/0")
+        if [ "$rep" = "1/1" ]; then echo "→ OK"; return 0; fi
+        echo -n "."
+        sleep 2
+    done
+    echo "→ FALLO ($rep)"
+    docker service ps "$svc" --no-trunc 2>/dev/null | head -8 || true
+    docker service logs "$svc" --tail 25 2>&1 || true
+    return 1
+}
+
+wait_for_stack() {
+    use_swarm || return 0
+    log "⏳ Esperando servicios..."
+    wait_for_service "$(swarm_service db)" 60 || die "PostgreSQL no arrancó"
+    wait_for_service "$(swarm_service go-api)" 120 || die "go-api no arrancó — revisa: ./deploy.sh logs-api"
+    wait_for_service "$(swarm_service app)" 90 || die "app no arrancó"
+}
+
+health_check() {
+    local url="${APP_URL:-https://${APP_DOMAIN}}"
+    log "🏥 Health check: ${url}/api/health"
+    local body
+    body=$(curl -sf "${url}/api/health" 2>/dev/null) || die "No responde ${url}/api/health"
+    echo "$body" | grep -q '"status"' || die "Respuesta inesperada: $body"
+    log "✅ API healthy"
+}
+
+deploy_production() {
+    ensure_docker
+    ensure_env_file
+    if use_swarm; then
+        ensure_swarm
+        build_images
+        stack_deploy
+        wait_for_stack
+        health_check
+        log "✅ Desplegado: ${APP_URL}"
+    else
+        compose_up
+        warn "Modo local (sin Swarm/RenaceNet). Producción usa Swarm."
+    fi
+}
+
+deploy_update() {
+    ensure_docker
+    ensure_env_file
+    git_sync
+    mkdir -p backups
+    local db_cid
+    db_cid="$(db_container_id)"
+    if [ -n "$db_cid" ]; then
+        log "💾 Backup previo al deploy..."
+        docker exec -i "$db_cid" pg_dump -U "${DB_USER}" -Fc "${DB_NAME}" \
+            > "backups/pre_deploy_$(date +%Y%m%d_%H%M%S).dump" 2>/dev/null || true
+    fi
+    deploy_production
+}
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+banner
+
+CMD="${1:-update}"
+
+case "$CMD" in
+    start|deploy|up)
+        deploy_production
         ;;
-
-    stop)
-        echo -e "${YELLOW}⏹️  Deteniendo RNV Manager...${NC}"
-        docker compose down
-        echo -e "${GREEN}✅ Detenido.${NC}"
-        ;;
-
-    restart)
-        echo -e "${YELLOW}🔄 Reiniciando todo el stack...${NC}"
-        docker compose restart
-        echo -e "${GREEN}✅ Reiniciado.${NC}"
-        ;;
-
-    rebuild-app)
-        echo -e "${YELLOW}🔄 Reconstruyendo y reiniciando solo la App...${NC}"
-        docker compose up -d --build app
-        echo -e "${GREEN}✅ App reconstruida.${NC}"
-        ;;
-
-    logs)
-        echo -e "${GREEN}📋 Logs de la App (Ctrl+C para salir)...${NC}"
-        docker compose logs -f app
-        ;;
-
-    logs-db)
-        echo -e "${GREEN}📋 Logs de la Base de Datos (Ctrl+C para salir)...${NC}"
-        docker compose logs -f db
-        ;;
-
-    logs-backup)
-        echo -e "${GREEN}📋 Logs del servicio de Backup (Ctrl+C para salir)...${NC}"
-        docker compose logs -f backup
-        ;;
-
-    logs-all)
-        echo -e "${GREEN}📋 Todos los logs (Ctrl+C para salir)...${NC}"
-        docker compose logs -f
-        ;;
-
-    backup)
-        echo -e "${GREEN}💾 Creando backup manual...${NC}"
-        mkdir -p backups
-        BACKUP_FILE="backups/manual_$(date +%Y%m%d_%H%M%S).dump"
-        docker compose exec -T db pg_dump \
-            -U ${DB_USER:-rnvadmin} \
-            -Fc ${DB_NAME:-rnv_manager} > "$BACKUP_FILE"
-        SIZE=$(du -sh "$BACKUP_FILE" | cut -f1)
-        echo -e "${GREEN}✅ Backup creado: $BACKUP_FILE ($SIZE)${NC}"
-        echo -e "${BLUE}   Últimos 5 backups:${NC}"
-        ls -lht backups/*.dump 2>/dev/null | head -5 || echo "   (ninguno)"
-        ;;
-
-    restore)
-        if [ -z "$2" ]; then
-            echo -e "${RED}❌ Especifica el archivo: ./deploy.sh restore backups/archivo.dump${NC}"
-            echo -e "${BLUE}   Backups disponibles:${NC}"
-            ls -lht backups/*.dump 2>/dev/null | head -10 || echo "   (ninguno)"
-            exit 1
-        fi
-        if [ ! -f "$2" ]; then
-            echo -e "${RED}❌ Archivo no encontrado: $2${NC}"
-            exit 1
-        fi
-        echo -e "${YELLOW}⚠️  Esto SOBREESCRIBIRÁ la base de datos actual!${NC}"
-        read -p "¿Estás seguro? (y/N): " confirm
-        if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-            echo -e "${GREEN}📥 Restaurando desde $2...${NC}"
-            docker compose exec -T db pg_restore \
-                -U ${DB_USER:-rnvadmin} \
-                -d ${DB_NAME:-rnv_manager} \
-                --clean --if-exists < "$2"
-            echo -e "${GREEN}✅ Restauración completada.${NC}"
-        else
-            echo -e "${YELLOW}Cancelado.${NC}"
-        fi
-        ;;
-
-    migrate)
-        echo -e "${GREEN}🔄 Sincronizando schema (Go API AutoMigrate)...${NC}"
-        docker compose restart go-api
-        sleep 3
-        if docker compose logs --tail=30 go-api | grep -iE "Schema migrated|AutoMigrate"; then
-            echo -e "${GREEN}✅ Schema sincronizado por go-api.${NC}"
-        else
-            echo -e "${YELLOW}ℹ️  Revisa logs: ./deploy.sh logs go-api${NC}"
-        fi
-        ;;
-
-    push)
-        echo -e "${YELLOW}ℹ️  El schema lo gestiona go-api con GORM AutoMigrate al arrancar.${NC}"
-        echo -e "${GREEN}🔄 Reiniciando go-api...${NC}"
-        docker compose restart go-api
-        ;;
-
-    shell)
-        echo -e "${GREEN}🐚 Abriendo shell en el contenedor app...${NC}"
-        docker compose exec app sh
-        ;;
-
-    db)
-        echo -e "${GREEN}🗄️  Abriendo PostgreSQL CLI...${NC}"
-        docker compose exec db psql -U ${DB_USER:-rnvadmin} ${DB_NAME:-rnv_manager}
-        ;;
-
-    status)
-        echo -e "${GREEN}📊 Estado de los contenedores:${NC}"
-        docker compose ps
-        echo ""
-        echo -e "${GREEN}💾 Uso de disco:${NC}"
-        du -sh backups/ 2>/dev/null || true
-        ;;
-
-    health)
-        echo -e "${GREEN}🏥 Verificando salud de los servicios...${NC}"
-        echo ""
-
-        # Check app
-        if curl -sf "http://localhost:${APP_PORT}/api/health" > /dev/null 2>&1; then
-            echo -e "  ${GREEN}✅ App:      http://localhost:${APP_PORT} — OK${NC}"
-        else
-            echo -e "  ${RED}❌ App:      http://localhost:${APP_PORT} — NO RESPONDE${NC}"
-        fi
-
-        # Check DB container
-        if docker compose exec -T db pg_isready -U ${DB_USER:-rnvadmin} > /dev/null 2>&1; then
-            echo -e "  ${GREEN}✅ Database: PostgreSQL — OK${NC}"
-        else
-            echo -e "  ${RED}❌ Database: PostgreSQL — NO DISPONIBLE${NC}"
-        fi
-
-        # Check containers
-        echo ""
-        docker compose ps
-        ;;
-
     update)
-        echo -e "${GREEN}⬆️  Actualizando RNV Manager (Solo App)...${NC}"
-
-        # Pull from git if it's a repo
-        if git rev-parse --git-dir > /dev/null 2>&1; then
-            echo -e "${BLUE}📥 Descargando cambios de git...${NC}"
-            git pull
+        deploy_update
+        ;;
+    stop)
+        if use_swarm; then
+            docker stack rm "$STACK_NAME" 2>/dev/null || true
+            warn "Stack eliminado. Volumen rnv_postgres_data se conserva."
         else
-            echo -e "${YELLOW}⚠️  No es un repositorio git. Asegúrate de haber copiado los nuevos archivos.${NC}"
+            docker compose down
         fi
-
-        # Backup before update
-        echo -e "${BLUE}💾 Creando backup de seguridad previo a la actualización...${NC}"
+        ;;
+    restart)
+        load_env
+        if use_swarm; then
+            for s in db go-api app backup; do
+                docker service update --force "$(swarm_service "$s")" >/dev/null 2>&1 || true
+            done
+        else
+            docker compose restart
+        fi
+        wait_for_stack 2>/dev/null || true
+        ;;
+    status)
+        if use_swarm; then docker stack services "$STACK_NAME"; else docker compose ps; fi
+        ;;
+    health)
+        load_env
+        health_check
+        ;;
+    logs)
+        if use_swarm; then docker service logs -f "$(swarm_service app)"; else docker compose logs -f app; fi
+        ;;
+    logs-api)
+        if use_swarm; then docker service logs -f "$(swarm_service go-api)"; else docker compose logs -f go-api; fi
+        ;;
+    logs-db)
+        if use_swarm; then docker service logs -f "$(swarm_service db)"; else docker compose logs -f db; fi
+        ;;
+    logs-all)
+        if use_swarm; then
+            docker service logs -f "$(swarm_service app)" &
+            docker service logs -f "$(swarm_service go-api)" &
+            docker service logs -f "$(swarm_service db)" &
+            wait
+        else
+            docker compose logs -f
+        fi
+        ;;
+    backup)
+        load_env
         mkdir -p backups
-        docker compose exec -T db pg_dump \
-            -U ${DB_USER:-rnvadmin} \
-            -Fc ${DB_NAME:-rnv_manager} > "backups/pre_update_$(date +%Y%m%d_%H%M%S).dump" 2>/dev/null || true
-
-        # Rebuild and restart ONLY app
-        echo -e "${BLUE}🔨 Reconstruyendo y reiniciando contenedor 'app'...${NC}"
-        docker compose up -d --build app
-
-        # Wait a bit and show migration status
-        echo -e "${BLUE}🔄 Verificando schema en go-api...${NC}"
-        sleep 5
-        if docker compose logs --tail=50 go-api | grep -iE "Schema migrated|AutoMigrate"; then
-            echo -e "${GREEN}✅ Schema sincronizado (go-api).${NC}"
+        local_file="backups/manual_$(date +%Y%m%d_%H%M%S).dump"
+        db_cid="$(db_container_id)"
+        [ -n "$db_cid" ] || die "db no está corriendo"
+        docker exec -i "$db_cid" pg_dump -U "${DB_USER}" -Fc "${DB_NAME}" > "$local_file"
+        log "✅ Backup: $local_file ($(du -sh "$local_file" | cut -f1))"
+        ;;
+    restore)
+        [ -n "${2:-}" ] || die "Uso: ./deploy.sh restore backups/archivo.dump"
+        [ -f "$2" ] || die "Archivo no encontrado: $2"
+        load_env
+        warn "⚠️  Sobrescribirá la base de datos actual"
+        read -r -p "¿Continuar? (y/N): " c
+        [ "$c" = "y" ] || [ "$c" = "Y" ] || exit 0
+        db_cid="$(db_container_id)"
+        docker exec -i "$db_cid" pg_restore -U "${DB_USER}" -d "${DB_NAME}" --clean --if-exists < "$2"
+        log "✅ Restauración completada"
+        ;;
+    db)
+        load_env
+        db_cid="$(db_container_id)"
+        docker exec -it "$db_cid" psql -U "${DB_USER}" "${DB_NAME}"
+        ;;
+    shell)
+        app_cid="$(app_container_id)"
+        docker exec -it "$app_cid" sh
+        ;;
+    migrate)
+        load_env
+        if use_swarm; then
+            docker service update --force "$(swarm_service go-api)" >/dev/null
+            sleep 5
+            docker service logs "$(swarm_service go-api)" --tail 20 2>&1 | grep -iE "Schema migrated|AutoMigrate|Connected" || true
         else
-            echo -e "${YELLOW}ℹ️ Revisa los logs: ./deploy.sh logs go-api${NC}"
+            docker compose restart go-api
         fi
-
-        echo ""
-        echo -e "${GREEN}✅ Actualización de App completada!${NC}"
-        echo -e "   App en: http://localhost:${APP_PORT}"
         ;;
-
-    update-all)
-        echo -e "${GREEN}⬆️  Actualizando TODO el stack (App + DB)...${NC}"
-        git pull || true
-        docker compose up -d --build
-        echo -e "${GREEN}✅ Actualización total completada.${NC}"
-        ;;
-
     clean)
-        echo -e "${YELLOW}🧹 Limpiando imágenes Docker antiguas...${NC}"
         docker image prune -f
-        echo -e "${GREEN}✅ Limpieza de imágenes completada.${NC}"
         ;;
-
-    prune)
-        echo -e "${YELLOW}🧹 Limpieza profunda de Docker (imágenes y volúmenes huérfanos)...${NC}"
-        docker system prune -a --volumes -f
-        echo -e "${GREEN}✅ Limpieza total completada.${NC}"
-        ;;
-
     *)
         echo ""
         echo -e "${BLUE}Uso: ./deploy.sh [comando]${NC}"
         echo ""
-        echo "  Principales:"
-        echo -e "  ${GREEN}start${NC}       Iniciar RNV Manager (build + run)"
-        echo -e "  ${GREEN}stop${NC}        Detener todos los contenedores"
-        echo -e "  ${GREEN}restart${NC}     Reiniciar servicios actuales (sin rebuild)"
-        echo -e "  ${GREEN}update${NC}      Git pull + Backup + Rebuild App (Recomendado)"
-        echo -e "  ${GREEN}update-all${NC}  Git pull + Rebuild todo el stack"
-        echo -e "  ${GREEN}health${NC}      Verificar estado de todos los servicios"
+        echo -e "  ${GREEN}update${NC}     Pull + backup + build + deploy + health  ${CYAN}(default, producción)${NC}"
+        echo -e "  ${GREEN}start${NC}      Build + deploy (sin git pull)"
+        echo -e "  ${GREEN}stop${NC}       Detener stack"
+        echo -e "  ${GREEN}restart${NC}    Reiniciar servicios"
+        echo -e "  ${GREEN}health${NC}     Comprobar /api/health"
+        echo -e "  ${GREEN}status${NC}     Réplicas Swarm"
         echo ""
-        echo "  Logs:"
-        echo -e "  ${CYAN}logs${NC}        Logs de la app (Next.js)"
-        echo -e "  ${CYAN}logs-db${NC}     Logs de la base de datos"
-        echo -e "  ${CYAN}logs-backup${NC} Logs del servicio de backup"
-        echo -e "  ${CYAN}logs-all${NC}    Todos los logs combinados"
-        echo -e "  ${CYAN}status${NC}      Estado de los contenedores"
+        echo "  logs | logs-api | logs-db | logs-all | backup | restore | db | shell | migrate | clean"
         echo ""
-        echo "  Mantenimiento:"
-        echo -e "  ${YELLOW}backup${NC}      Crear backup manual"
-        echo -e "  ${YELLOW}restore${NC}     Restaurar desde backup"
-        echo -e "  ${YELLOW}migrate${NC}     Reiniciar go-api (GORM AutoMigrate)"
-        echo -e "  ${YELLOW}rebuild-app${NC} Reconstruir solo la app"
-        echo -e "  ${YELLOW}clean${NC}       Borrar imágenes 'dangling'"
-        echo -e "  ${YELLOW}prune${NC}       Borrar TODO lo que no esté en uso"
-        echo ""
-        echo "  Utilidades:"
-        echo -e "  ${CYAN}shell${NC}       Shell dentro del contenedor app"
-        echo -e "  ${CYAN}db${NC}          Consola PostgreSQL"
-        echo ""
+        echo "  Producción: env en $ENV_FILE (JWT_SECRET o SESSION_SECRET, DATABASE_URL)"
+        echo "  URL: https://${APP_DOMAIN}"
         ;;
 esac

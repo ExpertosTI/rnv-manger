@@ -11,11 +11,10 @@ git clone https://github.com/ExpertosTI/rnv-manger.git rnv-manager
 cd rnv-manager
 
 # Copiar .env
-cp .env.example .env
+cp env.template .env
 echo "[OK] Configuracion copiada"
 
-# Iniciar con Docker
-docker-compose up -d
+docker compose up -d --build
 
 echo ""
 echo "=================================="

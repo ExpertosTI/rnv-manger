@@ -4,6 +4,11 @@ import type { NextRequest } from "next/server";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // API routes are handled by Go backend (Traefik). Never redirect them to login.
+  if (pathname.startsWith("/api")) {
+    return NextResponse.next();
+  }
+
   // Public paths - no auth required
   const publicPaths = ["/login"];
   if (publicPaths.some((path) => pathname.startsWith(path))) {
