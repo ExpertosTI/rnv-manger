@@ -23,7 +23,7 @@ source .env 2>/dev/null || true
 if [ -z "${SMTP_PASS:-}" ]; then
   echo ""
   echo "⚠️  SMTP_PASS está vacío en .env"
-  echo "   Edita .env y pon la contraseña de info@renace.space (Hostinger)"
+  echo "   Edita .env y pon la contraseña de info@renace.tech (Hostinger)"
   echo "   Sin esto el OTP no se enviará por correo."
   echo ""
 fi

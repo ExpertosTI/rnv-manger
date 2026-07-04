@@ -103,8 +103,8 @@ upsert_env "GIN_MODE" "${GIN_MODE:-release}" "$ENV_FILE"
 upsert_env "GEMINI_MODEL" "${GEMINI_MODEL:-gemini-2.5-flash}" "$ENV_FILE"
 upsert_env "SMTP_HOST" "${SMTP_HOST:-smtp.hostinger.com}" "$ENV_FILE"
 upsert_env "SMTP_PORT" "${SMTP_PORT:-465}" "$ENV_FILE"
-upsert_env "SMTP_USER" "${SMTP_USER:-info@renace.space}" "$ENV_FILE"
-upsert_env "SMTP_FROM" "${SMTP_FROM:-info@renace.space}" "$ENV_FILE"
+upsert_env "SMTP_USER" "${SMTP_USER:-info@renace.tech}" "$ENV_FILE"
+upsert_env "SMTP_FROM" "${SMTP_FROM:-info@renace.tech}" "$ENV_FILE"
 upsert_env "NOTIFICATION_EMAIL" "${NOTIFICATION_EMAIL:-expertostird@gmail.com}" "$ENV_FILE"
 
 # Copiar a .env del repo (deploy.sh lo usa)

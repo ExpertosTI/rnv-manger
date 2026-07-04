@@ -68,8 +68,10 @@ clear_bad_smtp_in_db() {
 DELETE FROM app_settings
 WHERE key = 'smtp_pass'
   AND (value LIKE 'AQ.%' OR value LIKE 'AIza%' OR value = '');
+UPDATE app_settings SET value = 'info@renace.tech'
+WHERE key IN ('smtp_user', 'smtp_from') AND value LIKE '%renace.space%';
 SQL
-    log "✅ smtp_pass inválido eliminado de app_settings (si existía)"
+    log "✅ SMTP en app_settings corregido (si existía)"
 }
 
 restart_go_api() {
@@ -103,8 +105,7 @@ test_otp() {
     fi
 
     if echo "$body" | grep -qiE '535|authentication|smtp|credenciales'; then
-        err "❌ SMTP sigue fallando — MASTER_PASSWORD no es la contraseña del buzón Hostinger"
-        err "   Pon SMTP_PASS real en $SECRETS_LOCAL y vuelve a correr ./deploy.sh update"
+        err "❌ SMTP sigue fallando — revisa SMTP_USER/SMTP_PASS en Hostinger"
         return 1
     fi
 
@@ -128,8 +129,10 @@ main() {
         err "No hay SMTP_PASS ni MASTER_PASSWORD en $ENV_FILE"
         exit 1
     fi
-    log "SMTP_PASS ← MASTER_PASSWORD (rnv.env)"
+    log "SMTP: info@renace.tech (MASTER_PASSWORD)"
 
+    export SMTP_USER="info@renace.tech"
+    export SMTP_FROM="info@renace.tech"
     export SMTP_PASS="$smtp_pass"
     write_secrets_local "$smtp_pass"
 
