@@ -15,6 +15,7 @@ const geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta"
 type geminiClient struct {
 	apiKey string
 	model  string
+	http   *http.Client
 }
 
 type geminiPart struct {
@@ -48,11 +49,19 @@ type functionDeclaration struct {
 	Parameters  interface{} `json:"parameters"`
 }
 
+type generationConfig struct {
+	Temperature     float64 `json:"temperature,omitempty"`
+	TopP            float64 `json:"topP,omitempty"`
+	TopK            int     `json:"topK,omitempty"`
+	MaxOutputTokens int     `json:"maxOutputTokens,omitempty"`
+}
+
 type geminiRequest struct {
-	SystemInstruction *geminiContent  `json:"systemInstruction,omitempty"`
-	Contents          []geminiContent `json:"contents"`
-	Tools             []geminiTool    `json:"tools,omitempty"`
-	ToolConfig        *toolConfig     `json:"toolConfig,omitempty"`
+	SystemInstruction *geminiContent    `json:"systemInstruction,omitempty"`
+	Contents          []geminiContent   `json:"contents"`
+	Tools             []geminiTool      `json:"tools,omitempty"`
+	ToolConfig        *toolConfig       `json:"toolConfig,omitempty"`
+	GenerationConfig  *generationConfig `json:"generationConfig,omitempty"`
 }
 
 type toolConfig struct {
@@ -65,7 +74,8 @@ type functionCallingConfig struct {
 
 type geminiResponse struct {
 	Candidates []struct {
-		Content geminiContent `json:"content"`
+		Content      geminiContent `json:"content"`
+		FinishReason string        `json:"finishReason"`
 	} `json:"candidates"`
 	Error *struct {
 		Code    int    `json:"code"`
@@ -76,53 +86,81 @@ type geminiResponse struct {
 
 func newGeminiClient(apiKey, model string) *geminiClient {
 	if model == "" {
-		model = "gemini-2.0-flash"
+		model = "gemini-2.5-flash"
 	}
-	return &geminiClient{apiKey: apiKey, model: model}
+	return &geminiClient{
+		apiKey: apiKey,
+		model:  model,
+		http:   &http.Client{Timeout: 90 * time.Second},
+	}
 }
 
 func (g *geminiClient) generate(req geminiRequest) (*geminiResponse, error) {
-	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s", geminiBaseURL, g.model, g.apiKey)
+	if req.GenerationConfig == nil {
+		req.GenerationConfig = &generationConfig{
+			Temperature:     0.4,
+			TopP:            0.95,
+			MaxOutputTokens: 4096,
+		}
+	}
+
+	url := fmt.Sprintf("%s/models/%s:generateContent", geminiBaseURL, g.model)
 	raw, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(raw))
-	if err != nil {
-		return nil, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := (&http.Client{Timeout: 90 * time.Second}).Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var result geminiResponse
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("respuesta Gemini inválida: %w", err)
-	}
-
-	if result.Error != nil {
-		msg := result.Error.Message
-		if resp.StatusCode == 403 {
-			msg = "GEMINI_API_KEY inválida o sin permisos"
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt*800) * time.Millisecond)
 		}
-		if resp.StatusCode == 429 {
-			msg = "Quota exceeded (429): " + msg
+
+		httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(raw))
+		if err != nil {
+			return nil, err
 		}
-		return nil, fmt.Errorf("%s", msg)
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("x-goog-api-key", g.apiKey)
+
+		resp, err := g.http.Do(httpReq)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		var result geminiResponse
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, fmt.Errorf("respuesta Gemini inválida: %w", err)
+		}
+
+		if result.Error != nil {
+			msg := result.Error.Message
+			if resp.StatusCode == 403 {
+				msg = "GEMINI_API_KEY inválida o sin permisos"
+			}
+			if resp.StatusCode == 429 {
+				lastErr = fmt.Errorf("Quota exceeded (429): %s", msg)
+				continue
+			}
+			return nil, fmt.Errorf("%s", msg)
+		}
+		if resp.StatusCode >= 500 {
+			lastErr = fmt.Errorf("Gemini HTTP %d", resp.StatusCode)
+			continue
+		}
+		if resp.StatusCode >= 400 {
+			return nil, fmt.Errorf("Gemini HTTP %d: %s", resp.StatusCode, string(body))
+		}
+		if len(result.Candidates) == 0 {
+			return nil, fmt.Errorf("Gemini no devolvió candidatos")
+		}
+		return &result, nil
 	}
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("Gemini HTTP %d: %s", resp.StatusCode, string(body))
-	}
-	if len(result.Candidates) == 0 {
-		return nil, fmt.Errorf("Gemini no devolvió candidatos")
-	}
-	return &result, nil
+	return nil, lastErr
 }
 
 func extractText(content geminiContent) string {
@@ -145,8 +183,24 @@ func extractFunctionCalls(content geminiContent) []functionCall {
 	return calls
 }
 
+func emptyParams() map[string]interface{} {
+	return map[string]interface{}{
+		"type":       "object",
+		"properties": map[string]interface{}{},
+	}
+}
+
+func objectParams(properties map[string]interface{}, required []string) map[string]interface{} {
+	return map[string]interface{}{
+		"type":       "object",
+		"properties": properties,
+		"required":   required,
+	}
+}
+
 func toolDeclarations() []functionDeclaration {
 	return []functionDeclaration{
+		// ── Odoo ──────────────────────────────────────────────────────────
 		{
 			Name:        "odoo_test_connection",
 			Description: "Verifica la conexión con Odoo ERP y devuelve URL, base de datos y UID.",
@@ -154,9 +208,9 @@ func toolDeclarations() []functionDeclaration {
 		},
 		{
 			Name:        "odoo_search_products",
-			Description: "Busca productos en Odoo por nombre, referencia interna (SKU) o código de barras.",
+			Description: "Busca productos en Odoo por nombre, SKU o código de barras.",
 			Parameters: objectParams(map[string]interface{}{
-				"query": map[string]interface{}{"type": "string", "description": "Texto a buscar (nombre, SKU, barcode). Vacío lista productos activos."},
+				"query": map[string]interface{}{"type": "string", "description": "Texto a buscar. Vacío lista productos activos."},
 				"limit": map[string]interface{}{"type": "integer", "description": "Máximo de resultados (default 20, max 50)"},
 			}, []string{}),
 		},
@@ -183,12 +237,12 @@ func toolDeclarations() []functionDeclaration {
 			Description: "Actualiza campos de un producto existente en Odoo.",
 			Parameters: objectParams(map[string]interface{}{
 				"id":               map[string]interface{}{"type": "integer", "description": "ID del producto"},
-				"name":             map[string]interface{}{"type": "string", "description": "Nuevo nombre"},
-				"list_price":       map[string]interface{}{"type": "number", "description": "Nuevo precio de venta"},
-				"default_code":     map[string]interface{}{"type": "string", "description": "Nueva referencia/SKU"},
-				"description_sale": map[string]interface{}{"type": "string", "description": "Nueva descripción de venta"},
-				"standard_price":   map[string]interface{}{"type": "number", "description": "Nuevo coste"},
-				"active":           map[string]interface{}{"type": "boolean", "description": "Activo/inactivo"},
+				"name":             map[string]interface{}{"type": "string"},
+				"list_price":       map[string]interface{}{"type": "number"},
+				"default_code":     map[string]interface{}{"type": "string"},
+				"description_sale": map[string]interface{}{"type": "string"},
+				"standard_price":   map[string]interface{}{"type": "number"},
+				"active":           map[string]interface{}{"type": "boolean"},
 			}, []string{"id"}),
 		},
 		{
@@ -196,69 +250,200 @@ func toolDeclarations() []functionDeclaration {
 			Description: "Busca contactos/clientes/proveedores en Odoo.",
 			Parameters: objectParams(map[string]interface{}{
 				"query": map[string]interface{}{"type": "string", "description": "Nombre o email"},
-				"limit": map[string]interface{}{"type": "integer", "description": "Máximo de resultados"},
+				"limit": map[string]interface{}{"type": "integer"},
 			}, []string{}),
 		},
 		{
 			Name:        "odoo_list_categories",
 			Description: "Lista categorías de productos en Odoo.",
 			Parameters: objectParams(map[string]interface{}{
-				"limit": map[string]interface{}{"type": "integer", "description": "Máximo de categorías"},
+				"limit": map[string]interface{}{"type": "integer"},
 			}, []string{}),
 		},
+
+		// ── RNV Core ──────────────────────────────────────────────────────
 		{
-			Name:        "rnv_list_clients",
-			Description: "Lista clientes registrados en RNV Manager.",
+			Name:        "rnv_search",
+			Description: "Búsqueda global en clientes, VPS y servicios por nombre, email o IP.",
 			Parameters: objectParams(map[string]interface{}{
-				"limit": map[string]interface{}{"type": "integer", "description": "Máximo de clientes"},
-			}, []string{}),
-		},
-		{
-			Name:        "rnv_list_vps",
-			Description: "Lista servidores VPS en RNV Manager.",
-			Parameters:  emptyParams(),
+				"query": map[string]interface{}{"type": "string", "description": "Texto a buscar"},
+				"limit": map[string]interface{}{"type": "integer", "description": "Máximo por categoría (default 10)"},
+			}, []string{"query"}),
 		},
 		{
 			Name:        "rnv_dashboard_stats",
-			Description: "Obtiene estadísticas del panel: clientes, VPS, servicios, ingresos.",
+			Description: "Estadísticas del panel: clientes, VPS, servicios, ingresos, gastos y beneficio neto.",
+			Parameters:  emptyParams(),
+		},
+		{
+			Name:        "rnv_list_clients",
+			Description: "Lista clientes de RNV Manager. Puede filtrar por activos/inactivos.",
+			Parameters: objectParams(map[string]interface{}{
+				"query":     map[string]interface{}{"type": "string", "description": "Filtrar por nombre o email"},
+				"active":    map[string]interface{}{"type": "boolean", "description": "Solo activos (default true)"},
+				"limit":     map[string]interface{}{"type": "integer"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_get_client",
+			Description: "Detalle de un cliente con VPS, servicios y pagos recientes.",
+			Parameters: objectParams(map[string]interface{}{
+				"id":   map[string]interface{}{"type": "string", "description": "ID del cliente"},
+				"name": map[string]interface{}{"type": "string", "description": "Nombre parcial si no tienes ID"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_create_client",
+			Description: "Crea un nuevo cliente en RNV Manager.",
+			Parameters: objectParams(map[string]interface{}{
+				"name":        map[string]interface{}{"type": "string"},
+				"email":       map[string]interface{}{"type": "string"},
+				"phone":       map[string]interface{}{"type": "string"},
+				"companyName": map[string]interface{}{"type": "string"},
+				"monthlyFee":  map[string]interface{}{"type": "number", "description": "Cuota mensual base"},
+				"paymentDay":  map[string]interface{}{"type": "integer", "description": "Día de pago (1-28)"},
+				"notes":       map[string]interface{}{"type": "string"},
+			}, []string{"name"}),
+		},
+		{
+			Name:        "rnv_update_client",
+			Description: "Actualiza datos de un cliente existente.",
+			Parameters: objectParams(map[string]interface{}{
+				"id":          map[string]interface{}{"type": "string", "description": "ID del cliente"},
+				"name":        map[string]interface{}{"type": "string"},
+				"email":       map[string]interface{}{"type": "string"},
+				"phone":       map[string]interface{}{"type": "string"},
+				"companyName": map[string]interface{}{"type": "string"},
+				"monthlyFee":  map[string]interface{}{"type": "number"},
+				"paymentDay":  map[string]interface{}{"type": "integer"},
+				"isActive":    map[string]interface{}{"type": "boolean"},
+				"notes":       map[string]interface{}{"type": "string"},
+			}, []string{"id"}),
+		},
+		{
+			Name:        "rnv_list_vps",
+			Description: "Lista servidores VPS. Puede filtrar por estado o cliente.",
+			Parameters: objectParams(map[string]interface{}{
+				"status":   map[string]interface{}{"type": "string", "description": "running, stopped, unknown"},
+				"clientId": map[string]interface{}{"type": "string"},
+				"query":    map[string]interface{}{"type": "string", "description": "Nombre o IP"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_get_vps",
+			Description: "Detalle de un VPS con servicios asociados.",
+			Parameters: objectParams(map[string]interface{}{
+				"id":   map[string]interface{}{"type": "string"},
+				"name": map[string]interface{}{"type": "string", "description": "Nombre o IP parcial"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_list_services",
+			Description: "Lista servicios desplegados. Puede filtrar por VPS o cliente.",
+			Parameters: objectParams(map[string]interface{}{
+				"vpsId":    map[string]interface{}{"type": "string"},
+				"clientId": map[string]interface{}{"type": "string"},
+				"query":    map[string]interface{}{"type": "string"},
+				"limit":    map[string]interface{}{"type": "integer"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_get_service",
+			Description: "Detalle de un servicio por ID o nombre.",
+			Parameters: objectParams(map[string]interface{}{
+				"id":   map[string]interface{}{"type": "string"},
+				"name": map[string]interface{}{"type": "string"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_assign_service",
+			Description: "Asigna un servicio a un cliente y opcionalmente actualiza el monto mensual.",
+			Parameters: objectParams(map[string]interface{}{
+				"serviceId":   map[string]interface{}{"type": "string"},
+				"clientId":    map[string]interface{}{"type": "string"},
+				"clientName":  map[string]interface{}{"type": "string", "description": "Alternativa a clientId"},
+				"monthlyCost": map[string]interface{}{"type": "number"},
+			}, []string{"serviceId"}),
+		},
+		{
+			Name:        "rnv_billing_summary",
+			Description: "Resumen financiero: ingresos, gastos, beneficio y pagos próximos.",
+			Parameters:  emptyParams(),
+		},
+		{
+			Name:        "rnv_list_payments",
+			Description: "Lista pagos recientes, opcionalmente de un cliente.",
+			Parameters: objectParams(map[string]interface{}{
+				"clientId": map[string]interface{}{"type": "string"},
+				"limit":    map[string]interface{}{"type": "integer", "description": "Default 20"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_create_payment",
+			Description: "Registra un pago de un cliente. Requiere confirmación previa del usuario.",
+			Parameters: objectParams(map[string]interface{}{
+				"clientId":   map[string]interface{}{"type": "string"},
+				"clientName": map[string]interface{}{"type": "string", "description": "Alternativa a clientId"},
+				"amount":     map[string]interface{}{"type": "number"},
+				"currency":   map[string]interface{}{"type": "string", "description": "Default USD"},
+				"notes":      map[string]interface{}{"type": "string"},
+				"status":     map[string]interface{}{"type": "string", "description": "completed, pending, failed"},
+			}, []string{"amount"}),
+		},
+		{
+			Name:        "rnv_overdue_clients",
+			Description: "Clientes con pago vencido según su día de pago del mes.",
 			Parameters:  emptyParams(),
 		},
 	}
 }
 
-func emptyParams() map[string]interface{} {
-	return map[string]interface{}{
-		"type":       "object",
-		"properties": map[string]interface{}{},
-	}
-}
+const systemPrompt = `Eres el Asistente IA de RNV Manager — panel de control de infraestructura VPS, clientes, servicios y facturación.
+También tienes acceso a Odoo ERP (productos, contactos, categorías).
 
-func objectParams(properties map[string]interface{}, required []string) map[string]interface{} {
-	return map[string]interface{}{
-		"type":       "object",
-		"properties": properties,
-		"required":   required,
-	}
-}
+PERSONALIDAD:
+- Profesional, proactivo y conciso. Responde SIEMPRE en español.
+- Ejecuta herramientas cuando necesites datos reales; no inventes cifras ni IDs.
+- Si falta un dato (ID, monto), pregunta o busca por nombre antes de fallar.
 
-const systemPrompt = `Eres el Asistente IA de RNV Manager, un panel de gestión de VPS, clientes y servicios.
-También tienes acceso directo a Odoo ERP para consultar y editar productos, contactos y categorías.
-
-REGLAS:
-- Responde SIEMPRE en español, de forma clara y concisa.
-- Usa Markdown para tablas y listas cuando muestres datos.
-- Para acciones sugeridas al usuario, incluye bloques especiales:
-  :::action-buttons
-  Buscar productos Odoo
-  Crear producto
-  Ver clientes RNV
+FORMATO DE RESPUESTA:
+- Usa Markdown (tablas, listas, negritas) para datos.
+- Resúmenes numéricos con bloques:
+  :::summary-card
+  Clientes: 12
+  Ingresos: $4,500
   :::
-- Para resúmenes usa :::summary-card con líneas tipo "Campo: Valor"
-- Para navegar en la app usa :::navigate\n/ruta\n:::
-- Antes de ELIMINAR o desactivar productos, pide confirmación con :::confirm\nDescripción\n:::
-- Cuando edites productos en Odoo, confirma los cambios realizados con los valores nuevos.
-- Si Odoo no está configurado, indica ir a Ajustes → Integraciones Odoo.
-- Si no puedes hacer algo, explica qué falta configurar.
+- Acciones sugeridas:
+  :::action-buttons
+  Ver clientes activos
+  Registrar un pago
+  :::
+- Atajos rápidos al inicio:
+  :::quick-actions
+  Resumen financiero
+  Listar VPS
+  :::
+- Navegación en la app:
+  :::navigate
+  /clients
+  :::
+- Confirmación antes de mutaciones sensibles (pagos, desactivar, asignar). NUNCA pidas PIN ni contraseñas:
+  :::confirm
+  ¿Registrar pago de $100 a Juan Pérez?
+  :::
+- Animaciones opcionales: :::animate\ncelebrate\n::: o barrel-roll / shivering
+- Gráficos simples (CSV):
+  :::metrics-chart
+  Mes,Ingresos,Gastos
+  Ene,4000,1200
+  Feb,4500,1300
+  :::
 
-CAPACIDADES ODOO: buscar/crear/editar productos (product.template), buscar contactos, listar categorías.
-CAPACIDADES RNV: listar clientes, VPS y estadísticas del dashboard.`
+REGLAS DE SEGURIDAD:
+- NUNCA elimines datos sin confirmación explícita del usuario.
+- Antes de crear pagos o asignar servicios, confirma montos y destinatario.
+- Si Odoo no está configurado, indica ir a Ajustes → Integraciones Odoo.
+- Si una herramienta falla, explica el error y ofrece alternativas.
+
+CAPACIDADES RNV: buscar global, clientes (CRUD), VPS, servicios, asignar servicios, facturación, pagos, morosos, dashboard.
+CAPACIDADES ODOO: productos (CRUD), contactos, categorías, test de conexión.`

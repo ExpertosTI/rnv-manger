@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Server, Users, Settings, Database, FileCode, Zap, Palette, Menu, X, DollarSign, Shield, UsersRound } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { stats } from "@/lib/api";
 
 const sidebarItems = [
     { icon: LayoutDashboard, label: "Panel Principal", href: "/" },
@@ -25,17 +26,14 @@ export function AppSidebar() {
     const [vpsCount, setVpsCount] = useState<number | string>("...");
 
     useEffect(() => {
-        fetch("/api/stats")
-            .then(res => res.json())
-            .then(data => {
+        stats.dashboard()
+            .then((data) => {
                 if (data.success && data.data?.totals) {
                     setVpsCount(data.data.totals.vps || 0);
                 }
             })
             .catch(() => setVpsCount(0));
     }, []);
-
-    if (pathname === "/login") return null;
 
     const toggleSidebar = () => setIsOpen(!isOpen);
 

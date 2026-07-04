@@ -78,7 +78,7 @@ func RequestOTP(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		db.Create(&otp)
 
 		// Send email
-		if err := serviceslayer.SendOTPEmail(cfg, email, code); err != nil {
+		if err := serviceslayer.SendOTPEmail(db, cfg, email, code); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{
 				"success": false,
 				"error":   fmt.Sprintf("Error enviando email: %v. Verifica la configuracion SMTP.", err),
@@ -169,7 +169,7 @@ func VerifyOTP(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if ip != nil {
 			ipStr = *ip
 		}
-		go serviceslayer.SendLoginNotification(cfg, email, ipStr, time.Now().Format("2006-01-02 15:04:05 MST"))
+		go serviceslayer.SendLoginNotification(db, cfg, email, ipStr, time.Now().Format("2006-01-02 15:04:05 MST"))
 
 		// Set cookie
 		secure := strings.HasPrefix(cfg.AppURL, "https")

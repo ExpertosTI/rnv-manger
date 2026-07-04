@@ -186,7 +186,7 @@ func main() {
 		auth.POST("/odoo/sync", odooHandler.Sync(db, cfg))
 
 		// Email
-		auth.GET("/email", emailHandler.Config(cfg))
+		auth.GET("/email", emailHandler.Config(db, cfg))
 		auth.POST("/email", emailHandler.Send(db, cfg))
 
 		// AI Assistant

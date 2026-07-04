@@ -8,10 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Lock, Zap, Loader2, User, ArrowRight } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { motion } from "framer-motion";
+import { auth } from "@/lib/api";
 
 function LoginForm() {
     const [mode, setMode] = useState<"email" | "otp">("email");
-    const [email, setEmail] = useState("expertostird@gmail.com");
+    const [email, setEmail] = useState("");
     const [code, setCode] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
@@ -22,24 +23,16 @@ function LoginForm() {
     const requestOTP = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
-
         try {
-            const res = await fetch("/api/auth/request-otp", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email }),
-            });
-
-            const data = await res.json();
-
-            if (data.success) {
-                addToast("Código enviado correctamente", "success");
-                setMode("otp");
-            } else {
-                addToast(data.error || "Error al enviar el código", "error");
-            }
-        } catch {
-            addToast("Error de conexión con el servidor", "error");
+            await auth.requestOTP(email);
+            addToast("Código enviado correctamente", "success");
+            setMode("otp");
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : "";
+            addToast(
+                !msg || msg.includes("fetch") ? "Error de conexión con el servidor" : msg,
+                "error"
+            );
         } finally {
             setIsLoading(false);
         }
@@ -48,25 +41,17 @@ function LoginForm() {
     const verifyOTP = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
-
         try {
-            const res = await fetch("/api/auth/verify-otp", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, code }),
-            });
-
-            const data = await res.json();
-
-            if (data.success) {
-                addToast("Bienvenido, " + (data.user?.name || email), "success");
-                router.push(redirect);
-                router.refresh();
-            } else {
-                addToast(data.error || "Código incorrecto o expirado", "error");
-            }
-        } catch {
-            addToast("Error de conexión", "error");
+            const data = await auth.verifyOTP(email, code);
+            addToast("Bienvenido, " + (data.user?.name || email), "success");
+            router.push(redirect);
+            router.refresh();
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : "";
+            addToast(
+                !msg || msg.includes("fetch") ? "Error de conexión" : msg,
+                "error"
+            );
         } finally {
             setIsLoading(false);
         }
@@ -86,6 +71,7 @@ function LoginForm() {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
+                            autoFocus
                         />
                     </div>
                 </div>
@@ -118,10 +104,12 @@ function LoginForm() {
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <Input
                         type="text"
-                        placeholder="Ingresa el código (6 dígitos)"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        placeholder="000000"
                         className="pl-10 h-14 border-gray-200 focus:border-violet-500 focus:ring-violet-500 text-center text-2xl tracking-[0.5em] font-mono"
                         value={code}
-                        onChange={(e) => setCode(e.target.value)}
+                        onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                         required
                         maxLength={6}
                         autoFocus
@@ -132,7 +120,7 @@ function LoginForm() {
                 <Button
                     type="submit"
                     className="w-full h-14 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold text-lg rounded-2xl shadow-xl shadow-indigo-200 transition-all active:scale-[0.98]"
-                    disabled={isLoading}
+                    disabled={isLoading || code.length < 6}
                 >
                     {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : "Verificar y Entrar"}
                 </Button>

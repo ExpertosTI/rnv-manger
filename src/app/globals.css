@@ -254,45 +254,35 @@ body {
   animation: fadeIn 0.3s ease-out forwards;
 }
 
-/* ============================================
-   RNV Whiteboard - Hide Excalidraw Branding
-   ============================================ */
-
-/* Hide welcome screen content */
-.excalidraw .welcome-screen-center,
-.excalidraw .welcome-screen-menu-hints,
-.excalidraw [data-testid="welcome-screen-menu-hints"],
-.excalidraw .welcome-screen-shortcuts-hints {
-  display: none !important;
+/* Cone mascot animations */
+.cone-bounce {
+  animation: cone-bounce 2.4s ease-in-out infinite;
+}
+.cone-pulse {
+  animation: cone-pulse 1s ease-in-out infinite;
+}
+.cone-success {
+  animation: cone-success 0.5s ease-out;
+}
+.cone-shake {
+  animation: cone-shake 0.4s ease-in-out;
 }
 
-/* Hide Excalidraw logo/plus button in top-right */
-.excalidraw .dropdown-menu-button[aria-label*="Excalidraw"],
-.excalidraw [data-testid="dropdown-menu-Excalidraw+"],
-.excalidraw button[title*="Excalidraw"] {
-  display: none !important;
+@keyframes cone-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
 }
-
-/* Hide GitHub link */
-.excalidraw a[href*="github.com/excalidraw"] {
-  display: none !important;
+@keyframes cone-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.06); opacity: 0.9; }
 }
-
-/* Hide any external Excalidraw links */
-.excalidraw a[href*="excalidraw.com"],
-.excalidraw a[href*="plus.excalidraw"] {
-  display: none !important;
+@keyframes cone-success {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
 }
-
-/* Hide footer brand links */
-.excalidraw .encrypted-icon,
-.excalidraw [data-testid="encrypted-icon"] {
-  display: none !important;
-}
-
-/* Hide social/promo links in menu */
-.excalidraw .HelpDialog__link[href*="twitter"],
-.excalidraw .HelpDialog__link[href*="github"],
-.excalidraw a[href*="discord.gg"] {
-  display: none !important;
+@keyframes cone-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
 }

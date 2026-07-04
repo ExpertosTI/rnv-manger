@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import useSWR from "swr";
+import { fetcher } from "@/lib/api";
 
 // Types
 interface VPSItem {
@@ -51,9 +52,6 @@ interface ClientData {
     paymentDay: number;
     isActive: boolean;
 }
-
-// Fetcher for SWR
-const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 // Skeleton Components
 function StatCardSkeleton() {

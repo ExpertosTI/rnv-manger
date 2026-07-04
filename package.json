@@ -13,9 +13,7 @@
     "tauri:build:mac": "tauri build --target universal-apple-darwin"
   },
   "dependencies": {
-    "@excalidraw/excalidraw": "^0.18.0",
     "@tauri-apps/api": "^2.10.1",
-    "@xterm/addon-fit": "^0.11.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.26",
     "lucide-react": "^0.562.0",
@@ -26,9 +24,7 @@
     "recharts": "^2.15.1",
     "remark-gfm": "^4.0.1",
     "swr": "^2.3.8",
-    "tailwind-merge": "^3.4.0",
-    "xterm": "^5.3.0",
-    "zod": "^4.2.1"
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",

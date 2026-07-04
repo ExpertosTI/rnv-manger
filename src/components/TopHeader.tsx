@@ -20,8 +20,6 @@ const pageTitles: Record<string, string> = {
 export function TopHeader() {
     const pathname = usePathname();
 
-    if (pathname === "/login") return null;
-
     // Match dynamic routes like /clients/[id]
     const base = "/" + pathname.split("/")[1];
     const title = pageTitles[pathname] || pageTitles[base] || "RNV Manager";

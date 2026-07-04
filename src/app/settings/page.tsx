@@ -332,7 +332,7 @@ export default function SettingsPage() {
                                 <div className="md:col-span-2 p-4 rounded-xl bg-violet-900/20 border border-violet-700/40 text-sm text-gray-300 space-y-2">
                                     <p>El asistente flotante (cono violeta) usa <code className="bg-gray-700 px-1 rounded">GEMINI_API_KEY</code> en el servidor.</p>
                                     <p>Puede buscar, crear y editar productos Odoo, consultar contactos y ver datos de RNV Manager.</p>
-                                    <p className="text-gray-500">Ejemplo en <code className="bg-gray-700 px-1 rounded">.env</code>: GEMINI_API_KEY=AIza... y GEMINI_MODEL=gemini-2.0-flash</p>
+                                    <p className="text-gray-500">Ejemplo en <code className="bg-gray-700 px-1 rounded">.env</code>: GEMINI_API_KEY=AIza... y GEMINI_MODEL=gemini-2.5-flash</p>
                                 </div>
                             )}
                         </div>

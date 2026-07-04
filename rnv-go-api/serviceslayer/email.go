@@ -6,35 +6,105 @@ import (
 	"strconv"
 
 	"github.com/renace/rnv-go-api/config"
+	"github.com/renace/rnv-go-api/models"
 	"gopkg.in/gomail.v2"
+	"gorm.io/gorm"
 )
 
-// SendEmail sends an email via SMTP using the app's config.
-func SendEmail(cfg *config.Config, to, subject, htmlBody string) error {
-	if cfg.SMTPHost == "" {
-		return fmt.Errorf("SMTP no configurado")
+// SMTPConfig holds resolved SMTP credentials (DB settings override env).
+type SMTPConfig struct {
+	Host string
+	Port string
+	User string
+	Pass string
+	From string
+}
+
+// ResolveSMTPConfig loads SMTP from DB settings, falling back to env.
+func ResolveSMTPConfig(db *gorm.DB, cfg *config.Config) SMTPConfig {
+	sc := SMTPConfig{
+		Host: cfg.SMTPHost,
+		Port: cfg.SMTPPort,
+		User: cfg.SMTPUser,
+		Pass: cfg.SMTPPass,
+		From: cfg.SMTPFrom,
+	}
+	if sc.Port == "" {
+		sc.Port = "587"
 	}
 
-	from := cfg.SMTPFrom
-	if from == "" {
-		from = cfg.SMTPUser
+	if db == nil {
+		return sc
+	}
+
+	var settings []models.AppSettings
+	db.Where("key IN ?", []string{
+		"smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from",
+	}).Find(&settings)
+
+	for _, s := range settings {
+		if s.Value == "" {
+			continue
+		}
+		switch s.Key {
+		case "smtp_host":
+			sc.Host = s.Value
+		case "smtp_port":
+			sc.Port = s.Value
+		case "smtp_user":
+			sc.User = s.Value
+		case "smtp_pass":
+			sc.Pass = s.Value
+		case "smtp_from":
+			sc.From = s.Value
+		}
+	}
+	return sc
+}
+
+func (sc SMTPConfig) configured() bool {
+	return sc.Host != "" && sc.User != "" && sc.Pass != ""
+}
+
+func (sc SMTPConfig) fromAddress() string {
+	if sc.From != "" {
+		return sc.From
+	}
+	return sc.User
+}
+
+func newMailDialer(sc SMTPConfig) *gomail.Dialer {
+	port, _ := strconv.Atoi(sc.Port)
+	if port == 0 {
+		port = 587
+	}
+	d := gomail.NewDialer(sc.Host, port, sc.User, sc.Pass)
+	d.TLSConfig = &tls.Config{ServerName: sc.Host}
+	// Port 465 uses implicit TLS (SMTPS)
+	if port == 465 {
+		d.SSL = true
+	}
+	return d
+}
+
+// SendEmail sends an email via SMTP using resolved config.
+func SendEmail(db *gorm.DB, cfg *config.Config, to, subject, htmlBody string) error {
+	sc := ResolveSMTPConfig(db, cfg)
+	if !sc.configured() {
+		return fmt.Errorf("SMTP no configurado (define SMTP_* en .env o en Ajustes)")
 	}
 
 	m := gomail.NewMessage()
-	m.SetHeader("From", from)
+	m.SetHeader("From", sc.fromAddress())
 	m.SetHeader("To", to)
 	m.SetHeader("Subject", subject)
 	m.SetBody("text/html", htmlBody)
 
-	port, _ := strconv.Atoi(cfg.SMTPPort)
-	d := gomail.NewDialer(cfg.SMTPHost, port, cfg.SMTPUser, cfg.SMTPPass)
-	d.TLSConfig = &tls.Config{InsecureSkipVerify: true}
-
-	return d.DialAndSend(m)
+	return newMailDialer(sc).DialAndSend(m)
 }
 
 // SendOTPEmail sends the OTP code to the user.
-func SendOTPEmail(cfg *config.Config, to, code string) error {
+func SendOTPEmail(db *gorm.DB, cfg *config.Config, to, code string) error {
 	subject := "RNV Manager - Codigo de acceso"
 	body := fmt.Sprintf(`
 		<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
@@ -54,11 +124,11 @@ func SendOTPEmail(cfg *config.Config, to, code string) error {
 			</p>
 		</div>
 	`, code)
-	return SendEmail(cfg, to, subject, body)
+	return SendEmail(db, cfg, to, subject, body)
 }
 
 // SendLoginNotification sends a notification about a new login.
-func SendLoginNotification(cfg *config.Config, email, ip, timestamp string) error {
+func SendLoginNotification(db *gorm.DB, cfg *config.Config, email, ip, timestamp string) error {
 	if cfg.NotificationEmail == "" {
 		return nil
 	}
@@ -79,5 +149,5 @@ func SendLoginNotification(cfg *config.Config, email, ip, timestamp string) erro
 			</div>
 		</div>
 	`, email, ip, timestamp)
-	return SendEmail(cfg, cfg.NotificationEmail, subject, body)
+	return SendEmail(db, cfg, cfg.NotificationEmail, subject, body)
 }

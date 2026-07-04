@@ -3,15 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Bell, X, CheckCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-
-interface Notification {
-  id: string;
-  type: string;
-  title: string;
-  message: string;
-  isRead: boolean;
-  createdAt: string;
-}
+import { notifications as notificationsApi, type Notification } from "@/lib/api";
 
 export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -21,8 +13,7 @@ export function NotificationBell() {
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch("/api/notifications?limit=20");
-      const data = await res.json();
+      const data = await notificationsApi.list();
       if (data.success) {
         setNotifications(data.data);
         setUnreadCount(data.unreadCount);
@@ -50,11 +41,7 @@ export function NotificationBell() {
 
   const markAllRead = async () => {
     try {
-      await fetch("/api/notifications", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ markAll: true }),
-      });
+      await notificationsApi.markRead();
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
       setUnreadCount(0);
     } catch (e) {

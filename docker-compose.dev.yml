@@ -1,0 +1,59 @@
+# RNV Manager — desarrollo local (sin Swarm/Traefik)
+# Uso: docker compose -f docker-compose.dev.yml up -d --build
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-rnvadmin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-rnv_secure_password_2025}
+      POSTGRES_DB: ${DB_NAME:-rnv_manager}
+    ports:
+      - "5432:5432"
+    volumes:
+      - rnv_postgres_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rnvadmin} -d ${DB_NAME:-rnv_manager}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  go-api:
+    build:
+      context: ./rnv-go-api
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-rnvadmin}:${DB_PASSWORD:-rnv_secure_password_2025}@db:5432/${DB_NAME:-rnv_manager}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-rnv-super-secret-jwt-key-change-in-production-2025}
+      PORT: "8080"
+      GIN_MODE: ${GIN_MODE:-debug}
+      APP_URL: ${APP_URL:-http://localhost:4200}
+      MASTER_PASSWORD: ${MASTER_PASSWORD:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      NOTIFICATION_EMAIL: ${NOTIFICATION_EMAIL:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "4200:3000"
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_URL: http://go-api:8080
+    depends_on:
+      - go-api
+
+volumes:
+  rnv_postgres_dev:

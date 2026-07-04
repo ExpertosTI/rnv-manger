@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { AppSidebar } from "@/components/AppSidebar";
+import { AppShell } from "@/components/AppShell";
 import { ToastProvider } from "@/components/ui/toast";
-import { TopHeader } from "@/components/TopHeader";
-import { AIAssistantShell } from "@/components/AIAssistantShell";
 
 const inter = Inter({
     subsets: ["latin"],
@@ -13,7 +11,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
     title: "RNV Manager",
-    description: "Advanced VPS and Service Management",
+    description: "Panel de Control de Infraestructura",
 };
 
 export default function RootLayout({
@@ -23,18 +21,9 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="es" className={inter.variable} suppressHydrationWarning>
-            <body className="font-sans antialiased min-h-screen flex bg-gradient-to-br from-slate-50 to-purple-50/30">
+            <body className="font-sans antialiased min-h-screen bg-gradient-to-br from-slate-50 to-purple-50/30">
                 <ToastProvider>
-                    <AppSidebar />
-                    <div className="flex-1 flex flex-col h-screen overflow-hidden">
-                        <TopHeader />
-                        <main className="flex-1 overflow-y-auto">
-                            <div className="p-6 max-w-7xl mx-auto">
-                                {children}
-                            </div>
-                        </main>
-                    </div>
-                    <AIAssistantShell />
+                    <AppShell>{children}</AppShell>
                 </ToastProvider>
             </body>
         </html>

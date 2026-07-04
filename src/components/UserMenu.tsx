@@ -4,15 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, User, Shield, Settings, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-
-interface UserData {
-  id: string;
-  name: string;
-  username: string;
-  email: string;
-  role: string;
-  avatar: string | null;
-}
+import { auth, type User as UserData } from "@/lib/api";
 
 export function UserMenu() {
   const [user, setUser] = useState<UserData | null>(null);
@@ -21,8 +13,7 @@ export function UserMenu() {
   const router = useRouter();
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => res.json())
+    auth.me()
       .then((data) => {
         if (data.success) setUser(data.user);
       })
@@ -40,7 +31,9 @@ export function UserMenu() {
   }, []);
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    try {
+      await auth.logout();
+    } catch { /* session may already be gone */ }
     router.push("/login");
     router.refresh();
   };

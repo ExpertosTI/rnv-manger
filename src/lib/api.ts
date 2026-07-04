@@ -23,9 +23,23 @@ async function request<T>(
     return res.json();
 }
 
+/** SWR-compatible fetcher for /api paths */
+export const fetcher = <T = unknown>(path: string): Promise<T> =>
+    request<T>(path.startsWith("/api") ? path.slice(4) : path);
+
 // ── Auth ────────────────────────────────────────────────────────────────────
 
 export const auth = {
+    requestOTP: (email: string) =>
+        request<{ success: boolean; error?: string }>("/auth/request-otp", {
+            method: "POST",
+            body: JSON.stringify({ email }),
+        }),
+    verifyOTP: (email: string, code: string) =>
+        request<{ success: boolean; user?: User; error?: string }>("/auth/verify-otp", {
+            method: "POST",
+            body: JSON.stringify({ email, code }),
+        }),
     login: (username: string, password: string) =>
         request<{ success: boolean; token: string; user: User }>("/auth/login", {
             method: "POST",
@@ -33,6 +47,28 @@ export const auth = {
         }),
     logout: () => request<{ success: boolean }>("/auth/logout", { method: "POST" }),
     me: () => request<{ success: boolean; user: User }>("/auth/me"),
+};
+
+// ── AI ──────────────────────────────────────────────────────────────────────
+
+export const ai = {
+    chat: (
+        message: string,
+        history: { role: string; content: string }[],
+        url?: string
+    ) =>
+        request<{
+            success: boolean;
+            response: string;
+            executedFunctions?: Array<{ name: string; args?: unknown; result?: { success?: boolean } }>;
+            error?: string;
+        }>("/ai/chat", {
+            method: "POST",
+            body: JSON.stringify({ message, history, url }),
+        }).then((data) => {
+            if (!data.success) throw new Error(data.error || "Error del asistente");
+            return data;
+        }),
 };
 
 // ── VPS ─────────────────────────────────────────────────────────────────────

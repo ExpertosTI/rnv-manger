@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Users, Plus, Search, Mail, Phone, Calendar, DollarSign, AlertTriangle, RefreshCw, Building, FileText } from "lucide-react";
 import { motion } from "framer-motion";
 import { useToast } from "@/components/ui/toast";
+import { clients as clientsApi, type Client } from "@/lib/api";
 
 export default function ClientsPage() {
-    const [clients, setClients] = useState<any[]>([]);
+    const [clients, setClients] = useState<Client[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -30,21 +31,18 @@ export default function ClientsPage() {
         paymentDay: "1",
     });
 
-    const fetchClients = () => {
+    const fetchClients = useCallback(() => {
         setIsLoading(true);
-        fetch("/api/clients")
-            .then(res => res.json())
-            .then(response => {
-                // Handle both { success: true, data: [...] } and array format
-                const data = response.data || response;
-                setClients(Array.isArray(data) ? data : []);
-                setIsLoading(false);
+        clientsApi.list()
+            .then((response) => {
+                setClients(Array.isArray(response.data) ? response.data : []);
             })
-            .catch(err => {
+            .catch((err) => {
                 console.error("Error fetching clients:", err);
-                setIsLoading(false);
-            });
-    };
+                addToast("Error al cargar clientes", "error");
+            })
+            .finally(() => setIsLoading(false));
+    }, [addToast]);
 
     useEffect(() => {
         fetchClients();
@@ -64,31 +62,21 @@ export default function ClientsPage() {
 
         setIsSubmitting(true);
         try {
-            const response = await fetch("/api/clients", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    name: formData.name,
-                    email: formData.email || null,
-                    phone: formData.phone || null,
-                    companyName: formData.companyName || null,
-                    notes: formData.notes || null,
-                    monthlyFee: parseFloat(formData.monthlyFee) || 0,
-                    paymentDay: parseInt(formData.paymentDay) || 1,
-                }),
+            await clientsApi.create({
+                name: formData.name,
+                email: formData.email || undefined,
+                phone: formData.phone || undefined,
+                companyName: formData.companyName || undefined,
+                notes: formData.notes || undefined,
+                monthlyFee: parseFloat(formData.monthlyFee) || 0,
+                paymentDay: parseInt(formData.paymentDay) || 1,
             });
-
-            if (response.ok) {
-                addToast("Cliente creado exitosamente", "success");
-                setIsModalOpen(false);
-                setFormData({ name: "", email: "", phone: "", companyName: "", notes: "", monthlyFee: "", paymentDay: "1" });
-                fetchClients();
-            } else {
-                const error = await response.json();
-                addToast(error.error || "Error al crear cliente", "error");
-            }
+            addToast("Cliente creado exitosamente", "success");
+            setIsModalOpen(false);
+            setFormData({ name: "", email: "", phone: "", companyName: "", notes: "", monthlyFee: "", paymentDay: "1" });
+            fetchClients();
         } catch (error) {
-            addToast("Error de conexión", "error");
+            addToast(error instanceof Error ? error.message : "Error de conexión", "error");
         } finally {
             setIsSubmitting(false);
         }

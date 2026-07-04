@@ -2,9 +2,12 @@ package ai
 
 import (
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/renace/rnv-go-api/config"
+	"github.com/renace/rnv-go-api/models"
 	"gorm.io/gorm"
 )
 
@@ -18,6 +21,8 @@ type chatRequest struct {
 	History []chatMessage `json:"history"`
 	URL     string        `json:"url"`
 }
+
+var entityPathRe = regexp.MustCompile(`^/(clients|vps|services)/([a-zA-Z0-9_-]+)`)
 
 func Chat(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -37,6 +42,11 @@ func Chat(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if req.Message == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "message requerido"})
 			return
+		}
+
+		// Cap history to keep tokens under control
+		if len(req.History) > 20 {
+			req.History = req.History[len(req.History)-20:]
 		}
 
 		response, executed, err := runChat(db, cfg, req)
@@ -59,15 +69,16 @@ func runChat(db *gorm.DB, cfg *config.Config, req chatRequest) (string, []execut
 
 	contents := buildContents(req)
 	tools := []geminiTool{{FunctionDeclarations: toolDeclarations()}}
+	sysPrompt := systemPrompt + pageContext(db, req.URL)
 
 	var allExecuted []executedFunction
-	const maxTurns = 8
+	const maxTurns = 10
 
 	for turn := 0; turn < maxTurns; turn++ {
 		genReq := geminiRequest{
 			SystemInstruction: &geminiContent{
 				Role:  "user",
-				Parts: []geminiPart{{Text: systemPrompt + pageContext(req.URL)}},
+				Parts: []geminiPart{{Text: sysPrompt}},
 			},
 			Contents: contents,
 			Tools:    tools,
@@ -125,6 +136,11 @@ func buildContents(req chatRequest) []geminiContent {
 		if msg.Content == "" {
 			continue
 		}
+		// Strip rich-block markup from history to save tokens
+		content := stripRichBlocks(msg.Content)
+		if content == "" {
+			continue
+		}
 		role := msg.Role
 		if role != "user" && role != "model" {
 			if role == "assistant" {
@@ -133,9 +149,13 @@ func buildContents(req chatRequest) []geminiContent {
 				continue
 			}
 		}
+		// Truncate very long history messages
+		if len(content) > 2000 {
+			content = content[:2000] + "…"
+		}
 		contents = append(contents, geminiContent{
 			Role:  role,
-			Parts: []geminiPart{{Text: msg.Content}},
+			Parts: []geminiPart{{Text: content}},
 		})
 	}
 
@@ -146,9 +166,67 @@ func buildContents(req chatRequest) []geminiContent {
 	return contents
 }
 
-func pageContext(url string) string {
+func stripRichBlocks(s string) string {
+	re := regexp.MustCompile(`:::[\w][\w-]*\n[\s\S]*?:::`)
+	return strings.TrimSpace(re.ReplaceAllString(s, ""))
+}
+
+func pageContext(db *gorm.DB, url string) string {
 	if url == "" {
 		return ""
 	}
-	return "\n\nEl usuario está en la página: " + url + "."
+
+	var b strings.Builder
+	b.WriteString("\n\nCONTEXTO DE PÁGINA:\nEl usuario está en: ")
+	b.WriteString(url)
+
+	matches := entityPathRe.FindStringSubmatch(url)
+	if len(matches) == 3 {
+		entity, id := matches[1], matches[2]
+		switch entity {
+		case "clients":
+			var c models.Client
+			if err := db.Select("id, name, email, monthly_fee, total_monthly_cost, payment_day, is_active").
+				First(&c, "id = ?", id).Error; err == nil {
+				b.WriteString("\nCliente actual: ")
+				b.WriteString(c.Name)
+				b.WriteString(" (id=")
+				b.WriteString(c.ID)
+				b.WriteString(")")
+				if c.Email != nil {
+					b.WriteString(", email=")
+					b.WriteString(*c.Email)
+				}
+			}
+		case "vps":
+			var v models.VPS
+			if err := db.Select("id, name, ip_address, status, monthly_cost, provider").
+				First(&v, "id = ?", id).Error; err == nil {
+				b.WriteString("\nVPS actual: ")
+				b.WriteString(v.Name)
+				b.WriteString(" (id=")
+				b.WriteString(v.ID)
+				b.WriteString(", ip=")
+				b.WriteString(v.IPAddress)
+				b.WriteString(", status=")
+				b.WriteString(v.Status)
+				b.WriteString(")")
+			}
+		case "services":
+			var s models.Service
+			if err := db.Select("id, name, type, status, monthly_cost").
+				First(&s, "id = ?", id).Error; err == nil {
+				b.WriteString("\nServicio actual: ")
+				b.WriteString(s.Name)
+				b.WriteString(" (id=")
+				b.WriteString(s.ID)
+				b.WriteString(", type=")
+				b.WriteString(s.Type)
+				b.WriteString(")")
+			}
+		}
+	}
+
+	b.WriteString("\nUsa este contexto para responder sin pedir IDs que ya conoces.")
+	return b.String()
 }

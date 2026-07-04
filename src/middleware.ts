@@ -18,10 +18,11 @@ export function middleware(request: NextRequest) {
   const session = request.cookies.get("rnv_session");
   const sessionValue = session?.value;
 
-  // Valid session: JWT token set by Go API (long string) or legacy value
+  // JWT session cookie set by Go API (three base64 segments)
   const isAuthenticated =
-    sessionValue === "authenticated" ||
-    (!!sessionValue && sessionValue.length >= 32);
+    !!sessionValue &&
+    sessionValue.length >= 32 &&
+    sessionValue.split(".").length === 3;
 
   // Redirect unauthenticated users to login
   if (!isAuthenticated) {
