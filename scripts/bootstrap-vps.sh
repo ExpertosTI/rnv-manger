@@ -7,12 +7,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="/etc/rnv-manager/rnv.env"
 SECRETS_LOCAL="/etc/rnv-manager/secrets.local"
 STACK_GO_API="rnv-manager_go-api"
+STACK_APP="rnv-manager_app"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 log()  { echo -e "${GREEN}$*${NC}" >&2; }
 warn() { echo -e "${YELLOW}$*${NC}" >&2; }
 err()  { echo -e "${RED}$*${NC}" >&2; }
-die()  { err "$*"; exit 1; }
 
 load_file() {
     local f="$1"
@@ -71,7 +71,39 @@ SQL
     log "✅ SMTP en app_settings limpiado (usa env del stack)"
 }
 
-apply_stack_env() {
+# Imagen local más reciente si el tag del servicio no existe (evita 404 tras stack deploy)
+ensure_service_image() {
+    local svc="$1"
+    local repo="$2"
+    local current best
+    current="$(docker service inspect "$svc" --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' 2>/dev/null || echo "")"
+    [ -n "$current" ] || return 0
+    if docker image inspect "$current" >/dev/null 2>&1; then
+        return 0
+    fi
+    best="$(docker images --format '{{.Repository}}:{{.Tag}}' | grep "^${repo}:" | grep -v '<none>' | head -1)"
+    if [ -n "$best" ]; then
+        warn "Imagen ${current} no existe — restaurando ${best}"
+        docker service update --image "$best" --force "$svc" >/dev/null
+        wait_service "$svc"
+    else
+        err "No hay imagen local ${repo}:* — ejecuta ./deploy.sh update"
+    fi
+}
+
+wait_service() {
+    local svc="$1"
+    local i rep
+    for i in $(seq 1 60); do
+        rep=$(docker service ls --filter "name=${svc}" --format '{{.Replicas}}' 2>/dev/null || echo "0/0")
+        [ "$rep" = "1/1" ] && return 0
+        sleep 2
+    done
+    warn "Servicio ${svc} no llegó a 1/1 (estado: ${rep:-?})"
+    return 1
+}
+
+apply_go_api_smtp_env() {
     load_file "$ENV_FILE"
     load_file "$ROOT/.env"
 
@@ -80,20 +112,31 @@ apply_stack_env() {
         return 0
     fi
 
-    local git_sha
-    git_sha="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo latest)"
-    log "🚀 Aplicando env SMTP al stack Swarm (@ ${git_sha})..."
-    cd "$ROOT"
-    GIT_SHA="$git_sha" docker stack deploy -c docker-compose.yml rnv-manager >/dev/null
+    ensure_service_image "$STACK_GO_API" "rnv-manger-go-api"
+    ensure_service_image "$STACK_APP" "rnv-manger-app"
 
-    log "♻️  Reiniciando $STACK_GO_API con env nuevo..."
-    docker service update --force "$STACK_GO_API" >/dev/null
-    local i rep
-    for i in $(seq 1 60); do
-        rep=$(docker service ls --filter "name=${STACK_GO_API}" --format '{{.Replicas}}' 2>/dev/null || echo "0/0")
-        [ "$rep" = "1/1" ] && break
-        sleep 2
-    done
+    local smtp_user="${SMTP_USER:-info@renace.tech}"
+    local smtp_from="${SMTP_FROM:-info@renace.tech}"
+    local smtp_host="${SMTP_HOST:-smtp.hostinger.com}"
+    local smtp_port="${SMTP_PORT:-465}"
+    local smtp_pass="${SMTP_PASS:-}"
+
+    log "♻️  Aplicando SMTP en ${STACK_GO_API} (${smtp_user}:${smtp_port})..."
+    docker service update \
+        --env-rm SMTP_USER \
+        --env-add "SMTP_USER=${smtp_user}" \
+        --env-rm SMTP_FROM \
+        --env-add "SMTP_FROM=${smtp_from}" \
+        --env-rm SMTP_HOST \
+        --env-add "SMTP_HOST=${smtp_host}" \
+        --env-rm SMTP_PORT \
+        --env-add "SMTP_PORT=${smtp_port}" \
+        --env-rm SMTP_PASS \
+        --env-add "SMTP_PASS=${smtp_pass}" \
+        --force \
+        "$STACK_GO_API" >/dev/null
+
+    wait_service "$STACK_GO_API"
 }
 
 verify_go_api_smtp_env() {
@@ -103,10 +146,25 @@ verify_go_api_smtp_env() {
     log "🔍 go-api SMTP_USER=$(docker exec "$api_cid" printenv SMTP_USER 2>/dev/null || echo '?') SMTP_PORT=$(docker exec "$api_cid" printenv SMTP_PORT 2>/dev/null || echo '?')"
 }
 
+wait_for_public_api() {
+    local url="${APP_URL:-https://rnv.renace.tech}"
+    local i body
+    for i in $(seq 1 15); do
+        body=$(curl -sS --max-redirs 0 "${url}/api/health" 2>/dev/null) || body=""
+        if echo "$body" | grep -q '"status"'; then
+            log "✅ API pública healthy"
+            return 0
+        fi
+        sleep 2
+    done
+    err "API pública no responde — revisa: docker service ps ${STACK_GO_API}"
+    return 1
+}
+
 test_otp() {
     local url="${APP_URL:-https://rnv.renace.tech}"
     local email="${NOTIFICATION_EMAIL:-expertostird@gmail.com}"
-    local body code
+    local body
 
     log "📧 Probando OTP → ${email}"
     body=$(curl -sS -X POST "${url}/api/auth/request-otp" \
@@ -123,8 +181,13 @@ test_otp() {
         return 1
     fi
 
+    if echo "$body" | grep -qi '404'; then
+        err "❌ API devuelve 404 — go-api o proxy caído"
+        return 1
+    fi
+
     warn "OTP test: ${body:-sin respuesta}"
-    return 0
+    return 1
 }
 
 main() {
@@ -158,15 +221,15 @@ main() {
     fi
 
     clear_bad_smtp_in_db
-    apply_stack_env
+    apply_go_api_smtp_env
     verify_go_api_smtp_env
-    sleep 3
+    wait_for_public_api || true
     if ! test_otp; then
         warn "Reintentando OTP con SMTP_PORT=587..."
         export SMTP_PORT=587
         "$ROOT/scripts/seed-env.sh" >/dev/null 2>&1 || true
-        apply_stack_env
-        sleep 3
+        apply_go_api_smtp_env
+        wait_for_public_api || true
         test_otp || true
     fi
 }
