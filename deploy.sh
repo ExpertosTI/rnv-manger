@@ -209,13 +209,14 @@ deploy_production() {
 deploy_update() {
     ensure_docker
     ensure_env_file
+    load_env
     git_sync
     mkdir -p backups
     local db_cid
     db_cid="$(db_container_id)"
     if [ -n "$db_cid" ]; then
         log "💾 Backup previo al deploy..."
-        docker exec -i "$db_cid" pg_dump -U "${DB_USER}" -Fc "${DB_NAME}" \
+        docker exec -i "$db_cid" pg_dump -U "${DB_USER:-rnvadmin}" -Fc "${DB_NAME:-rnv_manager}" \
             > "backups/pre_deploy_$(date +%Y%m%d_%H%M%S).dump" 2>/dev/null || true
     fi
     deploy_production
