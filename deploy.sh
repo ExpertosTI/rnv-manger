@@ -208,23 +208,33 @@ wait_for_stack() {
 health_check() {
     local url="${APP_URL:-https://${APP_DOMAIN}}"
     log "🏥 Health check: ${url}/api/health"
-    local body
-    body=$(curl -sS --max-redirs 0 "${url}/api/health" 2>/dev/null) || true
-    if echo "$body" | grep -q '"status"'; then
-        log "✅ API healthy"
-        return 0
-    fi
+    local body="" public_body="" attempt
+
+    for attempt in 1 2 3 4 5 6; do
+        body=$(curl -sS --max-redirs 0 "${url}/api/health" 2>/dev/null) || true
+        public_body="$body"
+        if echo "$body" | grep -q '"status"'; then
+            log "✅ API healthy (público)"
+            return 0
+        fi
+        if [ "$attempt" -lt 6 ]; then
+            echo -n "   reintento ${attempt}/5... "
+            sleep 5
+        fi
+    done
+
     # Fallback: go-api directo en Swarm
     local api_cid
     api_cid="$(docker ps -q -f "name=$(swarm_service go-api)" | head -1)"
     if [ -n "$api_cid" ]; then
         body=$(docker exec "$api_cid" wget -qO- http://localhost:8080/api/health 2>/dev/null) || true
         if echo "$body" | grep -q '"status"'; then
-            log "✅ go-api healthy (interno); Traefik /api pendiente de propagar"
+            warn "go-api OK internamente; proxy público /api aún no responde"
+            warn "Respuesta pública: ${public_body:-sin respuesta}"
             return 0
         fi
     fi
-    die "API no healthy. Respuesta pública: ${body:-sin respuesta}"
+    die "API no healthy. Respuesta pública: ${public_body:-sin respuesta}"
 }
 
 deploy_production() {

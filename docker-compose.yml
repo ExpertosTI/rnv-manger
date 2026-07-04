@@ -57,7 +57,6 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
     networks:
       - rnv_net
-      - RenaceNet
     healthcheck:
       disable: true
     deploy:
@@ -67,16 +66,6 @@ services:
       update_config:
         failure_action: continue
         order: start-first
-      labels:
-        - "traefik.enable=true"
-        - "traefik.docker.network=RenaceNet"
-        - "traefik.http.routers.rnv-api.rule=Host(`rnv.renace.tech`) && PathPrefix(`/api`)"
-        - "traefik.http.routers.rnv-api.entrypoints=websecure"
-        - "traefik.http.routers.rnv-api.tls=true"
-        - "traefik.http.routers.rnv-api.tls.certresolver=letsencryptresolver"
-        - "traefik.http.routers.rnv-api.priority=100"
-        - "traefik.http.routers.rnv-api.service=rnv-api"
-        - "traefik.http.services.rnv-api.loadbalancer.server.port=8080"
 
   # ── Next.js Frontend (UI + proxy /api → go-api) ───────────────────────────
   app:
@@ -102,7 +91,6 @@ services:
         - "traefik.http.routers.rnv-app.entrypoints=websecure"
         - "traefik.http.routers.rnv-app.tls=true"
         - "traefik.http.routers.rnv-app.tls.certresolver=letsencryptresolver"
-        - "traefik.http.routers.rnv-app.priority=1"
         - "traefik.http.services.rnv-app.loadbalancer.server.port=3000"
 
   # ── Daily DB Backup ────────────────────────────────────────────────────────
