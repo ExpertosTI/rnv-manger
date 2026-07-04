@@ -34,10 +34,6 @@ func Send(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		contentType := "text/plain"
-		if req.IsHTML {
-			contentType = "text/html"
-		}
 		body := req.Body
 		if !req.IsHTML {
 			body = fmt.Sprintf("<pre>%s</pre>", req.Body)
