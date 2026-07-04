@@ -82,9 +82,19 @@ ensure_env_file() {
         cp env.template "$ROOT/.env"
         die "Edita .env (o crea $ENV_FILE) y vuelve a ejecutar."
     fi
-    # Mantener .env sincronizado con producción
-    if [ -f "$ENV_FILE" ] && [ ! -f "$ROOT/.env" ]; then
+    # Siempre sincronizar producción → .env del repo
+    if [ -f "$ENV_FILE" ]; then
         cp "$ENV_FILE" "$ROOT/.env"
+    fi
+    # secrets.local opcional (GEMINI, SMTP, etc.) sin tocar git
+    if [ -f "/etc/rnv-manager/secrets.local" ]; then
+        set -a
+        # shellcheck disable=SC1091
+        source "/etc/rnv-manager/secrets.local"
+        set +a
+        if [ -x "$ROOT/scripts/seed-env.sh" ]; then
+            "$ROOT/scripts/seed-env.sh" >/dev/null 2>&1 || true
+        fi
     fi
 }
 
