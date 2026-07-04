@@ -375,6 +375,7 @@ case "$CMD" in
         ensure_env_file
         "$ROOT/scripts/bootstrap-vps.sh"
         ;;
+    clean)
         docker image prune -f
         ;;
     *)
@@ -388,7 +389,7 @@ case "$CMD" in
         echo -e "  ${GREEN}health${NC}     Comprobar /api/health"
         echo -e "  ${GREEN}status${NC}     Réplicas Swarm"
         echo ""
-        echo "  logs | logs-api | logs-db | logs-all | backup | restore | db | shell | migrate | clean"
+        echo "  logs | logs-api | logs-db | logs-all | backup | restore | db | shell | migrate | fix-smtp | clean"
         echo ""
         echo "  Producción: env en $ENV_FILE (JWT_SECRET o SESSION_SECRET, DATABASE_URL)"
         echo "  URL: https://${APP_DOMAIN}"
