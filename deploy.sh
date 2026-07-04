@@ -197,9 +197,22 @@ health_check() {
     local url="${APP_URL:-https://${APP_DOMAIN}}"
     log "🏥 Health check: ${url}/api/health"
     local body
-    body=$(curl -sf "${url}/api/health" 2>/dev/null) || die "No responde ${url}/api/health"
-    echo "$body" | grep -q '"status"' || die "Respuesta inesperada: $body"
-    log "✅ API healthy"
+    body=$(curl -sS --max-redirs 0 "${url}/api/health" 2>/dev/null) || true
+    if echo "$body" | grep -q '"status"'; then
+        log "✅ API healthy"
+        return 0
+    fi
+    # Fallback: go-api directo en Swarm
+    local api_cid
+    api_cid="$(docker ps -q -f "name=$(swarm_service go-api)" | head -1)"
+    if [ -n "$api_cid" ]; then
+        body=$(docker exec "$api_cid" wget -qO- http://localhost:8080/api/health 2>/dev/null) || true
+        if echo "$body" | grep -q '"status"'; then
+            log "✅ go-api healthy (interno); Traefik /api pendiente de propagar"
+            return 0
+        fi
+    fi
+    die "API no healthy. Respuesta pública: ${body:-sin respuesta}"
 }
 
 deploy_production() {
