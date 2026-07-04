@@ -9,8 +9,8 @@ SECRETS_LOCAL="/etc/rnv-manager/secrets.local"
 STACK_GO_API="rnv-manager_go-api"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
-log()  { echo -e "${GREEN}$*${NC}"; }
-warn() { echo -e "${YELLOW}$*${NC}"; }
+log()  { echo -e "${GREEN}$*${NC}" >&2; }
+warn() { echo -e "${YELLOW}$*${NC}" >&2; }
 err()  { echo -e "${RED}$*${NC}" >&2; }
 die()  { err "$*"; exit 1; }
 
@@ -40,9 +40,8 @@ resolve_smtp_pass() {
     fi
     if [ -z "$candidate" ] && [ -n "${MASTER_PASSWORD:-}" ]; then
         candidate="$MASTER_PASSWORD"
-        log "SMTP_PASS ← MASTER_PASSWORD (rnv.env)"
     fi
-    echo "$candidate"
+    printf '%s' "$candidate"
 }
 
 write_secrets_local() {
@@ -125,6 +124,7 @@ main() {
         err "No hay SMTP_PASS ni MASTER_PASSWORD en $ENV_FILE"
         exit 1
     fi
+    log "SMTP_PASS ← MASTER_PASSWORD (rnv.env)"
 
     export SMTP_PASS="$smtp_pass"
     write_secrets_local "$smtp_pass"

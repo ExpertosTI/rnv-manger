@@ -11,8 +11,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ENV="$ROOT/.env"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
-log() { echo -e "${GREEN}$*${NC}"; }
-warn() { echo -e "${YELLOW}$*${NC}"; }
+log() { echo -e "${GREEN}$*${NC}" >&2; }
+warn() { echo -e "${YELLOW}$*${NC}" >&2; }
 
 upsert_env() {
     local key="$1" val="$2" file="$3"
@@ -60,6 +60,7 @@ if is_gemini_smtp_pass; then
 fi
 if [ -z "${SMTP_PASS:-}" ] && [ -n "${MASTER_PASSWORD:-}" ]; then
     export SMTP_PASS="$MASTER_PASSWORD"
+    warn "SMTP_PASS ← MASTER_PASSWORD (rnv.env)"
 fi
 
 # 3) Variables ya exportadas en el shell (GEMINI_API_KEY=... ./scripts/seed-env.sh)
