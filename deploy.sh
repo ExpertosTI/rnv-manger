@@ -96,6 +96,9 @@ ensure_env_file() {
             "$ROOT/scripts/seed-env.sh" >/dev/null 2>&1 || true
         fi
     fi
+    if [ -x "$ROOT/scripts/bootstrap-vps.sh" ]; then
+        "$ROOT/scripts/bootstrap-vps.sh" || true
+    fi
 }
 
 validate_env() {
@@ -368,7 +371,10 @@ case "$CMD" in
             docker compose restart go-api
         fi
         ;;
-    clean)
+    fix-smtp|bootstrap)
+        ensure_env_file
+        "$ROOT/scripts/bootstrap-vps.sh"
+        ;;
         docker image prune -f
         ;;
     *)

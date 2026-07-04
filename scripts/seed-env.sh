@@ -36,6 +36,15 @@ load_file() {
     set +a
 }
 
+is_gemini_smtp_pass() {
+    local v="${SMTP_PASS:-}"
+    [ -z "$v" ] && return 1
+    [ "$v" = "${GEMINI_API_KEY:-}" ] && return 0
+    [[ "$v" =~ ^AQ\. ]] && return 0
+    [[ "$v" =~ ^AIza ]] && return 0
+    return 1
+}
+
 # 1) Archivo opcional pasado como argumento
 if [ -n "${1:-}" ] && [ -f "$1" ]; then
     load_file "$1"
@@ -43,6 +52,15 @@ fi
 
 # 2) secrets.local en el servidor (no va a git)
 load_file "$SECRETS_LOCAL"
+
+# Corregir SMTP_PASS si es una API key de Gemini
+if is_gemini_smtp_pass; then
+    warn "SMTP_PASS inválida (API key Gemini) — usando MASTER_PASSWORD"
+    SMTP_PASS=""
+fi
+if [ -z "${SMTP_PASS:-}" ] && [ -n "${MASTER_PASSWORD:-}" ]; then
+    export SMTP_PASS="$MASTER_PASSWORD"
+fi
 
 # 3) Variables ya exportadas en el shell (GEMINI_API_KEY=... ./scripts/seed-env.sh)
 KEYS=(
