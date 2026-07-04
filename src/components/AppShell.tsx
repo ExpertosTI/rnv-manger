@@ -12,7 +12,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const isBare = BARE_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
     if (isBare) {
-        return <>{children}</>;
+        return (
+            <>
+                {children}
+                <AIAssistantShell />
+            </>
+        );
     }
 
     return (

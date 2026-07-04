@@ -151,14 +151,26 @@ build_images() {
     GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
     log "🔨 Construyendo imágenes (app + go-api) @ ${GIT_SHA}..."
     GIT_SHA="$GIT_SHA" docker compose -f "$COMPOSE_FILE" build
+    # Etiquetar también como :latest para compatibilidad local
+    docker tag "rnv-manger-app:${GIT_SHA}" rnv-manger-app:latest 2>/dev/null || true
+    docker tag "rnv-manger-go-api:${GIT_SHA}" rnv-manger-go-api:latest 2>/dev/null || true
 }
 
 stack_deploy() {
     validate_env
-    log "🚀 Desplegando stack Swarm ($STACK_NAME)..."
-    docker stack deploy -c "$COMPOSE_FILE" "$STACK_NAME"
+    export GIT_SHA
+    GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo latest)"
+    log "🚀 Desplegando stack Swarm ($STACK_NAME) @ ${GIT_SHA}..."
+    GIT_SHA="$GIT_SHA" docker stack deploy -c "$COMPOSE_FILE" "$STACK_NAME"
     echo ""
     docker stack services "$STACK_NAME"
+}
+
+force_rollout() {
+    use_swarm || return 0
+    log "♻️  Recreando contenedores app + go-api (imagen @ ${GIT_SHA:-?})..."
+    docker service update --force --image "rnv-manger-go-api:${GIT_SHA}" "$(swarm_service go-api)" >/dev/null
+    docker service update --force --image "rnv-manger-app:${GIT_SHA}" "$(swarm_service app)" >/dev/null
 }
 
 compose_up() {
@@ -218,10 +230,13 @@ health_check() {
 deploy_production() {
     ensure_docker
     ensure_env_file
+    export GIT_SHA
+    GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo latest)"
     if use_swarm; then
         ensure_swarm
         build_images
         stack_deploy
+        force_rollout
         wait_for_stack
         health_check
         log "✅ Desplegado: ${APP_URL}"

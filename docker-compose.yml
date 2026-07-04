@@ -20,7 +20,7 @@ services:
 
   # ── Go API Backend (solo red interna; Next.js hace proxy de /api) ─────────
   go-api:
-    image: rnv-manger-go-api:latest
+    image: rnv-manger-go-api:${GIT_SHA:-latest}
     build:
       context: ./rnv-go-api
       dockerfile: Dockerfile
@@ -75,11 +75,12 @@ services:
         - "traefik.http.routers.rnv-api.tls=true"
         - "traefik.http.routers.rnv-api.tls.certresolver=letsencryptresolver"
         - "traefik.http.routers.rnv-api.priority=100"
+        - "traefik.http.routers.rnv-api.service=rnv-api"
         - "traefik.http.services.rnv-api.loadbalancer.server.port=8080"
 
   # ── Next.js Frontend (UI + proxy /api → go-api) ───────────────────────────
   app:
-    image: rnv-manger-app:latest
+    image: rnv-manger-app:${GIT_SHA:-latest}
     build:
       context: .
       dockerfile: Dockerfile

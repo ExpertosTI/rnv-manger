@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// Solo rutas de UI — /api va directo a go-api vía Traefik
 const PROTECTED_PREFIXES = [
   "/clients",
   "/vps",
@@ -17,7 +16,12 @@ const PROTECTED_PREFIXES = [
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (pathname.startsWith("/api") || pathname === "/login") {
+  // API → proxy interno (next.config rewrites) o Traefik; nunca login
+  if (pathname.startsWith("/api")) {
+    return NextResponse.next();
+  }
+
+  if (pathname === "/login") {
     return NextResponse.next();
   }
 
@@ -47,17 +51,9 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
+// Excluir /api y assets estáticos (svg, png, etc.) — el matcher anterior bloqueaba renace-cone.svg
 export const config = {
   matcher: [
-    "/",
-    "/clients/:path*",
-    "/vps/:path*",
-    "/services/:path*",
-    "/billing/:path*",
-    "/audit/:path*",
-    "/users/:path*",
-    "/settings/:path*",
-    "/whiteboard/:path*",
-    "/config-editor/:path*",
+    "/((?!api(?:/|$)|_next/static|_next/image|favicon.ico|whiteboard-app|.*\\.(?:png|svg|ico|webp|jpg|jpeg|gif|woff2?|css|js)$).*)",
   ],
 };
