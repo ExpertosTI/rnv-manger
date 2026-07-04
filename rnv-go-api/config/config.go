@@ -49,7 +49,7 @@ func Load() *Config {
 		OdooUsername:      getEnv("ODOO_USERNAME", ""),
 		OdooAPIKey:        getEnv("ODOO_API_KEY", ""),
 		SMTPHost:          getEnv("SMTP_HOST", ""),
-		SMTPPort:          getEnv("SMTP_PORT", "587"),
+		SMTPPort:          getEnv("SMTP_PORT", "465"),
 		SMTPUser:          getEnv("SMTP_USER", ""),
 		SMTPPass:          getEnv("SMTP_PASS", ""),
 		SMTPFrom:          getEnv("SMTP_FROM", ""),

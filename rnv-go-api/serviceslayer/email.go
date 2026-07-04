@@ -21,16 +21,18 @@ type SMTPConfig struct {
 }
 
 // ResolveSMTPConfig loads SMTP from DB settings, falling back to env.
+// SMTP_PASS en env (secrets.local) tiene prioridad sobre la BD.
 func ResolveSMTPConfig(db *gorm.DB, cfg *config.Config) SMTPConfig {
+	envPass := cfg.SMTPPass
 	sc := SMTPConfig{
 		Host: cfg.SMTPHost,
 		Port: cfg.SMTPPort,
 		User: cfg.SMTPUser,
-		Pass: cfg.SMTPPass,
+		Pass: envPass,
 		From: cfg.SMTPFrom,
 	}
 	if sc.Port == "" {
-		sc.Port = "587"
+		sc.Port = "465"
 	}
 
 	if db == nil {
@@ -54,7 +56,9 @@ func ResolveSMTPConfig(db *gorm.DB, cfg *config.Config) SMTPConfig {
 		case "smtp_user":
 			sc.User = s.Value
 		case "smtp_pass":
-			sc.Pass = s.Value
+			if envPass == "" {
+				sc.Pass = s.Value
+			}
 		case "smtp_from":
 			sc.From = s.Value
 		}

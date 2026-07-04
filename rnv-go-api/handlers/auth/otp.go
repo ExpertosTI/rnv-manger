@@ -79,9 +79,16 @@ func RequestOTP(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 		// Send email
 		if err := serviceslayer.SendOTPEmail(db, cfg, email, code); err != nil {
+			errText := err.Error()
+			userMsg := "No se pudo enviar el correo. Contacta al administrador."
+			if strings.Contains(errText, "535") || strings.Contains(strings.ToLower(errText), "authentication failed") {
+				userMsg = "Credenciales SMTP incorrectas. Revisa SMTP_PASS (contraseña del correo en Hostinger, no la API key de Gemini)."
+			} else if strings.Contains(strings.ToLower(errText), "smtp no configurado") {
+				userMsg = "SMTP no configurado en el servidor."
+			}
 			c.JSON(http.StatusServiceUnavailable, gin.H{
 				"success": false,
-				"error":   fmt.Sprintf("Error enviando email: %v. Verifica la configuracion SMTP.", err),
+				"error":   userMsg,
 			})
 			return
 		}
