@@ -8,6 +8,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Build binary
+ARG GIT_SHA=unknown
+RUN echo "Building go-api @ ${GIT_SHA}"
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-s -w" \

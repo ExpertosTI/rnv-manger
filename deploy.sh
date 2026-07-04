@@ -147,8 +147,10 @@ git_sync() {
 
 build_images() {
     validate_env
-    log "🔨 Construyendo imágenes (app + go-api)..."
-    docker compose -f "$COMPOSE_FILE" build
+    export GIT_SHA
+    GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    log "🔨 Construyendo imágenes (app + go-api) @ ${GIT_SHA}..."
+    GIT_SHA="$GIT_SHA" docker compose -f "$COMPOSE_FILE" build
 }
 
 stack_deploy() {

@@ -9,6 +9,8 @@ RUN npm ci
 # Copy only what Next.js needs (explicit paths — avoids missing src/app in build)
 COPY next.config.ts tsconfig.json postcss.config.mjs tailwind.config.js eslint.config.mjs ./
 COPY public ./public
+ARG GIT_SHA=unknown
+RUN echo "Building app @ ${GIT_SHA}"
 COPY src ./src
 
 ENV API_INTERNAL_URL=http://go-api:8080
