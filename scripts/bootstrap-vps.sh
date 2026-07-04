@@ -114,9 +114,13 @@ test_otp() {
 
 main() {
     cd "$ROOT"
+    # shellcheck disable=SC1091
+    source "$ROOT/scripts/lib-secrets.sh"
+    secrets_quarantine_if_corrupt "$SECRETS_LOCAL"
+
     load_file "$ENV_FILE"
     load_file "$ROOT/.env"
-    load_file "$SECRETS_LOCAL"
+    secrets_load_safe "$SECRETS_LOCAL" || true
 
     local smtp_pass
     smtp_pass="$(resolve_smtp_pass)"

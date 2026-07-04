@@ -86,12 +86,12 @@ ensure_env_file() {
     if [ -f "$ENV_FILE" ]; then
         cp "$ENV_FILE" "$ROOT/.env"
     fi
-    # secrets.local opcional (GEMINI, SMTP, etc.) sin tocar git
+    # secrets.local opcional — carga segura (nunca source directo)
     if [ -f "/etc/rnv-manager/secrets.local" ]; then
-        set -a
         # shellcheck disable=SC1091
-        source "/etc/rnv-manager/secrets.local"
-        set +a
+        source "$ROOT/scripts/lib-secrets.sh"
+        secrets_quarantine_if_corrupt "/etc/rnv-manager/secrets.local"
+        secrets_load_safe "/etc/rnv-manager/secrets.local" || true
         if [ -x "$ROOT/scripts/seed-env.sh" ]; then
             "$ROOT/scripts/seed-env.sh" >/dev/null 2>&1 || true
         fi
@@ -372,7 +372,9 @@ case "$CMD" in
         fi
         ;;
     fix-smtp|bootstrap)
-        ensure_env_file
+        # shellcheck disable=SC1091
+        source "$ROOT/scripts/lib-secrets.sh"
+        secrets_quarantine_if_corrupt "/etc/rnv-manager/secrets.local"
         "$ROOT/scripts/bootstrap-vps.sh"
         ;;
     clean)

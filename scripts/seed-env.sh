@@ -51,7 +51,10 @@ if [ -n "${1:-}" ] && [ -f "$1" ]; then
 fi
 
 # 2) secrets.local en el servidor (no va a git)
-load_file "$SECRETS_LOCAL"
+# shellcheck disable=SC1091
+source "$ROOT/scripts/lib-secrets.sh"
+secrets_quarantine_if_corrupt "$SECRETS_LOCAL"
+secrets_load_safe "$SECRETS_LOCAL" || true
 
 # Corregir SMTP_PASS si es una API key de Gemini
 if is_gemini_smtp_pass; then
