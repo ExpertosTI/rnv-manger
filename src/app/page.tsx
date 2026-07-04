@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { fetcher } from "@/lib/api";
+import { fetcher, listFetcher } from "@/lib/api";
 
 // Types
 interface VPSItem {
@@ -130,21 +130,21 @@ export default function Home() {
         { refreshInterval: 30000, revalidateOnFocus: true }
     );
 
-    const { data: vpsResponse, error: vpsError, isLoading: vpsLoading, mutate: mutateVps } = useSWR<{ data: VPSItem[] }>(
-        "/api/hostinger/vps",
+    const { data: vpsResponse, isLoading: vpsLoading, mutate: mutateVps } = useSWR<{ success?: boolean; data?: VPSItem[] }>(
+        "/api/vps",
         fetcher,
         { refreshInterval: 30000 }
     );
 
-    const { data: clientsResponse, error: clientsError, mutate: mutateClients } = useSWR<{ success: boolean; data: ClientData[] } | ClientData[]>(
+    const { data: clientsResponse, mutate: mutateClients } = useSWR<ClientData[]>(
         "/api/clients",
-        fetcher,
+        listFetcher,
         { refreshInterval: 60000 }
     );
 
-    const { data: billingResponse, error: billingError, isLoading: billingLoading, mutate: mutateBilling } = useSWR<{ success: boolean; data: BillingData[] }>(
+    const { data: billingData, isLoading: billingLoading, mutate: mutateBilling } = useSWR<BillingData[]>(
         "/api/billing",
-        fetcher,
+        listFetcher,
         { refreshInterval: 60000 }
     );
 
@@ -156,22 +156,20 @@ export default function Home() {
     const rawVpsData = vpsResponse?.data;
     const vpsData = Array.isArray(rawVpsData) ? rawVpsData : [];
 
-    const billingData = billingResponse?.success && Array.isArray(billingResponse.data)
-        ? billingResponse.data
+    const billingChart = Array.isArray(billingData)
+        ? billingData
             .filter((c) => c && typeof c.totalMonthlyCost === "number" && c.totalMonthlyCost > 0)
             .sort((a, b) => b.totalMonthlyCost - a.totalMonthlyCost)
             .slice(0, 6)
             .map((c) => ({
                 name: c.name.length > 12 ? c.name.substring(0, 12) + "..." : c.name,
-                totalMonthlyCost: c.totalMonthlyCost
+                totalMonthlyCost: c.totalMonthlyCost,
             }))
         : [];
 
     // Calculate overdue clients
     const overdueClients: OverdueClient[] = (() => {
-        const clientsArray = Array.isArray(clientsResponse)
-            ? clientsResponse
-            : clientsResponse?.data || [];
+        const clientsArray = Array.isArray(clientsResponse) ? clientsResponse : [];
 
         if (!Array.isArray(clientsArray)) return [];
 
@@ -212,13 +210,13 @@ export default function Home() {
 
     // Show errors
     useEffect(() => {
-        if (statsError || vpsError || clientsError || billingError) {
-            addToast("Error de conexión: No se pudieron cargar algunos datos", "error");
+        if (statsError) {
+            addToast("Error de conexión: No se pudieron cargar estadísticas", "error");
         }
-    }, [statsError, vpsError, clientsError, billingError, addToast]);
+    }, [statsError, addToast]);
 
     const isLoading = statsLoading || vpsLoading;
-    const hasError = statsError || vpsError;
+    const hasError = !!statsError;
 
     const stats = [
         {
@@ -588,7 +586,7 @@ export default function Home() {
                     <div>
                         <h2 className="text-lg font-bold text-gray-900 dark:text-white">Ingresos por Cliente</h2>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
-                            {billingLoading ? "Cargando..." : `Top ${billingData.length} clientes por facturación mensual`}
+                            {billingLoading ? "Cargando..." : `Top ${billingChart.length} clientes por facturación mensual`}
                         </p>
                     </div>
                     <Link href="/billing">
@@ -600,15 +598,15 @@ export default function Home() {
 
                 {billingLoading ? (
                     <ChartSkeleton />
-                ) : billingData.length === 0 ? (
+                ) : billingChart.length === 0 ? (
                     <div className="text-center py-12 text-gray-500 dark:text-gray-400">
                         <DollarSign className="w-12 h-12 mx-auto mb-3 opacity-50" />
                         <p>No hay datos de facturación</p>
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {billingData.map((item, index) => {
-                            const maxValue = Math.max(...billingData.map(d => d.totalMonthlyCost));
+                        {billingChart.map((item, index) => {
+                            const maxValue = Math.max(...billingChart.map(d => d.totalMonthlyCost));
                             const percentage = (item.totalMonthlyCost / maxValue) * 100;
                             return (
                                 <motion.div

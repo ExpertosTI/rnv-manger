@@ -27,6 +27,19 @@ async function request<T>(
 export const fetcher = <T = unknown>(path: string): Promise<T> =>
     request<T>(path.startsWith("/api") ? path.slice(4) : path);
 
+/** Extrae array de respuestas { success, data: T[] } */
+export function unwrapList<T>(res: unknown): T[] {
+    if (Array.isArray(res)) return res as T[];
+    if (res && typeof res === "object" && "data" in res) {
+        const d = (res as { data: unknown }).data;
+        return Array.isArray(d) ? (d as T[]) : [];
+    }
+    return [];
+}
+
+export const listFetcher = <T>(path: string): Promise<T[]> =>
+    fetcher<{ success?: boolean; data?: T[] }>(path).then(unwrapList<T>);
+
 // ── Auth ────────────────────────────────────────────────────────────────────
 
 export const auth = {

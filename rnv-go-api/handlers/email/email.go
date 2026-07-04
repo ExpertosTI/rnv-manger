@@ -66,6 +66,7 @@ func Config(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 				"configured": sc.Host != "" && sc.User != "" && sc.Pass != "",
 				"host":       sc.Host,
 				"port":       sc.Port,
+				"user":       sc.User,
 				"from":       sc.From,
 			},
 		})

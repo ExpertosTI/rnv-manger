@@ -32,21 +32,26 @@ export default function VPSPage() {
         setError(null);
 
         try {
-            const url = forceRefresh ? "/api/hostinger/vps?refresh=true" : "/api/hostinger/vps";
+            const url = forceRefresh ? "/api/hostinger/vps?refresh=true" : "/api/vps";
             const res = await fetch(url);
             const data = await res.json();
 
-            if (data.success && data.data) {
+            if (data.success && Array.isArray(data.data)) {
                 setVpsList(data.data);
                 setFilteredList(data.data);
                 setLastSync(new Date());
-                addToast(`${data.data.length} servidores cargados`, "success");
+                if (data.message) {
+                    addToast(data.message, "info");
+                } else {
+                    addToast(`${data.data.length} servidores cargados`, "success");
+                }
             } else {
-                setError(data.error);
+                setError(data.error || "Error al cargar");
                 addToast(data.error || "Error al cargar", "error");
             }
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Error desconocido";
+            setError(msg);
             addToast("Error de conexión", "error");
         } finally {
             setIsLoading(false);

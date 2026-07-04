@@ -30,9 +30,9 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
         icon: Mail,
         description: "Configuración para enviar notificaciones por email",
         fields: [
-            { key: "smtp_host", label: "Host SMTP", type: "text", placeholder: "smtp.gmail.com" },
-            { key: "smtp_port", label: "Puerto", type: "number", placeholder: "587" },
-            { key: "smtp_user", label: "Usuario", type: "email", placeholder: "tu@email.com" },
+            { key: "smtp_host", label: "Host SMTP", type: "text", placeholder: "smtp.hostinger.com" },
+            { key: "smtp_port", label: "Puerto", type: "number", placeholder: "465" },
+            { key: "smtp_user", label: "Usuario", type: "email", placeholder: "info@renace.tech" },
             { key: "smtp_pass", label: "Contraseña", type: "password", placeholder: "••••••••" },
             { key: "alert_email", label: "Email de alertas", type: "email", placeholder: "admin@tuempresa.com", description: "Recibe alertas de pagos y recursos" },
         ],
@@ -121,7 +121,18 @@ export default function SettingsPage() {
         try {
             const res = await fetch("/api/email");
             const data = await res.json();
-            setSmtpStatus(data.success ? "ok" : "error");
+            if (data.success && data.data?.configured) {
+                setSmtpStatus("ok");
+                setSettings((prev) => ({
+                    ...prev,
+                    smtp_host: data.data.host || prev.smtp_host || "smtp.hostinger.com",
+                    smtp_port: String(data.data.port || prev.smtp_port || "465"),
+                    smtp_user: data.data.user || prev.smtp_user || "info@renace.tech",
+                    smtp_from: data.data.from || prev.smtp_from || "info@renace.tech",
+                }));
+            } else {
+                setSmtpStatus("error");
+            }
         } catch {
             setSmtpStatus("error");
         }

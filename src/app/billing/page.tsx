@@ -52,8 +52,8 @@ export default function BillingPage() {
             const response = await fetch("/api/billing");
             const result = await response.json();
             if (result.success) {
-                setClients(result.data);
-                setTotals(result.totals);
+                setClients(Array.isArray(result.data) ? result.data : []);
+                setTotals(result.totals ?? null);
             }
         } catch (error) {
             addToast("Error al cargar datos de facturación", "error");
@@ -88,11 +88,11 @@ export default function BillingPage() {
         }
     };
 
-    const filteredClients = clients.filter(c =>
+    const filteredClients = (Array.isArray(clients) ? clients : []).filter(c =>
         c.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const billableClients = clients.filter(c => c.canInvoice);
+    const billableClients = (Array.isArray(clients) ? clients : []).filter(c => c.canInvoice);
 
     return (
         <div className="space-y-6">

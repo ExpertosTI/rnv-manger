@@ -9,6 +9,19 @@ import (
 	"gorm.io/gorm"
 )
 
+type clientBillingRow struct {
+	ID               string  `json:"id"`
+	Name             string  `json:"name"`
+	OdooPartnerID    *int    `json:"odooPartnerId"`
+	VPSCost          float64 `json:"vpsCost"`
+	ServiceCost      float64 `json:"serviceCost"`
+	BaseFee          float64 `json:"baseFee"`
+	TotalMonthlyCost float64 `json:"totalMonthlyCost"`
+	VPSCount         int     `json:"vpsCount"`
+	ServiceCount     int     `json:"serviceCount"`
+	CanInvoice       bool    `json:"canInvoice"`
+}
+
 func Summary(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var clients []models.Client
@@ -16,16 +29,40 @@ func Summary(db *gorm.DB) gin.HandlerFunc {
 			Preload("VPSList").Preload("Services").
 			Preload("Payments", func(db *gorm.DB) *gorm.DB {
 				return db.Order("date desc").Limit(3)
-			}).Find(&clients)
+			}).Order("name asc").Find(&clients)
 
 		var totalRevenue, totalExpenses float64
+		var clientsWithOdoo int64
 		db.Model(&models.VPS{}).Select("COALESCE(SUM(monthly_cost),0)").Scan(&totalExpenses)
 
+		rows := make([]clientBillingRow, 0, len(clients))
 		for _, cl := range clients {
-			totalRevenue += cl.MonthlyFee + cl.TotalMonthlyCost
+			var vpsCost, svcCost float64
+			for _, v := range cl.VPSList {
+				vpsCost += v.MonthlyCost
+			}
+			for _, s := range cl.Services {
+				svcCost += s.MonthlyCost
+			}
+			total := cl.MonthlyFee + vpsCost + svcCost
+			totalRevenue += total
+			if cl.OdooPartnerID != nil {
+				clientsWithOdoo++
+			}
+			rows = append(rows, clientBillingRow{
+				ID:               cl.ID,
+				Name:             cl.Name,
+				OdooPartnerID:    cl.OdooPartnerID,
+				VPSCost:          vpsCost,
+				ServiceCost:      svcCost,
+				BaseFee:          cl.MonthlyFee,
+				TotalMonthlyCost: total,
+				VPSCount:         len(cl.VPSList),
+				ServiceCount:     len(cl.Services),
+				CanInvoice:       cl.OdooPartnerID != nil && total > 0,
+			})
 		}
 
-		// Clients with upcoming payment (within next 5 days)
 		now := time.Now()
 		dayOfMonth := now.Day()
 		var upcomingPayments []models.Client
@@ -34,12 +71,16 @@ func Summary(db *gorm.DB) gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
-			"data": gin.H{
-				"totalRevenue":    totalRevenue,
-				"totalExpenses":   totalExpenses,
-				"netProfit":       totalRevenue - totalExpenses,
-				"clientCount":     len(clients),
-				"upcomingPayments": upcomingPayments,
+			"data":    rows,
+			"totals": gin.H{
+				"clients":             len(clients),
+				"totalMonthlyRevenue": totalRevenue,
+				"clientsWithOdoo":     clientsWithOdoo,
+				"totalRevenue":        totalRevenue,
+				"totalExpenses":       totalExpenses,
+				"netProfit":           totalRevenue - totalExpenses,
+				"clientCount":         len(clients),
+				"upcomingPayments":    upcomingPayments,
 			},
 		})
 	}

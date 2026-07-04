@@ -49,7 +49,7 @@ export default function UsersPage() {
     try {
       const res = await fetch("/api/users");
       const data = await res.json();
-      if (data.success) setUsers(data.data);
+      if (data.success) setUsers(Array.isArray(data.data) ? data.data : []);
     } catch (e) {
       addToast("Error al cargar usuarios", "error");
     }

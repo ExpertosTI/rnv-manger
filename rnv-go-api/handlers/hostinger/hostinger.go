@@ -47,7 +47,14 @@ func fetchFromHostinger(token string) ([]map[string]interface{}, error) {
 func ListVPS(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cfg.HostingerAPIToken == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "HOSTINGER_API_TOKEN no configurado"})
+			var vpsList []models.VPS
+			db.Order("created_at desc").Find(&vpsList)
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"data":    vpsList,
+				"source":  "local",
+				"message": "HOSTINGER_API_TOKEN no configurado — mostrando VPS de la base de datos",
+			})
 			return
 		}
 
