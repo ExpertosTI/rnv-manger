@@ -66,27 +66,41 @@ clear_bad_smtp_in_db() {
 
     docker exec -i "$db_cid" psql -U "$pg_user" -d "$pg_db" -v ON_ERROR_STOP=1 -q <<'SQL' 2>/dev/null || true
 DELETE FROM app_settings
-WHERE key = 'smtp_pass'
-  AND (value LIKE 'AQ.%' OR value LIKE 'AIza%' OR value = '');
-UPDATE app_settings SET value = 'info@renace.tech'
-WHERE key IN ('smtp_user', 'smtp_from') AND value LIKE '%renace.space%';
+WHERE key IN ('smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from');
 SQL
-    log "✅ SMTP en app_settings corregido (si existía)"
+    log "✅ SMTP en app_settings limpiado (usa env del stack)"
 }
 
-restart_go_api() {
-    if docker service ls --format '{{.Name}}' 2>/dev/null | grep -qx "$STACK_GO_API"; then
-        log "♻️  Reiniciando $STACK_GO_API..."
-        docker service update --force "$STACK_GO_API" >/dev/null
-        local i rep
-        for i in $(seq 1 60); do
-            rep=$(docker service ls --filter "name=${STACK_GO_API}" --format '{{.Replicas}}' 2>/dev/null || echo "0/0")
-            [ "$rep" = "1/1" ] && break
-            sleep 2
-        done
-    elif docker compose ps go-api >/dev/null 2>&1; then
-        docker compose restart go-api
+apply_stack_env() {
+    load_file "$ENV_FILE"
+    load_file "$ROOT/.env"
+
+    if ! docker service ls --format '{{.Name}}' 2>/dev/null | grep -qx "$STACK_GO_API"; then
+        docker compose -f "$ROOT/docker-compose.yml" up -d go-api 2>/dev/null || true
+        return 0
     fi
+
+    local git_sha
+    git_sha="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo latest)"
+    log "🚀 Aplicando env SMTP al stack Swarm (@ ${git_sha})..."
+    cd "$ROOT"
+    GIT_SHA="$git_sha" docker stack deploy -c docker-compose.yml rnv-manager >/dev/null
+
+    log "♻️  Reiniciando $STACK_GO_API con env nuevo..."
+    docker service update --force "$STACK_GO_API" >/dev/null
+    local i rep
+    for i in $(seq 1 60); do
+        rep=$(docker service ls --filter "name=${STACK_GO_API}" --format '{{.Replicas}}' 2>/dev/null || echo "0/0")
+        [ "$rep" = "1/1" ] && break
+        sleep 2
+    done
+}
+
+verify_go_api_smtp_env() {
+    local api_cid
+    api_cid="$(docker ps -q -f "name=${STACK_GO_API}" | head -1)"
+    [ -n "$api_cid" ] || return 0
+    log "🔍 go-api SMTP_USER=$(docker exec "$api_cid" printenv SMTP_USER 2>/dev/null || echo '?') SMTP_PORT=$(docker exec "$api_cid" printenv SMTP_PORT 2>/dev/null || echo '?')"
 }
 
 test_otp() {
@@ -133,6 +147,8 @@ main() {
 
     export SMTP_USER="info@renace.tech"
     export SMTP_FROM="info@renace.tech"
+    export SMTP_HOST="${SMTP_HOST:-smtp.hostinger.com}"
+    export SMTP_PORT="${SMTP_PORT:-465}"
     export SMTP_PASS="$smtp_pass"
     write_secrets_local "$smtp_pass"
 
@@ -142,9 +158,17 @@ main() {
     fi
 
     clear_bad_smtp_in_db
-    restart_go_api
+    apply_stack_env
+    verify_go_api_smtp_env
     sleep 3
-    test_otp || true
+    if ! test_otp; then
+        warn "Reintentando OTP con SMTP_PORT=587..."
+        export SMTP_PORT=587
+        "$ROOT/scripts/seed-env.sh" >/dev/null 2>&1 || true
+        apply_stack_env
+        sleep 3
+        test_otp || true
+    fi
 }
 
 main "$@"
