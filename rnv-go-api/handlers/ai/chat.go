@@ -45,8 +45,8 @@ func Chat(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 
 		// Cap history to keep tokens under control
-		if len(req.History) > 20 {
-			req.History = req.History[len(req.History)-20:]
+		if len(req.History) > 8 {
+			req.History = req.History[len(req.History)-8:]
 		}
 
 		response, executed, err := runChat(db, cfg, req)
@@ -72,7 +72,7 @@ func runChat(db *gorm.DB, cfg *config.Config, req chatRequest) (string, []execut
 	sysPrompt := systemPrompt + pageContext(db, req.URL)
 
 	var allExecuted []executedFunction
-	const maxTurns = 10
+	const maxTurns = 6
 
 	for turn := 0; turn < maxTurns; turn++ {
 		genReq := geminiRequest{
@@ -115,7 +115,7 @@ func runChat(db *gorm.DB, cfg *config.Config, req chatRequest) (string, []execut
 			responseParts = append(responseParts, geminiPart{
 				FunctionResponse: &functionResponse{
 					Name:     call.Name,
-					Response: exec.Result,
+					Response: compactToolResult(call.Name, exec.Result),
 				},
 			})
 		}
@@ -150,8 +150,8 @@ func buildContents(req chatRequest) []geminiContent {
 			}
 		}
 		// Truncate very long history messages
-		if len(content) > 2000 {
-			content = content[:2000] + "…"
+		if len(content) > 600 {
+			content = content[:600] + "…"
 		}
 		contents = append(contents, geminiContent{
 			Role:  role,
@@ -186,7 +186,7 @@ func pageContext(db *gorm.DB, url string) string {
 		switch entity {
 		case "clients":
 			var c models.Client
-			if err := db.Select("id, name, email, monthly_fee, total_monthly_cost, payment_day, is_active").
+			if err := db.Select("id, name, email, monthly_fee, annual_fee, billing_cycle, total_monthly_cost, payment_day, payment_month, is_active").
 				First(&c, "id = ?", id).Error; err == nil {
 				b.WriteString("\nCliente actual: ")
 				b.WriteString(c.Name)

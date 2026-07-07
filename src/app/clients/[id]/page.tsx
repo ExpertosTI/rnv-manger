@@ -66,7 +66,14 @@ export default function ClientDetailPage() {
             const response = await fetch(`/api/clients/${clientId}`);
             const data = await response.json();
             if (data.success) {
-                setClient(data.data);
+                const c = data.data;
+                setClient({
+                    ...c,
+                    vpsList: c.vpsList ?? [],
+                    services: c.services ?? [],
+                    payments: c.payments ?? [],
+                    totalMonthlyCost: c.totalMonthlyCost ?? 0,
+                });
                 setFormData({
                     name: data.data.name || "",
                     email: data.data.email || "",
@@ -208,7 +215,7 @@ export default function ClientDetailPage() {
                             <DollarSign className="h-8 w-8 opacity-80" />
                             <div>
                                 <p className="text-sm opacity-80">Costo Total Mensual</p>
-                                <p className="text-2xl font-bold">${client.totalMonthlyCost.toFixed(2)}</p>
+                                <p className="text-2xl font-bold">${(client.totalMonthlyCost ?? 0).toFixed(2)}</p>
                             </div>
                         </div>
                     </CardContent>
@@ -472,7 +479,7 @@ export default function ClientDetailPage() {
                                                 )}
                                             </td>
                                             <td className="py-3 px-4 text-right font-bold text-green-600">
-                                                ${payment.amount.toFixed(2)}
+                                                ${(payment.amount ?? 0).toFixed(2)}
                                             </td>
                                             <td className="py-3 px-4 text-center">
                                                 <Badge

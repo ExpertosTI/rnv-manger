@@ -6,12 +6,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ai } from "@/lib/api";
 import type { Message, MascotState } from "./ai/types";
 import { genId } from "./ai/types";
-import { parseRichBlocks, detectMascotAnimation, suggestionsForPath } from "./ai/parse";
+import { parseRichBlocks, detectMascotAnimation, suggestionsForPath, stripRichBlocks } from "./ai/parse";
 import { MessageBlocks } from "./ai/blocks";
 import { ConeMascot } from "./ai/mascot";
 
 const HISTORY_KEY = "rnv_ai_history";
-const HISTORY_LIMIT = 20;
+const HISTORY_LIMIT = 12;
+const HISTORY_TO_API = 8;
 
 const WELCOME: Message = {
     id: "welcome",
@@ -145,7 +146,12 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
         try {
             const history = messagesRef.current
                 .filter((m, idx) => !(idx === 0 && m.role === "assistant" && !m.executedFunctions))
-                .map((m) => ({ role: m.role, content: m.content }));
+                .slice(-HISTORY_TO_API)
+                .map((m) => ({
+                    role: m.role,
+                    content: stripRichBlocks(m.content).slice(0, 500),
+                }))
+                .filter((m) => m.content.length > 0);
 
             const data = await ai.chat(text, history, window.location.pathname);
 

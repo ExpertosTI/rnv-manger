@@ -6,6 +6,7 @@ import {
     CheckCircle, AlertTriangle, Eye, EyeOff, Shield, Sparkles
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
+import { Button } from "@/components/ui/button";
 
 interface SettingsSection {
     id: string;

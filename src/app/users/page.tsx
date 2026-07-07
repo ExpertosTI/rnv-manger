@@ -21,7 +21,8 @@ interface User {
   isActive: boolean;
   lastLoginAt: string | null;
   createdAt: string;
-  _count: { sessions: number; auditLogs: number };
+  sessionCount: number;
+  auditLogCount: number;
 }
 
 const roleColors: Record<string, string> = {
@@ -170,9 +171,9 @@ export default function UsersPage() {
                         {roleLabels[user.role] || user.role}
                       </span>
                       <div className="flex gap-1 text-xs text-gray-400">
-                        <span>{user._count.sessions} sesiones</span>
+                        <span>{user.sessionCount ?? 0} sesiones</span>
                         <span>•</span>
-                        <span>{user._count.auditLogs} acciones</span>
+                        <span>{user.auditLogCount ?? 0} acciones</span>
                       </div>
                     </div>
                   </CardContent>

@@ -2,6 +2,11 @@ import type { RichBlock, RichBlockType } from "./types";
 
 const BLOCK_RE = /:::([\w][\w-]*)\n([\s\S]*?):::/g;
 
+/** Remove rich blocks before sending history to API (saves tokens). */
+export function stripRichBlocks(content: string): string {
+    return content.replace(BLOCK_RE, "").replace(/\s+/g, " ").trim();
+}
+
 export function parseRichBlocks(content: string): RichBlock[] {
     const blocks: RichBlock[] = [];
     let lastIndex = 0;

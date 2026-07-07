@@ -3,9 +3,10 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
-import { Server, Plus, Search, RefreshCw, Copy, MoreHorizontal, Check, AlertCircle, Clock, Terminal, Power, ExternalLink } from "lucide-react";
+import { Server, Plus, Search, RefreshCw, Copy, MoreHorizontal, Check, AlertCircle, Clock } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 
 interface VPSItem {
     id: string;
@@ -32,19 +33,20 @@ export default function VPSPage() {
         setError(null);
 
         try {
-            const url = forceRefresh ? "/api/hostinger/vps?refresh=true" : "/api/vps";
-            const res = await fetch(url);
+            if (forceRefresh) {
+                await fetch("/api/hostinger/vps", { method: "POST" });
+            }
+            const res = await fetch("/api/vps");
             const data = await res.json();
 
             if (data.success && Array.isArray(data.data)) {
                 setVpsList(data.data);
                 setFilteredList(data.data);
                 setLastSync(new Date());
-                if (data.message) {
-                    addToast(data.message, "info");
-                } else {
-                    addToast(`${data.data.length} servidores cargados`, "success");
-                }
+                addToast(
+                    forceRefresh ? `${data.data.length} servidores sincronizados` : `${data.data.length} servidores cargados`,
+                    "success"
+                );
             } else {
                 setError(data.error || "Error al cargar");
                 addToast(data.error || "Error al cargar", "error");
@@ -80,7 +82,8 @@ export default function VPSPage() {
         setTimeout(() => setCopiedId(null), 2000);
     };
 
-    const runningCount = vpsList.filter(v => v.status === "running").length;
+    const isOnline = (status: string) => ["running", "online", "active"].includes((status || "").toLowerCase());
+    const runningCount = vpsList.filter(v => isOnline(v.status)).length;
 
     return (
         <div className="space-y-6">
@@ -185,9 +188,9 @@ export default function VPSPage() {
                                 className="bg-white rounded-2xl border-2 border-gray-100 p-6 hover:border-violet-200 hover:shadow-xl hover:shadow-violet-50 transition-all group"
                             >
                                 <div className="flex items-center justify-between mb-4">
-                                    <span className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${vps.status === "running" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-                                        <span className={`w-2 h-2 rounded-full ${vps.status === "running" ? "bg-green-500 animate-pulse" : "bg-gray-400"}`} />
-                                        {vps.status === "running" ? "Ejecutando" : vps.status}
+                                    <span className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${isOnline(vps.status) ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                                        <span className={`w-2 h-2 rounded-full ${isOnline(vps.status) ? "bg-green-500 animate-pulse" : "bg-gray-400"}`} />
+                                        {isOnline(vps.status) ? "Online" : vps.status || "unknown"}
                                     </span>
                                     <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <MoreHorizontal size={16} />
@@ -195,12 +198,14 @@ export default function VPSPage() {
                                 </div>
 
                                 <div className="flex items-center gap-4 mb-6">
-                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${vps.status === "running" ? "bg-violet-100" : "bg-gray-100"}`}>
-                                        <Server className={`w-6 h-6 ${vps.status === "running" ? "text-violet-600" : "text-gray-400"}`} />
+                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isOnline(vps.status) ? "bg-violet-100" : "bg-gray-100"}`}>
+                                        <Server className={`w-6 h-6 ${isOnline(vps.status) ? "text-violet-600" : "text-gray-400"}`} />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <h3 className="font-bold text-gray-900 truncate">{vps.name}</h3>
-                                        <p className="text-sm text-gray-500">{vps.plan || "KVM"} • {vps.datacenter || "España"}</p>
+                                        <Link href={`/vps/${vps.id}`} className="font-bold text-gray-900 truncate hover:text-violet-600 block">
+                                            {vps.name}
+                                        </Link>
+                                        <p className="text-sm text-gray-500">{vps.plan || vps.provider || "VPS"}</p>
                                     </div>
                                 </div>
 
@@ -218,16 +223,18 @@ export default function VPSPage() {
                                 </div>
 
                                 <div className="flex gap-2">
-                                    <Button variant="outline" size="sm" className="flex-1 gap-2 text-xs rounded-xl border-2 hover:border-violet-300">
-                                        <Terminal size={14} />
-                                        SSH
-                                    </Button>
-                                    <Button variant="outline" size="sm" className="flex-1 gap-2 text-xs rounded-xl border-2 hover:border-violet-300">
-                                        <Power size={14} />
-                                        Reiniciar
-                                    </Button>
-                                    <Button variant="outline" size="sm" className="gap-2 text-xs rounded-xl border-2 hover:border-violet-300">
-                                        <ExternalLink size={14} />
+                                    <Link href={`/vps/${vps.id}`} className="flex-1">
+                                        <Button variant="outline" size="sm" className="w-full gap-2 text-xs rounded-xl border-2 hover:border-violet-300">
+                                            Gestionar
+                                        </Button>
+                                    </Link>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2 text-xs rounded-xl border-2 hover:border-violet-300"
+                                        onClick={(e) => { e.stopPropagation(); copyIP(vps.ipAddress, vps.id); }}
+                                    >
+                                        <Copy size={14} />
                                     </Button>
                                 </div>
                             </motion.div>

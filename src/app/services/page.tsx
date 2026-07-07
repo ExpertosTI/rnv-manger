@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -62,8 +63,8 @@ export default function ServicesPage() {
                 setGroups(Array.isArray(data) ? data : []);
                 const flat = (Array.isArray(data) ? data : []).flatMap((g) => g.services || []);
                 setServices(flat);
-                const vpsData = vpsRes.data || vpsRes;
-                setVpsList(Array.isArray(vpsData) ? vpsData : []);
+                const vpsData = vpsRes.success && Array.isArray(vpsRes.data) ? vpsRes.data : [];
+                setVpsList(vpsData);
             })
             .catch((err) => {
                 console.error("Error fetching services:", err);
@@ -287,7 +288,11 @@ export default function ServicesPage() {
                                                 <span className="text-2xl shrink-0">{serviceIcons[service.type] || "⚙️"}</span>
                                                 <div className="min-w-0">
                                                     <div className="flex items-center gap-2 flex-wrap">
-                                                        <span className="font-semibold text-gray-900">{service.name}</span>
+                                                        <span className="font-semibold text-gray-900">
+                                                            <Link href={`/services/${service.id}`} className="hover:text-violet-600">
+                                                                {service.name}
+                                                            </Link>
+                                                        </span>
                                                         <Badge variant="outline" className="text-[10px] uppercase">{service.type}</Badge>
                                                         {service.client && (
                                                             <span className="text-xs text-cyan-600 flex items-center gap-1">
@@ -329,9 +334,15 @@ export default function ServicesPage() {
                                                         <RotateCw size={14} className={controllingId === service.id ? "animate-spin" : ""} />
                                                     </Button>
                                                     {service.url && (
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir" asChild>
-                                                            <a href={service.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} /></a>
-                                                        </Button>
+                                                        <a
+                                                            href={service.url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-violet-50"
+                                                            title="Abrir"
+                                                        >
+                                                            <ExternalLink size={14} />
+                                                        </a>
                                                     )}
                                                 </div>
                                             </div>

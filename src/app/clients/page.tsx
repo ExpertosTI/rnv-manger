@@ -151,7 +151,7 @@ export default function ClientsPage() {
                                 <Calendar className="h-5 w-5 text-blue-400" />
                             </div>
                             <div>
-                                <p className="text-sm text-muted-foreground">Pendientes Pago</p>
+                                <p className="text-sm text-muted-foreground">Al día</p>
                                 <p className="text-2xl font-bold">{clients.length - overdueClients.length}</p>
                             </div>
                         </div>

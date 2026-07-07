@@ -174,6 +174,9 @@ export default function VPSDetailPage() {
         );
     }
 
+    const serviceCost = (vps.services ?? []).reduce((sum, s) => sum + (s.monthlyCost || 0), 0);
+    const totalMonthly = (vps.monthlyCost || 0) + serviceCost;
+
     return (
         <div className="min-h-screen bg-gray-900 text-white p-8">
             {/* Header */}
@@ -327,11 +330,11 @@ export default function VPSDetailPage() {
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-gray-400">Services Cost</span>
-                                <span className="text-green-400">${vps.totalServiceCost || 0}/mo</span>
+                                <span className="text-green-400">${serviceCost.toFixed(2)}/mo</span>
                             </div>
                             <div className="flex justify-between font-bold">
                                 <span>Total</span>
-                                <span className="text-green-400">${vps.totalMonthlyCost || vps.monthlyCost}/mo</span>
+                                <span className="text-green-400">${totalMonthly.toFixed(2)}/mo</span>
                             </div>
                             <hr className="border-gray-700 my-4" />
                             <div className="flex justify-between">
