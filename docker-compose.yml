@@ -55,6 +55,8 @@ services:
       NOTIFICATION_EMAIL: ${NOTIFICATION_EMAIL:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+    volumes:
+      - ./backups:/backups:ro
     networks:
       - rnv_net
     healthcheck:

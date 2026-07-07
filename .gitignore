@@ -24,6 +24,7 @@
 tsc_errors.txt
 tsconfig.tsbuildinfo
 rnv_manager_backup_*.json
+!backups/rnv_manager_backup_2026-03-14.json
 
 # env files
 .env*

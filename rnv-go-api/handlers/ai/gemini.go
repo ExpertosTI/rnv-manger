@@ -395,6 +395,31 @@ func toolDeclarations() []functionDeclaration {
 			Description: "Clientes con pago vencido según su día de pago del mes.",
 			Parameters:  emptyParams(),
 		},
+		{
+			Name:        "rnv_service_control",
+			Description: "Reinicia, inicia, detiene o consulta estado de un servicio en su VPS vía SSH (docker/systemctl).",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"serviceId":   map[string]interface{}{"type": "string", "description": "ID del servicio"},
+					"serviceName": map[string]interface{}{"type": "string", "description": "Nombre del servicio (ej: odoo, nginx)"},
+					"action":      map[string]interface{}{"type": "string", "description": "start | stop | restart | status"},
+				},
+			},
+		},
+		{
+			Name:        "rnv_record_payment",
+			Description: "Registra un cobro/pago mensual de un cliente (recurrente).",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"clientId":   map[string]interface{}{"type": "string"},
+					"clientName": map[string]interface{}{"type": "string"},
+					"amount":     map[string]interface{}{"type": "number"},
+					"notes":      map[string]interface{}{"type": "string"},
+				},
+			},
+		},
 	}
 }
 
@@ -404,6 +429,8 @@ También tienes acceso a Odoo ERP (productos, contactos, categorías).
 PERSONALIDAD:
 - Profesional, proactivo y conciso. Responde SIEMPRE en español.
 - Ejecuta herramientas cuando necesites datos reales; no inventes cifras ni IDs.
+- Puedes reiniciar servicios (rnv_service_control) y registrar cobros (rnv_record_payment).
+- Para morosos usa rnv_overdue_clients; para resumen financiero rnv_billing_summary.
 - Si falta un dato (ID, monto), pregunta o busca por nombre antes de fallar.
 
 FORMATO DE RESPUESTA:

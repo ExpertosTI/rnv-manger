@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Database, Settings, Search, Play, Pause, RotateCw, Plus, Server, Globe, ExternalLink } from "lucide-react";
 import { motion } from "framer-motion";
+import { services as servicesApi } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 
 export default function ServicesPage() {
@@ -18,7 +19,25 @@ export default function ServicesPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [controllingId, setControllingId] = useState<string | null>(null);
     const { addToast } = useToast();
+
+    const handleServiceControl = async (serviceId: string, action: "start" | "stop" | "restart") => {
+        setControllingId(serviceId);
+        try {
+            const res = await servicesApi.control(serviceId, action);
+            if (res.success) {
+                addToast(`Servicio ${action} OK`, "success");
+                fetchServices();
+            } else {
+                addToast(res.error || res.output || `Error en ${action}`, "error");
+            }
+        } catch (e) {
+            addToast(e instanceof Error ? e.message : "Error de control", "error");
+        } finally {
+            setControllingId(null);
+        }
+    };
 
     // Form state
     const [formData, setFormData] = useState({
@@ -218,16 +237,37 @@ export default function ServicesPage() {
 
                                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                             {service.status === "running" ? (
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-red-50 hover:text-red-500" title="Stop">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 hover:bg-red-50 hover:text-red-500"
+                                                    title="Stop"
+                                                    disabled={controllingId === service.id}
+                                                    onClick={() => handleServiceControl(service.id, "stop")}
+                                                >
                                                     <Pause size={14} />
                                                 </Button>
                                             ) : (
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-green-50 hover:text-green-500" title="Start">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 hover:bg-green-50 hover:text-green-500"
+                                                    title="Start"
+                                                    disabled={controllingId === service.id}
+                                                    onClick={() => handleServiceControl(service.id, "start")}
+                                                >
                                                     <Play size={14} />
                                                 </Button>
                                             )}
-                                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Restart">
-                                                <RotateCw size={14} />
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8"
+                                                title="Restart"
+                                                disabled={controllingId === service.id}
+                                                onClick={() => handleServiceControl(service.id, "restart")}
+                                            >
+                                                <RotateCw size={14} className={controllingId === service.id ? "animate-spin" : ""} />
                                             </Button>
                                             <Button variant="ghost" size="icon" className="h-8 w-8" title="Settings">
                                                 <Settings size={14} />

@@ -83,6 +83,10 @@ func (te *toolExecutor) execute(name string, args map[string]interface{}) execut
 		result.Result = te.rnvCreatePayment(args)
 	case "rnv_overdue_clients":
 		result.Result = te.rnvOverdueClients()
+	case "rnv_service_control":
+		result.Result = te.rnvServiceControl(args)
+	case "rnv_record_payment":
+		result.Result = te.rnvRecordPayment(args)
 	default:
 		result.Result = map[string]interface{}{"success": false, "error": "función desconocida: " + name}
 	}
@@ -722,6 +726,83 @@ func (te *toolExecutor) rnvOverdueClients() map[string]interface{} {
 	}
 
 	return map[string]interface{}{"success": true, "count": len(overdue), "clients": overdue}
+}
+
+func (te *toolExecutor) rnvServiceControl(args map[string]interface{}) map[string]interface{} {
+	if te.cfg.MasterPassword == "" {
+		return map[string]interface{}{"success": false, "error": "MASTER_PASSWORD no configurado para SSH"}
+	}
+	serviceID := strArg(args, "serviceId")
+	serviceName := strArg(args, "serviceName")
+	action := strArg(args, "action")
+	if action == "" {
+		action = "restart"
+	}
+
+	var svc models.Service
+	q := te.db.Preload("VPS")
+	if serviceID != "" {
+		q = q.Where("id = ?", serviceID)
+	} else if serviceName != "" {
+		q = q.Where("name ILIKE ?", "%"+serviceName+"%")
+	} else {
+		return map[string]interface{}{"success": false, "error": "serviceId o serviceName requerido"}
+	}
+	if err := q.First(&svc).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": "servicio no encontrado"}
+	}
+	if svc.VPS == nil && svc.VpsID != nil {
+		var vps models.VPS
+		if te.db.First(&vps, "id = ?", *svc.VpsID).Error == nil {
+			svc.VPS = &vps
+		}
+	}
+	if svc.VPS == nil {
+		return map[string]interface{}{"success": false, "error": "servicio sin VPS"}
+	}
+
+	cmd, err := serviceslayer.ServiceControlCommand(svc, action)
+	if err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+	sshCfg := serviceslayer.VPSSSHConfig(*svc.VPS, te.cfg)
+	result := serviceslayer.SSHExec(sshCfg, cmd, 60)
+
+	return map[string]interface{}{
+		"success": result.Success,
+		"service": svc.Name,
+		"action":  action,
+		"host":    svc.VPS.IPAddress,
+		"command": cmd,
+		"output":  result.Output,
+		"error":   result.Error,
+	}
+}
+
+func (te *toolExecutor) rnvRecordPayment(args map[string]interface{}) map[string]interface{} {
+	clientName := strArg(args, "clientName")
+	clientID := strArg(args, "clientId")
+	if clientID == "" && clientName != "" {
+		var cl models.Client
+		if te.db.Where("name ILIKE ?", "%"+clientName+"%").First(&cl).Error == nil {
+			clientID = cl.ID
+		}
+	}
+	if clientID == "" {
+		return map[string]interface{}{"success": false, "error": "clientId o clientName requerido"}
+	}
+	var cl models.Client
+	if err := te.db.First(&cl, "id = ?", clientID).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": "cliente no encontrado"}
+	}
+	amount := toFloat(args["amount"])
+	if amount <= 0 {
+		amount = cl.MonthlyFee + cl.TotalMonthlyCost
+	}
+	return te.rnvCreatePayment(map[string]interface{}{
+		"clientId": clientID, "amount": amount,
+		"notes": strArg(args, "notes"),
+	})
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

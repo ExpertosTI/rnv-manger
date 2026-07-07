@@ -367,10 +367,38 @@ export default function SettingsPage() {
                                 <RefreshCw className={`w-8 h-8 text-violet-500 ${restoring ? "animate-spin" : ""}`} />
                             </div>
                             <h3 className="text-lg font-medium text-white mb-2">Restaurar desde JSON</h3>
-                            <p className="text-sm text-gray-500 text-center max-w-md mb-6">
-                                Selecciona un archivo de respaldo (.json) para restaurar la base de datos.
-                                Este proceso actualizará los registros existentes y creará los nuevos.
+                            <p className="text-sm text-gray-500 text-center max-w-md mb-4">
+                                Selecciona un archivo de respaldo (.json) o restaura el backup incluido (6 clientes, 7 VPS, 55 servicios — marzo 2026).
                             </p>
+
+                            <div className="flex flex-wrap gap-3 justify-center mb-4">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={restoring}
+                                    className="border-violet-500 text-violet-300"
+                                    onClick={async () => {
+                                        setRestoring(true);
+                                        try {
+                                            const res = await fetch("/api/backup/restore/bundled/rnv_manager_backup_2026-03-14.json", {
+                                                method: "POST",
+                                            });
+                                            const data = await res.json();
+                                            if (data.success) {
+                                                addToast(`✅ Restaurado: ${data.counts.clients} clientes, ${data.counts.vps} VPS, ${data.counts.services} servicios`, "success");
+                                            } else {
+                                                addToast(data.error || "Error en restauración", "error");
+                                            }
+                                        } catch {
+                                            addToast("Error al restaurar backup incluido", "error");
+                                        } finally {
+                                            setRestoring(false);
+                                        }
+                                    }}
+                                >
+                                    Restaurar backup incluido (mar 2026)
+                                </Button>
+                            </div>
 
                             <label className="relative cursor-pointer">
                                 <input

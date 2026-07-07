@@ -1,7 +1,10 @@
 package main
 
 import (
+	"encoding/json"
+	"flag"
 	"log"
+	"os"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -35,9 +38,22 @@ import (
 )
 
 func main() {
+	restorePath := flag.String("restore", "", "Restaurar backup JSON y salir (ruta al archivo)")
+	flag.Parse()
+
 	cfg := config.Load()
 	db := database.Connect(cfg.DatabaseURL)
 	database.AutoMigrate(db)
+
+	if *restorePath != "" {
+		req, err := backupHandler.RestoreFromFile(db, *restorePath)
+		if err != nil {
+			log.Fatalf("Restore failed: %v", err)
+		}
+		log.Printf("✅ Restaurado: %d clientes, %d VPS, %d servicios, %d pagos",
+			len(req.Data.Clients), len(req.Data.VPS), len(req.Data.Services), len(req.Data.Payments))
+		os.Exit(0)
+	}
 
 	// Seed defaults
 	serviceslayer.EnsureDefaultAdmin(db, cfg.MasterPassword)
@@ -46,6 +62,7 @@ func main() {
 	// Background goroutines
 	go scheduler.StartMonitorScheduler(db, cfg)
 	go scheduler.StartCleanupScheduler(db)
+	go scheduler.StartBillingScheduler(db, cfg)
 
 	// Gin setup
 	gin.SetMode(cfg.GinMode)
@@ -121,6 +138,7 @@ func main() {
 		auth.GET("/services/:id", servicesHandler.Get(db))
 		auth.PUT("/services/:id", servicesHandler.Update(db))
 		auth.DELETE("/services/:id", servicesHandler.Delete(db))
+		auth.POST("/services/:id/control", middleware.RequireRole("superadmin", "admin"), servicesHandler.Control(db, cfg))
 
 		// SSH
 		auth.POST("/ssh", sshHandler.Exec(db))
@@ -134,6 +152,7 @@ func main() {
 		auth.POST("/backup", backupHandler.Run(db))
 		auth.GET("/backup", backupHandler.List(db))
 		auth.POST("/backup/restore", middleware.RequireRole("superadmin"), backupHandler.Restore(db))
+		auth.POST("/backup/restore/bundled/:name", middleware.RequireRole("superadmin"), backupHandler.RestoreBundled(db))
 
 		// Health (authenticated version)
 		auth.POST("/health", healthHandler.Check(db))

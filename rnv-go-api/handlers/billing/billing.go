@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -88,13 +89,59 @@ func Summary(db *gorm.DB) gin.HandlerFunc {
 
 func CreatePayment(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var payment models.Payment
-		if err := c.ShouldBindJSON(&payment); err != nil {
+		var raw map[string]interface{}
+		if err := c.ShouldBindJSON(&raw); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 			return
 		}
-		if payment.Date.IsZero() {
-			payment.Date = time.Now()
+
+		if clientID, ok := raw["clientId"].(string); ok && clientID != "" {
+			var cl models.Client
+			if err := db.Preload("VPSList").Preload("Services").First(&cl, "id = ?", clientID).Error; err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Cliente no encontrado"})
+				return
+			}
+			amount := cl.MonthlyFee + cl.TotalMonthlyCost
+			payment := models.Payment{
+				Amount:   amount,
+				Currency: "USD",
+				Date:     time.Now(),
+				Status:   "completed",
+				ClientID: clientID,
+			}
+			notes := fmt.Sprintf("Cobro mensual %s", time.Now().Format("2006-01"))
+			payment.Notes = &notes
+			if err := db.Create(&payment).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+				return
+			}
+			shortID := clientID
+			if len(shortID) > 8 {
+				shortID = shortID[:8]
+			}
+			invName := fmt.Sprintf("PAY-%s-%d", shortID, time.Now().Unix())
+			c.JSON(http.StatusCreated, gin.H{
+				"success":     true,
+				"data":        payment,
+				"invoiceName": invName,
+				"totalAmount": amount,
+			})
+			return
+		}
+
+		// Pago manual completo
+		amount, _ := raw["amount"].(float64)
+		clientID, _ := raw["clientId"].(string)
+		if clientID == "" || amount <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "clientId y amount requeridos"})
+			return
+		}
+		payment := models.Payment{
+			Amount:   amount,
+			Currency: "USD",
+			Date:     time.Now(),
+			Status:   "completed",
+			ClientID: clientID,
 		}
 		if err := db.Create(&payment).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})

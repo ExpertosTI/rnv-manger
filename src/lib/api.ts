@@ -121,6 +121,11 @@ export const services = {
     update: (id: string, data: Partial<Service>) =>
         request<ApiItem<Service>>(`/services/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) => request<ApiSuccess>(`/services/${id}`, { method: "DELETE" }),
+    control: (id: string, action: "start" | "stop" | "restart" | "status") =>
+        request<{ success: boolean; output?: string; error?: string; status?: string }>(
+            `/services/${id}/control`,
+            { method: "POST", body: JSON.stringify({ action }) }
+        ),
 };
 
 // ── SSH ─────────────────────────────────────────────────────────────────────

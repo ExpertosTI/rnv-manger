@@ -352,6 +352,13 @@ case "$CMD" in
         docker exec -i "$db_cid" pg_restore -U "${DB_USER}" -d "${DB_NAME}" --clean --if-exists < "$2"
         log "✅ Restauración completada"
         ;;
+    restore-json)
+        json_file="${2:-backups/rnv_manager_backup_2026-03-14.json}"
+        warn "⚠️  Restaurará clientes/VPS/servicios desde JSON (upsert)"
+        read -r -p "¿Continuar? (y/N): " c
+        [ "$c" = "y" ] || [ "$c" = "Y" ] || exit 0
+        "$ROOT/scripts/restore-json.sh" "$json_file"
+        ;;
     db)
         load_env
         db_cid="$(db_container_id)"
@@ -391,7 +398,7 @@ case "$CMD" in
         echo -e "  ${GREEN}health${NC}     Comprobar /api/health"
         echo -e "  ${GREEN}status${NC}     Réplicas Swarm"
         echo ""
-        echo "  logs | logs-api | logs-db | logs-all | backup | restore | db | shell | migrate | fix-smtp | clean"
+        echo "  logs | logs-api | logs-db | logs-all | backup | restore | restore-json | db | shell | migrate | fix-smtp | clean"
         echo ""
         echo "  Producción: env en $ENV_FILE (JWT_SECRET o SESSION_SECRET, DATABASE_URL)"
         echo "  URL: https://${APP_DOMAIN}"
