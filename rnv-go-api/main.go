@@ -15,6 +15,7 @@ import (
 	auditHandler "github.com/renace/rnv-go-api/handlers/audit"
 	backupHandler "github.com/renace/rnv-go-api/handlers/backup"
 	billingHandler "github.com/renace/rnv-go-api/handlers/billing"
+	calendarHandler "github.com/renace/rnv-go-api/handlers/calendar"
 	clientsHandler "github.com/renace/rnv-go-api/handlers/clients"
 	emailHandler "github.com/renace/rnv-go-api/handlers/email"
 	healthHandler "github.com/renace/rnv-go-api/handlers/health"
@@ -62,6 +63,7 @@ func main() {
 	go scheduler.StartMonitorScheduler(db, cfg)
 	go scheduler.StartCleanupScheduler(db)
 	go scheduler.StartBillingScheduler(db, cfg)
+	go scheduler.StartTaskScheduler(db, cfg)
 
 	// Gin setup
 	gin.SetMode(cfg.GinMode)
@@ -179,6 +181,13 @@ func main() {
 		auth.GET("/billing/overdue", billingHandler.Overdue(db))
 		auth.POST("/billing", billingHandler.CreatePayment(db))
 		auth.POST("/billing/remind", middleware.RequireRole("superadmin", "admin"), billingHandler.Remind(db, cfg))
+
+		// Calendar & scheduled tasks
+		auth.GET("/calendar", calendarHandler.Events(db))
+		auth.GET("/calendar/tasks", calendarHandler.ListTasks(db))
+		auth.POST("/calendar/tasks", calendarHandler.CreateTask(db))
+		auth.PUT("/calendar/tasks/:id", calendarHandler.UpdateTask(db))
+		auth.DELETE("/calendar/tasks/:id", calendarHandler.DeleteTask(db))
 
 		// History
 		auth.GET("/history", historyHandler.List(db))

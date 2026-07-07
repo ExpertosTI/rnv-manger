@@ -12,36 +12,34 @@ import (
 )
 
 type overdueRow struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Email       *string `json:"email,omitempty"`
-	Amount      float64 `json:"amount"`
-	PaymentDay  int     `json:"paymentDay"`
-	DaysLate    int     `json:"daysLate"`
-	HasEmail    bool    `json:"hasEmail"`
-	PaidMonth   bool    `json:"paidThisMonth"`
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Email        *string `json:"email,omitempty"`
+	Amount       float64 `json:"amount"`
+	PaymentDay   int     `json:"paymentDay"`
+	PaymentMonth int     `json:"paymentMonth"`
+	BillingCycle string  `json:"billingCycle"`
+	DaysLate     int     `json:"daysLate"`
+	HasEmail     bool    `json:"hasEmail"`
 }
 
 func Overdue(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		now := time.Now()
-		day := now.Day()
 		var clients []models.Client
-		db.Where("is_active = true AND payment_day > 0 AND payment_day < ?", day).Find(&clients)
+		db.Where("is_active = true").Find(&clients)
 
 		rows := make([]overdueRow, 0)
 		for _, cl := range clients {
-			if serviceslayer.ClientPaidThisMonth(db, cl.ID, now) {
-				continue
-			}
-			amount := cl.MonthlyFee + cl.TotalMonthlyCost
-			if amount <= 0 {
+			overdue, daysLate, amount := serviceslayer.ClientOverdueInfo(db, cl, now)
+			if !overdue {
 				continue
 			}
 			rows = append(rows, overdueRow{
 				ID: cl.ID, Name: cl.Name, Email: cl.Email,
-				Amount: amount, PaymentDay: cl.PaymentDay,
-				DaysLate: day - cl.PaymentDay,
+				Amount: amount, PaymentDay: cl.PaymentDay, PaymentMonth: cl.PaymentMonth,
+				BillingCycle: serviceslayer.ClientBillingCycle(cl),
+				DaysLate: daysLate,
 				HasEmail: cl.Email != nil && *cl.Email != "",
 			})
 		}
@@ -78,17 +76,11 @@ func Remind(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		sent, skipped, failed := 0, 0, 0
 		var errors []string
 		for _, cl := range targets {
-			day := now.Day()
-			if day <= cl.PaymentDay || serviceslayer.ClientPaidThisMonth(db, cl.ID, now) {
+			overdue, daysLate, amount := serviceslayer.ClientOverdueInfo(db, cl, now)
+			if !overdue || amount <= 0 {
 				skipped++
 				continue
 			}
-			amount := cl.MonthlyFee + cl.TotalMonthlyCost
-			if amount <= 0 {
-				skipped++
-				continue
-			}
-			daysLate := day - cl.PaymentDay
 			if cl.Email == nil || *cl.Email == "" {
 				skipped++
 				continue

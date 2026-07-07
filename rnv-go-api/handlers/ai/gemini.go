@@ -300,8 +300,11 @@ func toolDeclarations() []functionDeclaration {
 				"email":       map[string]interface{}{"type": "string"},
 				"phone":       map[string]interface{}{"type": "string"},
 				"companyName": map[string]interface{}{"type": "string"},
-				"monthlyFee":  map[string]interface{}{"type": "number", "description": "Cuota mensual base"},
+				"monthlyFee":  map[string]interface{}{"type": "number", "description": "Cuota mensual (ciclo monthly)"},
+				"annualFee":   map[string]interface{}{"type": "number", "description": "Cuota anual (ciclo annual)"},
+				"billingCycle": map[string]interface{}{"type": "string", "description": "monthly | annual"},
 				"paymentDay":  map[string]interface{}{"type": "integer", "description": "Día de pago (1-28)"},
+				"paymentMonth": map[string]interface{}{"type": "integer", "description": "Mes de pago anual (1-12)"},
 				"notes":       map[string]interface{}{"type": "string"},
 			}, []string{"name"}),
 		},
@@ -315,7 +318,10 @@ func toolDeclarations() []functionDeclaration {
 				"phone":       map[string]interface{}{"type": "string"},
 				"companyName": map[string]interface{}{"type": "string"},
 				"monthlyFee":  map[string]interface{}{"type": "number"},
+				"annualFee":   map[string]interface{}{"type": "number"},
+				"billingCycle": map[string]interface{}{"type": "string", "description": "monthly | annual"},
 				"paymentDay":  map[string]interface{}{"type": "integer"},
+				"paymentMonth": map[string]interface{}{"type": "integer"},
 				"isActive":    map[string]interface{}{"type": "boolean"},
 				"notes":       map[string]interface{}{"type": "string"},
 			}, []string{"id"}),
@@ -409,7 +415,7 @@ func toolDeclarations() []functionDeclaration {
 		},
 		{
 			Name:        "rnv_record_payment",
-			Description: "Registra un cobro/pago mensual de un cliente (recurrente).",
+			Description: "Registra un cobro/pago de un cliente (mensual o anual).",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -419,6 +425,35 @@ func toolDeclarations() []functionDeclaration {
 					"notes":      map[string]interface{}{"type": "string"},
 				},
 			},
+		},
+		{
+			Name:        "rnv_schedule_task",
+			Description: "Programa un recordatorio o tarea futura en el calendario (reactivar cliente, cobro, seguimiento). Usa esto cuando el usuario pida recordatorios para fechas futuras.",
+			Parameters: objectParams(map[string]interface{}{
+				"title":       map[string]interface{}{"type": "string", "description": "Título del recordatorio"},
+				"description": map[string]interface{}{"type": "string"},
+				"date":        map[string]interface{}{"type": "string", "description": "Fecha YYYY-MM-DD o YYYY-MM-DDTHH:MM"},
+				"type":        map[string]interface{}{"type": "string", "description": "reminder|billing|reactivation|follow_up|custom"},
+				"clientId":    map[string]interface{}{"type": "string"},
+				"clientName":  map[string]interface{}{"type": "string"},
+				"notifyEmail": map[string]interface{}{"type": "boolean", "description": "Enviar email al ejecutarse"},
+			}, []string{"title", "date"}),
+		},
+		{
+			Name:        "rnv_list_calendar",
+			Description: "Lista eventos del calendario: cobros, mora, tareas programadas y pagos.",
+			Parameters: objectParams(map[string]interface{}{
+				"from": map[string]interface{}{"type": "string", "description": "YYYY-MM-DD"},
+				"to":   map[string]interface{}{"type": "string", "description": "YYYY-MM-DD"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_list_scheduled_tasks",
+			Description: "Lista recordatorios/tareas programadas pendientes.",
+			Parameters: objectParams(map[string]interface{}{
+				"status": map[string]interface{}{"type": "string", "description": "pending|done|cancelled"},
+				"limit":  map[string]interface{}{"type": "integer"},
+			}, []string{}),
 		},
 	}
 }
@@ -431,6 +466,8 @@ PERSONALIDAD:
 - Ejecuta herramientas cuando necesites datos reales; no inventes cifras ni IDs.
 - Puedes reiniciar servicios (rnv_service_control) y registrar cobros (rnv_record_payment).
 - Para morosos usa rnv_overdue_clients; para resumen financiero rnv_billing_summary.
+- Para recordatorios futuros USA rnv_schedule_task (ej: reactivar cliente en octubre). Nunca digas que no puedes programar recordatorios.
+- Para ver el calendario usa rnv_list_calendar. Clientes pueden tener ciclo monthly o annual.
 - Si falta un dato (ID, monto), pregunta o busca por nombre antes de fallar.
 
 FORMATO DE RESPUESTA:

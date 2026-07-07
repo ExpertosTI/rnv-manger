@@ -1,7 +1,6 @@
 package scheduler
 
 import (
-	"fmt"
 	"log"
 	"time"
 
@@ -26,54 +25,17 @@ func StartBillingScheduler(db *gorm.DB, cfg *config.Config) {
 
 func runBillingChecks(db *gorm.DB, cfg *config.Config) {
 	now := time.Now()
-	day := now.Day()
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-
 	var clients []models.Client
 	db.Where("is_active = true").Find(&clients)
 
 	for _, cl := range clients {
-		if cl.PaymentDay <= 0 {
-			continue
-		}
-
-		// Pago ya registrado este mes
-		var paid int64
-		db.Model(&models.Payment{}).
-			Where("client_id = ? AND status = ? AND date >= ?", cl.ID, "completed", monthStart).
-			Count(&paid)
-		if paid > 0 {
-			continue
-		}
-
-		amount := cl.MonthlyFee + cl.TotalMonthlyCost
-		if amount <= 0 {
-			continue
-		}
-
-		// Hoy es día de cobro
-		if day == cl.PaymentDay {
-			msg := fmt.Sprintf("Cobro mensual de %s: $%.2f (día %d)", cl.Name, amount, cl.PaymentDay)
-			serviceslayer.CreateNotification(db, "info", "Cobro recurrente", msg, models.JSON{
-				"clientId": cl.ID, "amount": amount, "type": "due_today",
-			})
-			if cfg.NotificationEmail != "" {
-				_ = serviceslayer.SendEmail(db, cfg, cfg.NotificationEmail,
-					"RNV — Cobro hoy: "+cl.Name,
-					fmt.Sprintf("<p>Cliente <b>%s</b> — monto <b>$%.2f</b></p>", cl.Name, amount))
-			}
-		}
-
-		// Mora (pasó el día de pago)
-		if day > cl.PaymentDay {
-			if _, err := serviceslayer.ProcessOverdueClient(db, cfg, cl, now); err != nil {
-				log.Printf("[Billing] overdue email %s: %v", cl.Name, err)
-			}
+		serviceslayer.ProcessDueTodayClient(db, cfg, cl, now)
+		if _, err := serviceslayer.ProcessOverdueClient(db, cfg, cl, now); err != nil {
+			log.Printf("[Billing] overdue email %s: %v", cl.Name, err)
 		}
 	}
 
-	// Snapshot mensual el día 1
-	if day == 1 {
+	if now.Day() == 1 {
 		snapshotMonthlyRevenue(db)
 	}
 }

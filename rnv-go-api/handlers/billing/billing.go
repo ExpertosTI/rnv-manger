@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/renace/rnv-go-api/models"
+	"github.com/renace/rnv-go-api/serviceslayer"
 	"gorm.io/gorm"
 )
 
@@ -101,15 +102,21 @@ func CreatePayment(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Cliente no encontrado"})
 				return
 			}
-			amount := cl.MonthlyFee + cl.TotalMonthlyCost
+			amount := serviceslayer.ClientChargeAmount(cl)
+			cycle := serviceslayer.ClientBillingCycle(cl)
 			payment := models.Payment{
-				Amount:   amount,
-				Currency: "USD",
-				Date:     time.Now(),
-				Status:   "completed",
-				ClientID: clientID,
+				Amount:       amount,
+				Currency:     cl.Currency,
+				Date:         time.Now(),
+				Status:       "completed",
+				ClientID:     clientID,
+				BillingCycle: cycle,
 			}
-			notes := fmt.Sprintf("Cobro mensual %s", time.Now().Format("2006-01"))
+			label := "mensual"
+			if cycle == serviceslayer.BillingCycleAnnual {
+				label = "anual"
+			}
+			notes := fmt.Sprintf("Cobro %s %s", label, time.Now().Format("2006-01"))
 			payment.Notes = &notes
 			if err := db.Create(&payment).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})

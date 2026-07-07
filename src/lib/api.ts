@@ -231,6 +231,25 @@ export const billing = {
         ),
 };
 
+// ── Calendar ──────────────────────────────────────────────────────────────────
+
+export const calendar = {
+    events: (from?: string, to?: string) =>
+        request<{ success: boolean; data: CalendarEvent[]; count: number }>(
+            `/calendar?from=${from || ""}&to=${to || ""}`
+        ),
+    listTasks: (status?: string) =>
+        request<{ success: boolean; data: ScheduledTask[] }>(
+            `/calendar/tasks${status ? "?status=" + status : ""}`
+        ),
+    createTask: (data: Partial<ScheduledTask> & { title: string; scheduledAt: string }) =>
+        request<{ success: boolean; data: ScheduledTask }>("/calendar/tasks", {
+            method: "POST", body: JSON.stringify(data),
+        }),
+    cancelTask: (id: string) =>
+        request<{ success: boolean }>(`/calendar/tasks/${id}`, { method: "DELETE" }),
+};
+
 // ── History ───────────────────────────────────────────────────────────────────
 
 export const history = {
@@ -265,9 +284,12 @@ export interface Client {
     companyName?: string;
     notes?: string;
     isActive: boolean;
+    billingCycle?: "monthly" | "annual";
     monthlyFee: number;
+    annualFee?: number;
     currency: string;
     paymentDay: number;
+    paymentMonth?: number;
     totalMonthlyCost: number;
     odooPartnerId?: number;
     vpsList?: VPS[];
@@ -340,8 +362,34 @@ export interface OverdueClient {
     email?: string;
     amount: number;
     paymentDay: number;
+    paymentMonth?: number;
+    billingCycle?: string;
     daysLate: number;
     hasEmail: boolean;
+}
+
+export interface CalendarEvent {
+    id: string;
+    type: "due" | "overdue" | "paid" | "task" | "reminder";
+    title: string;
+    description?: string;
+    date: string;
+    clientId?: string;
+    clientName?: string;
+    amount?: number;
+    status?: string;
+    billingCycle?: string;
+}
+
+export interface ScheduledTask {
+    id: string;
+    title: string;
+    description?: string;
+    type: string;
+    scheduledAt: string;
+    clientId?: string;
+    status: string;
+    notifyEmail: boolean;
 }
 
 export interface Payment {

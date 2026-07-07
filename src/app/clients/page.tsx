@@ -27,8 +27,11 @@ export default function ClientsPage() {
         phone: "",
         companyName: "",
         notes: "",
+        billingCycle: "monthly",
         monthlyFee: "",
+        annualFee: "",
         paymentDay: "1",
+        paymentMonth: "1",
     });
 
     const fetchClients = useCallback(() => {
@@ -48,7 +51,7 @@ export default function ClientsPage() {
         fetchClients();
     }, []);
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
@@ -68,12 +71,15 @@ export default function ClientsPage() {
                 phone: formData.phone || undefined,
                 companyName: formData.companyName || undefined,
                 notes: formData.notes || undefined,
+                billingCycle: formData.billingCycle as "monthly" | "annual",
                 monthlyFee: parseFloat(formData.monthlyFee) || 0,
+                annualFee: parseFloat(formData.annualFee) || 0,
                 paymentDay: parseInt(formData.paymentDay) || 1,
+                paymentMonth: parseInt(formData.paymentMonth) || 1,
             });
             addToast("Cliente creado exitosamente", "success");
             setIsModalOpen(false);
-            setFormData({ name: "", email: "", phone: "", companyName: "", notes: "", monthlyFee: "", paymentDay: "1" });
+            setFormData({ name: "", email: "", phone: "", companyName: "", notes: "", billingCycle: "monthly", monthlyFee: "", annualFee: "", paymentDay: "1", paymentMonth: "1" });
             fetchClients();
         } catch (error) {
             addToast(error instanceof Error ? error.message : "Error de conexión", "error");
@@ -240,8 +246,16 @@ export default function ClientsPage() {
 
                                         <div className="flex items-center gap-8">
                                             <div className="text-right">
-                                                <p className="text-lg font-bold">${client.monthlyFee || 0}/mes</p>
-                                                <p className="text-xs text-muted-foreground">Día pago: {client.paymentDay || 1}</p>
+                                                <p className="text-lg font-bold">
+                                                    {client.billingCycle === "annual"
+                                                        ? `$${client.annualFee || client.monthlyFee * 12 || 0}/año`
+                                                        : `$${client.monthlyFee || 0}/mes`}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {client.billingCycle === "annual"
+                                                        ? `Pago: ${client.paymentMonth || 1}/${client.paymentDay || 1}`
+                                                        : `Día pago: ${client.paymentDay || 1}`}
+                                                </p>
                                             </div>
                                             <Link href={`/clients/${client.id}`}>
                                                 <Button variant="outline" size="sm" className="rounded-xl border-2 group-hover:bg-violet-50 group-hover:border-violet-200">Gestionar</Button>
@@ -321,36 +335,49 @@ export default function ClientsPage() {
                             />
                         </div>
 
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Ciclo de facturación</label>
+                            <select name="billingCycle" value={formData.billingCycle} onChange={handleInputChange}
+                                className="w-full rounded-xl border-2 px-3 py-2 text-sm">
+                                <option value="monthly">Mensual</option>
+                                <option value="annual">Anual</option>
+                            </select>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium flex items-center gap-1">
-                                    <DollarSign size={14} /> Tarifa Mensual
-                                </label>
-                                <Input
-                                    name="monthlyFee"
-                                    type="number"
-                                    placeholder="0.00"
-                                    value={formData.monthlyFee}
-                                    onChange={handleInputChange}
-                                    className="rounded-xl border-2"
-                                />
-                            </div>
+                            {formData.billingCycle === "monthly" ? (
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium flex items-center gap-1">
+                                        <DollarSign size={14} /> Tarifa Mensual
+                                    </label>
+                                    <Input name="monthlyFee" type="number" placeholder="0.00"
+                                        value={formData.monthlyFee} onChange={handleInputChange} className="rounded-xl border-2" />
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium flex items-center gap-1">
+                                        <DollarSign size={14} /> Tarifa Anual
+                                    </label>
+                                    <Input name="annualFee" type="number" placeholder="0.00"
+                                        value={formData.annualFee} onChange={handleInputChange} className="rounded-xl border-2" />
+                                </div>
+                            )}
                             <div className="space-y-2">
                                 <label className="text-sm font-medium flex items-center gap-1">
                                     <Calendar size={14} /> Día de Pago
                                 </label>
-                                <Input
-                                    name="paymentDay"
-                                    type="number"
-                                    min="1"
-                                    max="31"
-                                    placeholder="1"
-                                    value={formData.paymentDay}
-                                    onChange={handleInputChange}
-                                    className="rounded-xl border-2"
-                                />
+                                <Input name="paymentDay" type="number" min="1" max="28" placeholder="1"
+                                    value={formData.paymentDay} onChange={handleInputChange} className="rounded-xl border-2" />
                             </div>
                         </div>
+
+                        {formData.billingCycle === "annual" && (
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Mes de cobro anual (1-12)</label>
+                                <Input name="paymentMonth" type="number" min="1" max="12" placeholder="1"
+                                    value={formData.paymentMonth} onChange={handleInputChange} className="rounded-xl border-2" />
+                            </div>
+                        )}
 
                         <div className="space-y-2">
                             <label className="text-sm font-medium flex items-center gap-1">

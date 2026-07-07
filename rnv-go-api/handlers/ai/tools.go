@@ -87,6 +87,12 @@ func (te *toolExecutor) execute(name string, args map[string]interface{}) execut
 		result.Result = te.rnvServiceControl(args)
 	case "rnv_record_payment":
 		result.Result = te.rnvRecordPayment(args)
+	case "rnv_schedule_task":
+		result.Result = te.rnvScheduleTask(args)
+	case "rnv_list_calendar":
+		result.Result = te.rnvListCalendar(args)
+	case "rnv_list_scheduled_tasks":
+		result.Result = te.rnvListScheduledTasks(args)
 	default:
 		result.Result = map[string]interface{}{"success": false, "error": "función desconocida: " + name}
 	}
@@ -322,8 +328,10 @@ func (te *toolExecutor) rnvGetClient(args map[string]interface{}) map[string]int
 		"client": map[string]interface{}{
 			"id": client.ID, "name": client.Name, "email": client.Email,
 			"phone": client.Phone, "companyName": client.CompanyName,
-			"monthlyFee": client.MonthlyFee, "totalMonthlyCost": client.TotalMonthlyCost,
-			"paymentDay": client.PaymentDay, "isActive": client.IsActive,
+			"monthlyFee": client.MonthlyFee, "annualFee": client.AnnualFee,
+			"totalMonthlyCost": client.TotalMonthlyCost,
+			"billingCycle": client.BillingCycle, "paymentDay": client.PaymentDay,
+			"paymentMonth": client.PaymentMonth, "isActive": client.IsActive,
 			"currency": client.Currency, "notes": client.Notes,
 			"vps":      simplifyVPSList(client.VPSList),
 			"services": simplifyServices(client.Services),
@@ -342,6 +350,13 @@ func (te *toolExecutor) rnvCreateClient(args map[string]interface{}) map[string]
 		IsActive:   true,
 		Currency:   "USD",
 		PaymentDay: intArg(args, "paymentDay", 1),
+		BillingCycle: serviceslayer.BillingCycleMonthly,
+	}
+	if cycle := strArg(args, "billingCycle"); cycle == "annual" {
+		client.BillingCycle = serviceslayer.BillingCycleAnnual
+	}
+	if _, ok := args["paymentMonth"]; ok {
+		client.PaymentMonth = intArg(args, "paymentMonth", 1)
 	}
 	if v := strArg(args, "email"); v != "" {
 		client.Email = &v
@@ -357,6 +372,9 @@ func (te *toolExecutor) rnvCreateClient(args map[string]interface{}) map[string]
 	}
 	if v, ok := args["monthlyFee"]; ok {
 		client.MonthlyFee = toFloat(v)
+	}
+	if v, ok := args["annualFee"]; ok {
+		client.AnnualFee = toFloat(v)
 	}
 
 	if err := te.db.Create(&client).Error; err != nil {
@@ -400,6 +418,15 @@ func (te *toolExecutor) rnvUpdateClient(args map[string]interface{}) map[string]
 	}
 	if _, ok := args["paymentDay"]; ok {
 		updates["payment_day"] = intArg(args, "paymentDay", client.PaymentDay)
+	}
+	if _, ok := args["paymentMonth"]; ok {
+		updates["payment_month"] = intArg(args, "paymentMonth", client.PaymentMonth)
+	}
+	if v := strArg(args, "billingCycle"); v != "" {
+		updates["billing_cycle"] = v
+	}
+	if _, ok := args["annualFee"]; ok {
+		updates["annual_fee"] = toFloat(args["annualFee"])
 	}
 	if v, ok := args["isActive"]; ok {
 		updates["is_active"] = v
@@ -574,7 +601,7 @@ func (te *toolExecutor) rnvDashboardStats() map[string]interface{} {
 	var clients []models.Client
 	te.db.Where("is_active = true").Find(&clients)
 	for _, c := range clients {
-		totalRevenue += c.MonthlyFee + c.TotalMonthlyCost
+		totalRevenue += serviceslayer.ClientChargeAmount(c)
 	}
 
 	var running, stopped int64
@@ -603,7 +630,7 @@ func (te *toolExecutor) rnvBillingSummary() map[string]interface{} {
 	var totalRevenue, totalExpenses float64
 	te.db.Model(&models.VPS{}).Select("COALESCE(SUM(monthly_cost),0)").Scan(&totalExpenses)
 	for _, c := range clients {
-		totalRevenue += c.MonthlyFee + c.TotalMonthlyCost
+		totalRevenue += serviceslayer.ClientChargeAmount(c)
 	}
 
 	now := time.Now()
@@ -613,10 +640,11 @@ func (te *toolExecutor) rnvBillingSummary() map[string]interface{} {
 		Order("payment_day asc").Find(&upcoming)
 
 	upcomingOut := make([]map[string]interface{}, 0, len(upcoming))
-	for _, c := range upcoming {
+	for _, c := range clients {
 		upcomingOut = append(upcomingOut, map[string]interface{}{
 			"id": c.ID, "name": c.Name, "paymentDay": c.PaymentDay,
-			"amount": c.MonthlyFee + c.TotalMonthlyCost,
+			"paymentMonth": c.PaymentMonth, "billingCycle": serviceslayer.ClientBillingCycle(c),
+			"amount": serviceslayer.ClientChargeAmount(c),
 		})
 	}
 
@@ -702,27 +730,20 @@ func (te *toolExecutor) rnvCreatePayment(args map[string]interface{}) map[string
 
 func (te *toolExecutor) rnvOverdueClients() map[string]interface{} {
 	now := time.Now()
-	day := now.Day()
-
 	var clients []models.Client
-	te.db.Where("is_active = true AND payment_day < ?", day).Order("payment_day asc").Find(&clients)
-
-	// Clients whose payment day already passed this month and have no payment this month
-	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	te.db.Where("is_active = true").Find(&clients)
 	overdue := make([]map[string]interface{}, 0)
 
 	for _, c := range clients {
-		var payCount int64
-		te.db.Model(&models.Payment{}).
-			Where("client_id = ? AND date >= ? AND status = ?", c.ID, startOfMonth, "completed").
-			Count(&payCount)
-		if payCount == 0 {
-			overdue = append(overdue, map[string]interface{}{
-				"id": c.ID, "name": c.Name, "paymentDay": c.PaymentDay,
-				"amount": c.MonthlyFee + c.TotalMonthlyCost,
-				"daysOverdue": day - c.PaymentDay,
-			})
+		isOverdue, daysLate, amount := serviceslayer.ClientOverdueInfo(te.db, c, now)
+		if !isOverdue {
+			continue
 		}
+		overdue = append(overdue, map[string]interface{}{
+			"id": c.ID, "name": c.Name, "paymentDay": c.PaymentDay,
+			"paymentMonth": c.PaymentMonth, "billingCycle": serviceslayer.ClientBillingCycle(c),
+			"amount": amount, "daysOverdue": daysLate,
+		})
 	}
 
 	return map[string]interface{}{"success": true, "count": len(overdue), "clients": overdue}
@@ -797,12 +818,140 @@ func (te *toolExecutor) rnvRecordPayment(args map[string]interface{}) map[string
 	}
 	amount := toFloat(args["amount"])
 	if amount <= 0 {
-		amount = cl.MonthlyFee + cl.TotalMonthlyCost
+		amount = serviceslayer.ClientChargeAmount(cl)
 	}
 	return te.rnvCreatePayment(map[string]interface{}{
 		"clientId": clientID, "amount": amount,
 		"notes": strArg(args, "notes"),
 	})
+}
+
+func (te *toolExecutor) rnvScheduleTask(args map[string]interface{}) map[string]interface{} {
+	title := strArg(args, "title")
+	if title == "" {
+		return map[string]interface{}{"success": false, "error": "title requerido"}
+	}
+	dateStr := strArg(args, "date")
+	if dateStr == "" {
+		return map[string]interface{}{"success": false, "error": "date requerido (YYYY-MM-DD o YYYY-MM-DDTHH:MM)"}
+	}
+	scheduledAt, err := time.Parse("2006-01-02T15:04", dateStr)
+	if err != nil {
+		scheduledAt, err = time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			return map[string]interface{}{"success": false, "error": "fecha inválida: use YYYY-MM-DD"}
+		}
+		scheduledAt = time.Date(scheduledAt.Year(), scheduledAt.Month(), scheduledAt.Day(), 9, 0, 0, 0, time.Local)
+	}
+
+	taskType := strArg(args, "type")
+	if taskType == "" {
+		taskType = "reminder"
+	}
+	task := models.ScheduledTask{
+		Title: title, Type: taskType, ScheduledAt: scheduledAt, Status: "pending",
+		NotifyEmail: boolArg(args, "notifyEmail", true),
+	}
+	if desc := strArg(args, "description"); desc != "" {
+		task.Description = &desc
+	}
+	clientID := strArg(args, "clientId")
+	if clientID == "" && strArg(args, "clientName") != "" {
+		var cl models.Client
+		if te.db.Where("name ILIKE ?", "%"+strArg(args, "clientName")+"%").First(&cl).Error == nil {
+			clientID = cl.ID
+		}
+	}
+	if clientID != "" {
+		task.ClientID = &clientID
+	}
+
+	if err := te.db.Create(&task).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Recordatorio programado para %s", scheduledAt.Format("2006-01-02 15:04")),
+		"task": map[string]interface{}{
+			"id": task.ID, "title": task.Title, "type": task.Type,
+			"scheduledAt": task.ScheduledAt.Format(time.RFC3339), "status": task.Status,
+		},
+	}
+}
+
+func (te *toolExecutor) rnvListCalendar(args map[string]interface{}) map[string]interface{} {
+	from := strArg(args, "from")
+	to := strArg(args, "to")
+	now := time.Now()
+	if from == "" {
+		from = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
+	}
+	if to == "" {
+		to = time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
+	}
+
+	var clients []models.Client
+	te.db.Where("is_active = true").Find(&clients)
+	events := []map[string]interface{}{}
+
+	fromT, _ := time.Parse("2006-01-02", from)
+	toT, _ := time.Parse("2006-01-02", to)
+
+	for _, cl := range clients {
+		for d := fromT; !d.After(toT); d = d.AddDate(0, 0, 1) {
+			due := serviceslayer.ClientDueDate(cl, d)
+			if due.Format("2006-01-02") == d.Format("2006-01-02") {
+				evType := "due"
+				if serviceslayer.ClientPaidForPeriod(te.db, cl, due) {
+					evType = "paid"
+				} else if time.Now().After(due) {
+					if o, _, _ := serviceslayer.ClientOverdueInfo(te.db, cl, time.Now()); o {
+						evType = "overdue"
+					}
+				}
+				events = append(events, map[string]interface{}{
+					"type": evType, "date": due.Format("2006-01-02"),
+					"title": "Cobro " + serviceslayer.BillingCycleLabel(cl) + ": " + cl.Name,
+					"clientId": cl.ID, "amount": serviceslayer.ClientChargeAmount(cl),
+					"billingCycle": serviceslayer.ClientBillingCycle(cl),
+				})
+			}
+		}
+	}
+
+	var tasks []models.ScheduledTask
+	te.db.Where("scheduled_at >= ? AND scheduled_at <= ?", fromT, toT.Add(24*time.Hour)).
+		Order("scheduled_at asc").Find(&tasks)
+	for _, t := range tasks {
+		events = append(events, map[string]interface{}{
+			"type": "task", "date": t.ScheduledAt.Format("2006-01-02"),
+			"title": t.Title, "taskType": t.Type, "status": t.Status, "id": t.ID,
+		})
+	}
+
+	return map[string]interface{}{"success": true, "count": len(events), "events": events, "from": from, "to": to}
+}
+
+func (te *toolExecutor) rnvListScheduledTasks(args map[string]interface{}) map[string]interface{} {
+	q := te.db.Preload("Client").Where("status = ?", "pending").Order("scheduled_at asc")
+	if status := strArg(args, "status"); status != "" {
+		q = te.db.Preload("Client").Where("status = ?", status).Order("scheduled_at asc")
+	}
+	limit := intArg(args, "limit", 20)
+	var tasks []models.ScheduledTask
+	q.Limit(limit).Find(&tasks)
+	out := make([]map[string]interface{}, 0, len(tasks))
+	for _, t := range tasks {
+		item := map[string]interface{}{
+			"id": t.ID, "title": t.Title, "type": t.Type, "status": t.Status,
+			"scheduledAt": t.ScheduledAt.Format("2006-01-02 15:04"),
+		}
+		if t.Client != nil {
+			item["clientName"] = t.Client.Name
+		}
+		out = append(out, item)
+	}
+	return map[string]interface{}{"success": true, "count": len(out), "tasks": out}
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -818,9 +967,11 @@ func simplifyClients(clients []models.Client) []map[string]interface{} {
 func simplifyClient(c models.Client) map[string]interface{} {
 	return map[string]interface{}{
 		"id": c.ID, "name": c.Name, "email": c.Email,
-		"monthlyFee": c.MonthlyFee, "totalMonthlyCost": c.TotalMonthlyCost,
-		"paymentDay": c.PaymentDay, "isActive": c.IsActive,
-		"companyName": c.CompanyName,
+		"billingCycle": serviceslayer.ClientBillingCycle(c),
+		"monthlyFee": c.MonthlyFee, "annualFee": c.AnnualFee,
+		"totalMonthlyCost": c.TotalMonthlyCost,
+		"paymentDay": c.PaymentDay, "paymentMonth": c.PaymentMonth,
+		"isActive": c.IsActive, "companyName": c.CompanyName,
 	}
 }
 
@@ -940,6 +1091,24 @@ func intArg(args map[string]interface{}, key string, def int) int {
 	case json.Number:
 		i, _ := t.Int64()
 		return int(i)
+	default:
+		return def
+	}
+}
+
+func boolArg(args map[string]interface{}, key string, def bool) bool {
+	if args == nil {
+		return def
+	}
+	v, ok := args[key]
+	if !ok || v == nil {
+		return def
+	}
+	switch t := v.(type) {
+	case bool:
+		return t
+	case string:
+		return t == "true" || t == "1"
 	default:
 		return def
 	}

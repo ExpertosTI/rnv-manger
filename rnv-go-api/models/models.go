@@ -80,9 +80,12 @@ type Client struct {
 	CompanyName     *string     `json:"companyName,omitempty"`
 	Notes           *string     `json:"notes,omitempty"`
 	IsActive        bool        `gorm:"default:true" json:"isActive"`
+	BillingCycle    string      `gorm:"default:'monthly'" json:"billingCycle"` // monthly | annual
 	MonthlyFee      float64     `gorm:"default:0" json:"monthlyFee"`
+	AnnualFee       float64     `gorm:"default:0" json:"annualFee"`
 	Currency        string      `gorm:"default:'USD'" json:"currency"`
 	PaymentDay      int         `gorm:"default:1" json:"paymentDay"`
+	PaymentMonth    int         `gorm:"default:1" json:"paymentMonth"` // 1-12, usado en ciclo anual
 	OdooPartnerID   *int        `json:"odooPartnerId,omitempty"`
 	OdooLastSync    *time.Time  `json:"odooLastSync,omitempty"`
 	OdooData        JSON        `gorm:"type:jsonb" json:"odooData,omitempty"`
@@ -137,7 +140,9 @@ type Service struct {
 	ConfigFile    *string    `json:"configFile,omitempty"`
 	URL           *string    `json:"url,omitempty"`
 	ResourceUsage JSON       `gorm:"type:jsonb" json:"resourceUsage,omitempty"`
+	BillingCycle  string     `gorm:"default:'monthly'" json:"billingCycle"` // monthly | annual
 	MonthlyCost   float64    `gorm:"default:0" json:"monthlyCost"`
+	AnnualCost    float64    `gorm:"default:0" json:"annualCost"`
 	Status        string     `gorm:"default:'unknown'" json:"status"`
 	LastChecked   *time.Time `json:"lastChecked,omitempty"`
 	VpsID         *string    `json:"vpsId,omitempty"`
@@ -167,12 +172,37 @@ type Payment struct {
 	ClientID        string    `gorm:"not null" json:"clientId"`
 	Client          *Client   `gorm:"foreignKey:ClientID" json:"client,omitempty"`
 	Notes           *string   `json:"notes,omitempty"`
+	BillingCycle    string    `gorm:"default:'monthly'" json:"billingCycle"`
 	CreatedAt       time.Time `json:"createdAt"`
 }
 
 func (p *Payment) BeforeCreate(tx *gorm.DB) error {
 	if p.ID == "" {
 		p.ID = cuid.New()
+	}
+	return nil
+}
+
+// ScheduledTask — recordatorios y acciones programadas (calendario / AI)
+type ScheduledTask struct {
+	ID          string     `gorm:"type:text;primaryKey" json:"id"`
+	Title       string     `gorm:"not null" json:"title"`
+	Description *string    `json:"description,omitempty"`
+	Type        string     `gorm:"default:'reminder'" json:"type"` // reminder|billing|reactivation|follow_up|custom
+	ScheduledAt time.Time  `gorm:"not null;index" json:"scheduledAt"`
+	ClientID    *string    `json:"clientId,omitempty"`
+	Client      *Client    `gorm:"foreignKey:ClientID" json:"client,omitempty"`
+	ServiceID   *string    `json:"serviceId,omitempty"`
+	Status      string     `gorm:"default:'pending'" json:"status"` // pending|done|cancelled
+	NotifyEmail bool       `gorm:"default:false" json:"notifyEmail"`
+	Metadata    JSON       `gorm:"type:jsonb" json:"metadata,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
+}
+
+func (t *ScheduledTask) BeforeCreate(tx *gorm.DB) error {
+	if t.ID == "" {
+		t.ID = cuid.New()
 	}
 	return nil
 }
