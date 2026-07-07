@@ -126,6 +126,14 @@ export const services = {
             `/services/${id}/control`,
             { method: "POST", body: JSON.stringify({ action }) }
         ),
+    overview: () =>
+        request<{ success: boolean; data: ServiceOverviewGroup[]; count: number }>("/services/overview"),
+    scan: (vpsId?: string) =>
+        request<{
+            success: boolean;
+            results: VPSScanResult[];
+            totals: { found: number; created: number; updated: number; vps: number };
+        }>(`/services/scan${vpsId ? "?vpsId=" + vpsId : ""}`, { method: "POST" }),
 };
 
 // ── SSH ─────────────────────────────────────────────────────────────────────
@@ -212,8 +220,15 @@ export const settings = {
 
 export const billing = {
     summary: () => request<{ success: boolean; data: BillingSummary }>("/billing"),
+    overdue: () =>
+        request<{ success: boolean; data: OverdueClient[]; count: number }>("/billing/overdue"),
     createPayment: (data: Partial<Payment>) =>
         request<ApiItem<Payment>>("/billing", { method: "POST", body: JSON.stringify(data) }),
+    remind: (data: { clientId?: string; all?: boolean }) =>
+        request<{ success: boolean; sent: number; skipped: number; failed: number; errors?: string[] }>(
+            "/billing/remind",
+            { method: "POST", body: JSON.stringify(data) }
+        ),
 };
 
 // ── History ───────────────────────────────────────────────────────────────────
@@ -292,8 +307,41 @@ export interface Service {
     monthlyCost: number;
     vpsId?: string;
     clientId?: string;
+    vps?: VPS;
+    client?: Client;
     createdAt: string;
     updatedAt: string;
+}
+
+export interface ServiceOverviewGroup {
+    id: string;
+    name: string;
+    ipAddress: string;
+    status: string;
+    clientId?: string;
+    client?: Client;
+    services: Service[];
+}
+
+export interface VPSScanResult {
+    vpsId: string;
+    vpsName: string;
+    ip: string;
+    success: boolean;
+    error?: string;
+    found: { name: string; type: string; status: string }[];
+    created: number;
+    updated: number;
+}
+
+export interface OverdueClient {
+    id: string;
+    name: string;
+    email?: string;
+    amount: number;
+    paymentDay: number;
+    daysLate: number;
+    hasEmail: boolean;
 }
 
 export interface Payment {

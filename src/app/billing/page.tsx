@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useToast } from "@/components/ui/toast";
+import { billing as billingApi, type OverdueClient } from "@/lib/api";
 
 interface ClientBilling {
     id: string;
@@ -40,6 +41,9 @@ export default function BillingPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedClient, setSelectedClient] = useState<ClientBilling | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [overdue, setOverdue] = useState<OverdueClient[]>([]);
+    const [remindingId, setRemindingId] = useState<string | null>(null);
+    const [remindingAll, setRemindingAll] = useState(false);
     const { addToast } = useToast();
 
     useEffect(() => {
@@ -49,16 +53,40 @@ export default function BillingPage() {
     const fetchBilling = async () => {
         setIsLoading(true);
         try {
-            const response = await fetch("/api/billing");
-            const result = await response.json();
-            if (result.success) {
-                setClients(Array.isArray(result.data) ? result.data : []);
-                setTotals(result.totals ?? null);
+            const [billingRes, overdueRes] = await Promise.all([
+                fetch("/api/billing").then((r) => r.json()),
+                billingApi.overdue().catch(() => ({ data: [] })),
+            ]);
+            if (billingRes.success) {
+                setClients(Array.isArray(billingRes.data) ? billingRes.data : []);
+                setTotals(billingRes.totals ?? null);
             }
+            setOverdue(Array.isArray(overdueRes.data) ? overdueRes.data : []);
         } catch (error) {
             addToast("Error al cargar datos de facturación", "error");
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleRemind = async (clientId?: string) => {
+        if (clientId) setRemindingId(clientId);
+        else setRemindingAll(true);
+        try {
+            const res = await billingApi.remind(clientId ? { clientId } : { all: true });
+            if (res.sent > 0) {
+                addToast(`${res.sent} recordatorio(s) enviado(s) por email`, "success");
+            } else if (res.skipped > 0) {
+                addToast("Sin emails pendientes (sin email o ya pagaron)", "info");
+            }
+            if (res.failed > 0) {
+                addToast(res.errors?.join("; ") || "Algunos emails fallaron", "error");
+            }
+        } catch (e) {
+            addToast(e instanceof Error ? e.message : "Error al enviar", "error");
+        } finally {
+            setRemindingId(null);
+            setRemindingAll(false);
         }
     };
 
@@ -156,6 +184,52 @@ export default function BillingPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Overdue clients */}
+            {overdue.length > 0 && (
+                <Card className="bg-red-50/80 border-2 border-red-200 rounded-2xl">
+                    <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                            <CardTitle className="text-base flex items-center gap-2 text-red-800">
+                                <AlertCircle className="w-5 h-5" />
+                                Facturas vencidas ({overdue.length})
+                            </CardTitle>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-300 text-red-700 gap-2"
+                                disabled={remindingAll}
+                                onClick={() => handleRemind()}
+                            >
+                                <Send size={14} className={remindingAll ? "animate-pulse" : ""} />
+                                Enviar a todos
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                        {overdue.map((o) => (
+                            <div key={o.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-red-100">
+                                <div>
+                                    <p className="font-medium text-gray-900">{o.name}</p>
+                                    <p className="text-sm text-red-600">
+                                        ${o.amount.toFixed(2)} · {o.daysLate} días de mora
+                                        {o.email ? ` · ${o.email}` : " · sin email"}
+                                    </p>
+                                </div>
+                                <Button
+                                    size="sm"
+                                    disabled={!o.hasEmail || remindingId === o.id}
+                                    onClick={() => handleRemind(o.id)}
+                                    className="gap-1"
+                                >
+                                    <Send size={14} />
+                                    {remindingId === o.id ? "Enviando..." : "Recordar"}
+                                </Button>
+                            </div>
+                        ))}
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Search */}
             <div className="flex gap-4">

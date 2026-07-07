@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"log"
 	"os"
@@ -134,6 +133,8 @@ func main() {
 
 		// Services
 		auth.GET("/services", servicesHandler.List(db))
+		auth.GET("/services/overview", servicesHandler.Overview(db))
+		auth.POST("/services/scan", middleware.RequireRole("superadmin", "admin"), servicesHandler.Scan(db, cfg))
 		auth.POST("/services", servicesHandler.Create(db))
 		auth.GET("/services/:id", servicesHandler.Get(db))
 		auth.PUT("/services/:id", servicesHandler.Update(db))
@@ -175,7 +176,9 @@ func main() {
 
 		// Billing
 		auth.GET("/billing", billingHandler.Summary(db))
+		auth.GET("/billing/overdue", billingHandler.Overdue(db))
 		auth.POST("/billing", billingHandler.CreatePayment(db))
+		auth.POST("/billing/remind", middleware.RequireRole("superadmin", "admin"), billingHandler.Remind(db, cfg))
 
 		// History
 		auth.GET("/history", historyHandler.List(db))

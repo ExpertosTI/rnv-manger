@@ -66,12 +66,8 @@ func runBillingChecks(db *gorm.DB, cfg *config.Config) {
 
 		// Mora (pasó el día de pago)
 		if day > cl.PaymentDay {
-			daysLate := day - cl.PaymentDay
-			if daysLate <= 14 {
-				msg := fmt.Sprintf("%s adeuda $%.2f — %d días de mora", cl.Name, amount, daysLate)
-				serviceslayer.CreateNotification(db, "alert", "Pago vencido", msg, models.JSON{
-					"clientId": cl.ID, "amount": amount, "daysLate": daysLate,
-				})
+			if _, err := serviceslayer.ProcessOverdueClient(db, cfg, cl, now); err != nil {
+				log.Printf("[Billing] overdue email %s: %v", cl.Name, err)
 			}
 		}
 	}

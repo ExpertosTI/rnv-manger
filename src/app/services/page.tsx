@@ -1,22 +1,24 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Database, Settings, Search, Play, Pause, RotateCw, Plus, Server, Globe, ExternalLink } from "lucide-react";
+import { Database, Settings, Search, Play, Pause, RotateCw, Plus, Server, Globe, ExternalLink, Radar, Users } from "lucide-react";
 import { motion } from "framer-motion";
-import { services as servicesApi } from "@/lib/api";
+import { services as servicesApi, type ServiceOverviewGroup } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 
 export default function ServicesPage() {
     const [services, setServices] = useState<any[]>([]);
+    const [groups, setGroups] = useState<ServiceOverviewGroup[]>([]);
     const [vpsList, setVpsList] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
+    const [vpsFilter, setVpsFilter] = useState("all");
+    const [isScanning, setIsScanning] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [controllingId, setControllingId] = useState<string | null>(null);
@@ -51,34 +53,44 @@ export default function ServicesPage() {
 
     const fetchServices = () => {
         setIsLoading(true);
-        fetch("/api/services")
-            .then(res => res.json())
-            .then(response => {
-                // Handle both old { data: [...] } and new array format
-                const data = response.data || response;
-                setServices(Array.isArray(data) ? data : []);
-                setIsLoading(false);
+        Promise.all([
+            servicesApi.overview(),
+            fetch("/api/vps").then((r) => r.json()),
+        ])
+            .then(([overviewRes, vpsRes]) => {
+                const data = overviewRes.data || [];
+                setGroups(Array.isArray(data) ? data : []);
+                const flat = (Array.isArray(data) ? data : []).flatMap((g) => g.services || []);
+                setServices(flat);
+                const vpsData = vpsRes.data || vpsRes;
+                setVpsList(Array.isArray(vpsData) ? vpsData : []);
             })
-            .catch(err => {
+            .catch((err) => {
                 console.error("Error fetching services:", err);
-                setIsLoading(false);
-            });
+                addToast("Error al cargar servicios", "error");
+            })
+            .finally(() => setIsLoading(false));
     };
 
-    const fetchVps = () => {
-        fetch("/api/vps")
-            .then(res => res.json())
-            .then(response => {
-                // Handle both old { data: [...] } and new array format
-                const data = response.data || response;
-                setVpsList(Array.isArray(data) ? data : []);
-            })
-            .catch(err => console.error("Error fetching VPS:", err));
+    const handleScan = async (vpsId?: string) => {
+        setIsScanning(true);
+        try {
+            const res = await servicesApi.scan(vpsId);
+            const t = res.totals;
+            addToast(
+                `Escaneo: ${t.found} encontrados, ${t.created} nuevos, ${t.updated} actualizados`,
+                "success"
+            );
+            fetchServices();
+        } catch (e) {
+            addToast(e instanceof Error ? e.message : "Error en escaneo SSH", "error");
+        } finally {
+            setIsScanning(false);
+        }
     };
 
     useEffect(() => {
         fetchServices();
-        fetchVps();
     }, []);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -124,10 +136,27 @@ export default function ServicesPage() {
         }
     };
 
-    const filteredServices = services.filter(s =>
-        s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.type.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const matchesSearch = (s: { name: string; type: string; url?: string; client?: { name?: string }; vps?: { name?: string; ipAddress?: string } }) => {
+        const q = searchTerm.toLowerCase();
+        return (
+            s.name.toLowerCase().includes(q) ||
+            s.type.toLowerCase().includes(q) ||
+            (s.url || "").toLowerCase().includes(q) ||
+            (s.client?.name || "").toLowerCase().includes(q) ||
+            (s.vps?.name || "").toLowerCase().includes(q) ||
+            (s.vps?.ipAddress || "").includes(q)
+        );
+    };
+
+    const filteredGroups = groups
+        .filter((g) => vpsFilter === "all" || g.id === vpsFilter)
+        .map((g) => ({
+            ...g,
+            services: (g.services || []).filter(matchesSearch),
+        }))
+        .filter((g) => g.services.length > 0 || (searchTerm === "" && vpsFilter === "all"));
+
+    const totalVisible = filteredGroups.reduce((n, g) => n + g.services.length, 0);
 
     const serviceIcons: Record<string, any> = {
         odoo: "🟣",
@@ -143,143 +172,177 @@ export default function ServicesPage() {
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-3xl font-bold tracking-tight">Servicios</h2>
-                    <p className="text-muted-foreground">Monitorea y gestiona tus servicios en ejecución</p>
+                    <p className="text-muted-foreground">Inventario por VPS, cliente y acciones de control</p>
                 </div>
-                <Button
-                    onClick={() => setIsModalOpen(true)}
-                    className="gap-2 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 shadow-lg shadow-purple-200"
-                >
-                    <Plus size={16} />
-                    Agregar Servicio
-                </Button>
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        className="gap-2 rounded-xl border-2"
+                        disabled={isScanning}
+                        onClick={() => handleScan(vpsFilter !== "all" ? vpsFilter : undefined)}
+                    >
+                        <Radar size={16} className={isScanning ? "animate-spin" : ""} />
+                        {isScanning ? "Escaneando..." : "Escanear VPS"}
+                    </Button>
+                    <Button
+                        onClick={() => setIsModalOpen(true)}
+                        className="gap-2 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 shadow-lg shadow-purple-200"
+                    >
+                        <Plus size={16} />
+                        Agregar
+                    </Button>
+                </div>
             </div>
 
             {/* Search & Filters */}
-            <div className="flex gap-4">
-                <div className="relative flex-1 max-w-sm">
+            <div className="flex flex-wrap gap-4">
+                <div className="relative flex-1 min-w-[200px] max-w-sm">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                        placeholder="Buscar servicios..."
+                        placeholder="Buscar servicio, cliente, IP..."
                         className="pl-9 rounded-xl border-2"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
-                <Button variant="outline" className="rounded-xl border-2">Filtrar</Button>
+                <select
+                    className="rounded-xl border-2 px-3 py-2 text-sm bg-white min-w-[180px]"
+                    value={vpsFilter}
+                    onChange={(e) => setVpsFilter(e.target.value)}
+                >
+                    <option value="all">Todos los VPS</option>
+                    {vpsList.map((v) => (
+                        <option key={v.id} value={v.id}>{v.name} ({v.ipAddress})</option>
+                    ))}
+                </select>
             </div>
 
-            {/* Services Table */}
-            <Card className="bg-white/70 backdrop-blur rounded-2xl border-2 border-gray-100 shadow-sm">
-                <CardHeader>
-                    <CardTitle className="text-lg">Servicios Activos ({services.length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="space-y-2">
-                        {isLoading ? (
-                            <div className="flex justify-center py-12">
-                                <RotateCw className="w-8 h-8 text-violet-500 animate-spin" />
-                            </div>
-                        ) : filteredServices.length === 0 ? (
-                            <div className="py-12 text-center">
-                                <Database className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                                <p className="text-gray-500 font-medium">No hay servicios registrados</p>
-                                <p className="text-sm text-gray-400 mb-4">Agrega tus servicios para comenzar el monitoreo.</p>
-                                <Button
-                                    onClick={() => setIsModalOpen(true)}
-                                    className="gap-2"
-                                >
-                                    <Plus size={16} />
-                                    Agregar Servicio
-                                </Button>
-                            </div>
-                        ) : (
-                            filteredServices.map((service, index) => (
-                                <motion.div
-                                    key={service.id}
-                                    initial={{ opacity: 0, x: -20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    transition={{ delay: index * 0.05 }}
-                                    className="flex items-center justify-between p-4 rounded-xl bg-gray-50 hover:bg-violet-50 transition-colors group border border-transparent hover:border-violet-100"
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <span className="text-2xl">{serviceIcons[service.type] || "⚙️"}</span>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <Link
-                                                    href={`/services/${service.id}`}
-                                                    className="font-bold text-gray-900 hover:text-violet-600 transition-colors"
-                                                >
-                                                    {service.name}
-                                                </Link>
-                                                <Badge variant="outline" className="text-[10px] uppercase font-bold text-violet-600 bg-violet-50 border-violet-100">{service.type}</Badge>
-                                            </div>
-                                            <div className="flex items-center gap-2 text-sm text-gray-500">
-                                                <span>{service.vps?.name || "Sin VPS"} • Puerto {service.port || "N/A"}</span>
-                                                {service.url && (
-                                                    <a
-                                                        href={service.url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="flex items-center gap-1 text-cyan-500 hover:text-cyan-600"
-                                                    >
-                                                        <ExternalLink size={12} />
-                                                        Abrir
-                                                    </a>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-4">
-                                        <Badge variant={service.status === "running" ? "success" : "destructive"} className="rounded-full px-3">
-                                            {service.status === "running" ? "Ejecutando" : "Detenido"}
+            {/* Services by VPS */}
+            {isLoading ? (
+                <div className="flex justify-center py-12">
+                    <RotateCw className="w-8 h-8 text-violet-500 animate-spin" />
+                </div>
+            ) : totalVisible === 0 ? (
+                <Card className="bg-white/70 backdrop-blur rounded-2xl border-2 border-gray-100">
+                    <CardContent className="py-12 text-center">
+                        <Database className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                        <p className="text-gray-500 font-medium">No hay servicios registrados</p>
+                        <p className="text-sm text-gray-400 mb-4">Restaura el backup o escanea tus VPS para detectar contenedores Docker.</p>
+                        <div className="flex gap-2 justify-center">
+                            <Button variant="outline" onClick={() => handleScan()} disabled={isScanning} className="gap-2">
+                                <Radar size={16} /> Escanear VPS
+                            </Button>
+                            <Button onClick={() => setIsModalOpen(true)} className="gap-2">
+                                <Plus size={16} /> Agregar
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            ) : (
+                <div className="space-y-4">
+                    {filteredGroups.map((group) => (
+                        <Card key={group.id} className="bg-white/70 backdrop-blur rounded-2xl border-2 border-gray-100 shadow-sm overflow-hidden">
+                            <CardHeader className="pb-2 bg-gradient-to-r from-violet-50/80 to-transparent">
+                                <div className="flex items-center justify-between">
+                                    <CardTitle className="text-base flex items-center gap-2">
+                                        <Server className="w-4 h-4 text-violet-600" />
+                                        {group.name}
+                                        <Badge variant="outline" className="font-mono text-xs">{group.ipAddress}</Badge>
+                                        {group.client && (
+                                            <Badge className="bg-cyan-100 text-cyan-800 border-0 gap-1">
+                                                <Users size={12} /> {group.client.name}
+                                            </Badge>
+                                        )}
+                                    </CardTitle>
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant={group.status === "online" ? "success" : "destructive"}>
+                                            {group.status === "online" ? "Online" : group.status}
                                         </Badge>
-
-                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            {service.status === "running" ? (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-8 w-8 hover:bg-red-50 hover:text-red-500"
-                                                    title="Stop"
-                                                    disabled={controllingId === service.id}
-                                                    onClick={() => handleServiceControl(service.id, "stop")}
-                                                >
-                                                    <Pause size={14} />
-                                                </Button>
-                                            ) : (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-8 w-8 hover:bg-green-50 hover:text-green-500"
-                                                    title="Start"
-                                                    disabled={controllingId === service.id}
-                                                    onClick={() => handleServiceControl(service.id, "start")}
-                                                >
-                                                    <Play size={14} />
-                                                </Button>
-                                            )}
+                                        <span className="text-sm text-muted-foreground">{group.services.length} servicios</span>
+                                        {group.id !== "unassigned" && (
                                             <Button
+                                                size="sm"
                                                 variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8"
-                                                title="Restart"
-                                                disabled={controllingId === service.id}
-                                                onClick={() => handleServiceControl(service.id, "restart")}
+                                                className="h-8"
+                                                disabled={isScanning}
+                                                onClick={() => handleScan(group.id)}
                                             >
-                                                <RotateCw size={14} className={controllingId === service.id ? "animate-spin" : ""} />
+                                                <Radar size={14} />
                                             </Button>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Settings">
-                                                <Settings size={14} />
-                                            </Button>
-                                        </div>
+                                        )}
                                     </div>
-                                </motion.div>
-                            ))
-                        )}
-                    </div>
-                </CardContent>
-            </Card>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="p-0">
+                                <div className="divide-y divide-gray-100">
+                                    {group.services.map((service, index) => (
+                                        <motion.div
+                                            key={service.id}
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            transition={{ delay: index * 0.02 }}
+                                            className="flex items-center justify-between p-4 hover:bg-violet-50/50 group"
+                                        >
+                                            <div className="flex items-center gap-4 min-w-0">
+                                                <span className="text-2xl shrink-0">{serviceIcons[service.type] || "⚙️"}</span>
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="font-semibold text-gray-900">{service.name}</span>
+                                                        <Badge variant="outline" className="text-[10px] uppercase">{service.type}</Badge>
+                                                        {service.client && (
+                                                            <span className="text-xs text-cyan-600 flex items-center gap-1">
+                                                                <Users size={11} /> {service.client.name}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-3 text-sm text-gray-500 mt-0.5">
+                                                        <span>Puerto {service.port || "—"}</span>
+                                                        {service.url && (
+                                                            <a href={service.url} target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:underline flex items-center gap-1">
+                                                                <Globe size={12} /> {service.url.replace(/^https?:\/\//, "")}
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <Badge variant={service.status === "running" ? "success" : "destructive"} className="rounded-full">
+                                                    {service.status === "running" ? "ON" : "OFF"}
+                                                </Badge>
+                                                <div className="flex items-center gap-0.5 opacity-70 group-hover:opacity-100">
+                                                    {service.status === "running" ? (
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Stop"
+                                                            disabled={controllingId === service.id}
+                                                            onClick={() => handleServiceControl(service.id, "stop")}>
+                                                            <Pause size={14} />
+                                                        </Button>
+                                                    ) : (
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Start"
+                                                            disabled={controllingId === service.id}
+                                                            onClick={() => handleServiceControl(service.id, "start")}>
+                                                            <Play size={14} />
+                                                        </Button>
+                                                    )}
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8" title="Restart"
+                                                        disabled={controllingId === service.id}
+                                                        onClick={() => handleServiceControl(service.id, "restart")}>
+                                                        <RotateCw size={14} className={controllingId === service.id ? "animate-spin" : ""} />
+                                                    </Button>
+                                                    {service.url && (
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir" asChild>
+                                                            <a href={service.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} /></a>
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+            )}
 
             {/* Create Service Modal */}
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
