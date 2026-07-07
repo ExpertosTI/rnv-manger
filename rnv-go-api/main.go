@@ -26,6 +26,7 @@ import (
 	odooHandler "github.com/renace/rnv-go-api/handlers/odoo"
 	servicesHandler "github.com/renace/rnv-go-api/handlers/services"
 	settingsHandler "github.com/renace/rnv-go-api/handlers/settings"
+	topologyHandler "github.com/renace/rnv-go-api/handlers/topology"
 	sshHandler "github.com/renace/rnv-go-api/handlers/ssh"
 	statsHandler "github.com/renace/rnv-go-api/handlers/stats"
 	usersHandler "github.com/renace/rnv-go-api/handlers/users"
@@ -137,6 +138,7 @@ func main() {
 		auth.GET("/services", servicesHandler.List(db))
 		auth.GET("/services/overview", servicesHandler.Overview(db))
 		auth.POST("/services/scan", middleware.RequireRole("superadmin", "admin"), servicesHandler.Scan(db, cfg))
+		auth.POST("/services/probe", servicesHandler.Probe())
 		auth.POST("/services", servicesHandler.Create(db))
 		auth.GET("/services/:id", servicesHandler.Get(db))
 		auth.PUT("/services/:id", servicesHandler.Update(db))
@@ -162,6 +164,7 @@ func main() {
 
 		// Stats
 		auth.GET("/stats", statsHandler.Dashboard(db))
+		auth.GET("/topology", topologyHandler.Map(db))
 
 		// Audit
 		auth.GET("/audit", auditHandler.List(db))

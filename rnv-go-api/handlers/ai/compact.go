@@ -28,6 +28,8 @@ func compactToolResult(name string, result interface{}) interface{} {
 		return compactItemResult(m)
 	case name == "rnv_billing_summary" || name == "rnv_dashboard_stats":
 		return compactNested(m, 1200)
+	case name == "rnv_topology":
+		return compactTopology(m)
 	case name == "rnv_list_calendar":
 		return compactEvents(m)
 	default:
@@ -71,6 +73,17 @@ func compactEvents(m map[string]interface{}) map[string]interface{} {
 	}
 	if raw, ok := m["events"]; ok {
 		out["events"] = truncateSlice(raw, 12)
+	}
+	return out
+}
+
+func compactTopology(m map[string]interface{}) map[string]interface{} {
+	out := map[string]interface{}{"success": true}
+	if t, ok := m["totals"]; ok {
+		out["totals"] = t
+	}
+	if raw, ok := m["clusters"]; ok {
+		out["clusters"] = truncateSlice(raw, 10)
 	}
 	return out
 }

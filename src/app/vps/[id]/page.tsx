@@ -4,7 +4,11 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { Terminal, Download, Activity } from "lucide-react";
+import { Terminal, Download, Activity, ArrowLeft, Server } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 const SSHConsole = dynamic(() => import("@/components/SSHConsole"), { ssr: false });
 const ServerMonitor = dynamic(() => import("@/components/ServerMonitor"), { ssr: false });
@@ -159,17 +163,19 @@ export default function VPSDetailPage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-gray-900 text-white p-8 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-4 border-cyan-500 border-t-transparent"></div>
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="animate-spin rounded-full h-12 w-12 border-4 border-violet-500 border-t-transparent" />
             </div>
         );
     }
 
     if (!vps) {
         return (
-            <div className="min-h-screen bg-gray-900 text-white p-8">
-                <p>VPS not found</p>
-                <Link href="/vps" className="text-cyan-400 hover:underline">← Back to VPS list</Link>
+            <div className="space-y-4">
+                <p className="text-gray-700">VPS no encontrado</p>
+                <Link href="/vps" className="text-violet-600 hover:underline inline-flex items-center gap-1">
+                    <ArrowLeft className="w-4 h-4" /> Volver a VPS
+                </Link>
             </div>
         );
     }
@@ -177,50 +183,41 @@ export default function VPSDetailPage() {
     const serviceCost = (vps.services ?? []).reduce((sum, s) => sum + (s.monthlyCost || 0), 0);
     const totalMonthly = (vps.monthlyCost || 0) + serviceCost;
 
+    const statusBadge = vps.status === "running"
+        ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+        : vps.status === "stopped"
+            ? "bg-red-100 text-red-800 border-red-200"
+            : "bg-amber-100 text-amber-800 border-amber-200";
+
     return (
-        <div className="min-h-screen bg-gray-900 text-white p-8">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-4">
-                    <Link href="/vps" className="text-gray-400 hover:text-white">
-                        ← Back
+        <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                    <Link href="/vps" className="text-muted-foreground hover:text-gray-900 inline-flex items-center gap-1">
+                        <ArrowLeft className="w-4 h-4" /> VPS
                     </Link>
-                    <h1 className="text-3xl font-bold">{vps.name}</h1>
-                    <span className={`px-3 py-1 rounded-full text-sm ${vps.status === "running" ? "bg-green-500/20 text-green-400" :
-                        vps.status === "stopped" ? "bg-red-500/20 text-red-400" :
-                            "bg-yellow-500/20 text-yellow-400"
-                        }`}>
-                        {vps.status}
-                    </span>
+                    <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+                        <Server className="w-7 h-7 text-violet-600" />
+                        {vps.name}
+                    </h1>
+                    <Badge className={statusBadge}>{vps.status}</Badge>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <button
-                        onClick={() => setShowTerminal(!showTerminal)}
-                        className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition flex items-center gap-2"
-                    >
+                    <Button variant="outline" onClick={() => setShowTerminal(!showTerminal)} className="gap-2 rounded-xl border-2">
                         <Terminal className="w-4 h-4" />
                         {showTerminal ? "Cerrar" : "Terminal"}
-                    </button>
-                    <button
-                        onClick={() => setShowMonitor(!showMonitor)}
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition flex items-center gap-2"
-                    >
+                    </Button>
+                    <Button variant="outline" onClick={() => setShowMonitor(!showMonitor)} className="gap-2 rounded-xl border-2">
                         <Activity className="w-4 h-4" />
                         {showMonitor ? "Cerrar" : "Monitor"}
-                    </button>
-                    <button
-                        onClick={() => setShowBackup(!showBackup)}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition flex items-center gap-2"
-                    >
+                    </Button>
+                    <Button variant="outline" onClick={() => setShowBackup(!showBackup)} className="gap-2 rounded-xl border-2">
                         <Download className="w-4 h-4" />
                         {showBackup ? "Cerrar" : "Backup"}
-                    </button>
-                    <button
-                        onClick={() => setEditing(!editing)}
-                        className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded-lg transition"
-                    >
-                        {editing ? "Cancel" : "Edit VPS"}
-                    </button>
+                    </Button>
+                    <Button onClick={() => setEditing(!editing)} className="rounded-xl">
+                        {editing ? "Cancelar" : "Editar VPS"}
+                    </Button>
                 </div>
             </div>
 
@@ -260,130 +257,128 @@ export default function VPSDetailPage() {
                 </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* VPS Info Card */}
-                <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-                    <h2 className="text-xl font-semibold mb-4">VPS Information</h2>
-
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <Card className="rounded-2xl border-2 border-gray-100 shadow-sm">
+                    <CardHeader>
+                        <CardTitle className="text-base">Información del VPS</CardTitle>
+                    </CardHeader>
+                    <CardContent>
                     {editing ? (
                         <div className="space-y-4">
                             <div>
-                                <label className="text-sm text-gray-400">Name</label>
-                                <input
+                                <label className="text-sm font-medium text-gray-700">Nombre</label>
+                                <Input
                                     type="text"
                                     value={editForm.name}
                                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                                    className="w-full mt-1 px-3 py-2 bg-gray-700 rounded-lg border border-gray-600 focus:border-cyan-500 focus:outline-none"
+                                    className="mt-1"
                                 />
                             </div>
                             <div>
-                                <label className="text-sm text-gray-400">Monthly Cost ($)</label>
-                                <input
+                                <label className="text-sm font-medium text-gray-700">Costo mensual ($)</label>
+                                <Input
                                     type="number"
                                     value={editForm.monthlyCost}
                                     onChange={(e) => setEditForm({ ...editForm, monthlyCost: parseFloat(e.target.value) || 0 })}
-                                    className="w-full mt-1 px-3 py-2 bg-gray-700 rounded-lg border border-gray-600 focus:border-cyan-500 focus:outline-none"
+                                    className="mt-1"
                                 />
                             </div>
                             <div>
-                                <label className="text-sm text-gray-400">Assign to Client</label>
+                                <label className="text-sm font-medium text-gray-700">Asignar a cliente</label>
                                 <select
                                     value={editForm.clientId}
                                     onChange={(e) => setEditForm({ ...editForm, clientId: e.target.value })}
-                                    className="w-full mt-1 px-3 py-2 bg-gray-700 rounded-lg border border-gray-600 focus:border-cyan-500 focus:outline-none"
+                                    className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
                                 >
-                                    <option value="">-- No Client --</option>
+                                    <option value="">— Sin cliente —</option>
                                     {clients.map((c) => (
                                         <option key={c.id} value={c.id}>{c.name}</option>
                                     ))}
                                 </select>
                             </div>
-                            <button
-                                onClick={handleSaveVPS}
-                                className="w-full py-2 bg-green-600 hover:bg-green-700 rounded-lg transition"
-                            >
-                                Save Changes
-                            </button>
+                            <Button onClick={handleSaveVPS} className="w-full rounded-xl">
+                                Guardar cambios
+                            </Button>
                         </div>
                     ) : (
-                        <div className="space-y-3">
-                            <div className="flex justify-between">
-                                <span className="text-gray-400">IP Address</span>
-                                <span className="font-mono text-cyan-400">{vps.ipAddress}</span>
+                        <div className="space-y-3 text-sm">
+                            <div className="flex justify-between gap-2">
+                                <span className="text-muted-foreground">IP</span>
+                                <span className="font-mono text-violet-700">{vps.ipAddress}</span>
                             </div>
-                            <div className="flex justify-between">
-                                <span className="text-gray-400">Provider</span>
+                            <div className="flex justify-between gap-2">
+                                <span className="text-muted-foreground">Proveedor</span>
                                 <span>{vps.provider}</span>
                             </div>
+                            <div className="flex justify-between gap-2">
+                                <span className="text-muted-foreground">SSH</span>
+                                <span className="font-mono text-xs">{vps.sshUser}@{vps.ipAddress}:{vps.sshPort}</span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                                <span className="text-muted-foreground">Hostinger ID</span>
+                                <span className="font-mono text-xs">{vps.hostingerId || "N/A"}</span>
+                            </div>
+                            <hr className="border-gray-100 my-4" />
                             <div className="flex justify-between">
-                                <span className="text-gray-400">SSH</span>
-                                <span className="font-mono">{vps.sshUser}@{vps.ipAddress}:{vps.sshPort}</span>
+                                <span className="text-muted-foreground">Costo VPS</span>
+                                <span className="text-emerald-700 font-medium">${vps.monthlyCost}/mes</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-gray-400">Hostinger ID</span>
-                                <span className="font-mono text-sm">{vps.hostingerId || "N/A"}</span>
-                            </div>
-                            <hr className="border-gray-700 my-4" />
-                            <div className="flex justify-between">
-                                <span className="text-gray-400">VPS Cost</span>
-                                <span className="text-green-400">${vps.monthlyCost}/mo</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-gray-400">Services Cost</span>
-                                <span className="text-green-400">${serviceCost.toFixed(2)}/mo</span>
+                                <span className="text-muted-foreground">Costo servicios</span>
+                                <span className="text-emerald-700 font-medium">${serviceCost.toFixed(2)}/mes</span>
                             </div>
                             <div className="flex justify-between font-bold">
                                 <span>Total</span>
-                                <span className="text-green-400">${totalMonthly.toFixed(2)}/mo</span>
+                                <span className="text-violet-700">${totalMonthly.toFixed(2)}/mes</span>
                             </div>
-                            <hr className="border-gray-700 my-4" />
-                            <div className="flex justify-between">
-                                <span className="text-gray-400">Client</span>
+                            <hr className="border-gray-100 my-4" />
+                            <div className="flex justify-between gap-2">
+                                <span className="text-muted-foreground">Cliente</span>
                                 {vps.client ? (
-                                    <Link href={`/clients/${vps.client.id}`} className="text-cyan-400 hover:underline">
+                                    <Link href={`/clients/${vps.client.id}`} className="text-violet-600 hover:underline font-medium">
                                         {vps.client.name}
                                     </Link>
                                 ) : (
-                                    <span className="text-yellow-400">Not assigned</span>
+                                    <span className="text-amber-600">Sin asignar</span>
                                 )}
                             </div>
+                            <Link href="/map" className="inline-block text-xs text-violet-600 hover:underline mt-2">
+                                Ver en mapa de infra →
+                            </Link>
                         </div>
                     )}
-                </div>
+                    </CardContent>
+                </Card>
 
-                {/* Services List */}
-                <div className="lg:col-span-2 bg-gray-800 rounded-xl p-6 border border-gray-700">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-xl font-semibold">Services ({vps.services?.length || 0})</h2>
-                        <button
-                            onClick={() => setShowAddService(!showAddService)}
-                            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded-lg transition text-sm"
-                        >
-                            {showAddService ? "Cancel" : "+ Add Service"}
-                        </button>
-                    </div>
+                <Card className="lg:col-span-2 rounded-2xl border-2 border-gray-100 shadow-sm">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                        <CardTitle className="text-base">Servicios ({vps.services?.length || 0})</CardTitle>
+                        <Button variant="outline" size="sm" onClick={() => setShowAddService(!showAddService)} className="rounded-xl">
+                            {showAddService ? "Cancelar" : "+ Añadir servicio"}
+                        </Button>
+                    </CardHeader>
+                    <CardContent>
 
-                    {/* Add Service Form */}
                     {showAddService && (
-                        <div className="bg-gray-700 rounded-lg p-4 mb-4">
+                        <div className="bg-gray-50 rounded-xl p-4 mb-4 border border-gray-100">
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="text-sm text-gray-400">Subdomain Name</label>
-                                    <input
+                                    <label className="text-sm font-medium text-gray-700">Subdominio</label>
+                                    <Input
                                         type="text"
-                                        placeholder="e.g., myapp"
+                                        placeholder="ej. miapp"
                                         value={newService.name}
                                         onChange={(e) => setNewService({ ...newService, name: e.target.value })}
-                                        className="w-full mt-1 px-3 py-2 bg-gray-600 rounded-lg border border-gray-500 focus:border-cyan-500 focus:outline-none"
+                                        className="mt-1"
                                     />
-                                    <p className="text-xs text-gray-500 mt-1">→ {newService.name || "subdomain"}.renace.tech</p>
+                                    <p className="text-xs text-muted-foreground mt-1">→ {newService.name || "subdominio"}.renace.tech</p>
                                 </div>
                                 <div>
-                                    <label className="text-sm text-gray-400">Type</label>
+                                    <label className="text-sm font-medium text-gray-700">Tipo</label>
                                     <select
                                         value={newService.type}
                                         onChange={(e) => setNewService({ ...newService, type: e.target.value })}
-                                        className="w-full mt-1 px-3 py-2 bg-gray-600 rounded-lg border border-gray-500 focus:border-cyan-500 focus:outline-none"
+                                        className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
                                     >
                                         <option value="odoo">Odoo</option>
                                         <option value="web">Web</option>
@@ -395,87 +390,77 @@ export default function VPSDetailPage() {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="text-sm text-gray-400">Port (optional)</label>
-                                    <input
+                                    <label className="text-sm font-medium text-gray-700">Puerto (opcional)</label>
+                                    <Input
                                         type="number"
                                         value={newService.port || ""}
                                         onChange={(e) => setNewService({ ...newService, port: parseInt(e.target.value) || 0 })}
-                                        className="w-full mt-1 px-3 py-2 bg-gray-600 rounded-lg border border-gray-500 focus:border-cyan-500 focus:outline-none"
+                                        className="mt-1"
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-sm text-gray-400">Monthly Cost ($)</label>
-                                    <input
+                                    <label className="text-sm font-medium text-gray-700">Costo mensual ($)</label>
+                                    <Input
                                         type="number"
                                         value={newService.monthlyCost || ""}
                                         onChange={(e) => setNewService({ ...newService, monthlyCost: parseFloat(e.target.value) || 0 })}
-                                        className="w-full mt-1 px-3 py-2 bg-gray-600 rounded-lg border border-gray-500 focus:border-cyan-500 focus:outline-none"
+                                        className="mt-1"
                                     />
                                 </div>
                                 <div className="col-span-2">
-                                    <label className="text-sm text-gray-400">Config File Path (optional)</label>
-                                    <input
+                                    <label className="text-sm font-medium text-gray-700">Ruta config (opcional)</label>
+                                    <Input
                                         type="text"
                                         placeholder="/etc/nginx/sites-available/..."
                                         value={newService.configFile}
                                         onChange={(e) => setNewService({ ...newService, configFile: e.target.value })}
-                                        className="w-full mt-1 px-3 py-2 bg-gray-600 rounded-lg border border-gray-500 focus:border-cyan-500 focus:outline-none"
+                                        className="mt-1"
                                     />
                                 </div>
                             </div>
-                            <button
-                                onClick={handleAddService}
-                                className="mt-4 w-full py-2 bg-green-600 hover:bg-green-700 rounded-lg transition"
-                            >
-                                Create Service
-                            </button>
+                            <Button onClick={handleAddService} className="mt-4 w-full rounded-xl">
+                                Crear servicio
+                            </Button>
                         </div>
                     )}
 
-                    {/* Services Grid */}
-                    <div className="grid gap-4">
+                    <div className="grid gap-3">
                         {vps.services?.length === 0 ? (
-                            <p className="text-gray-500 text-center py-8">No services configured</p>
+                            <p className="text-muted-foreground text-center py-8">Sin servicios configurados</p>
                         ) : (
                             vps.services?.map((service) => (
-                                <div key={service.id} className="bg-gray-700/50 rounded-lg p-4 border border-gray-600 hover:border-cyan-500/50 transition">
-                                    <div className="flex justify-between items-start">
+                                <div key={service.id} className="rounded-xl p-4 border-2 border-gray-100 hover:border-violet-200 transition bg-white">
+                                    <div className="flex justify-between items-start gap-4">
                                         <div>
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                                 <Link
                                                     href={`/services/${service.id}`}
-                                                    className="text-lg font-semibold text-cyan-400 hover:underline"
+                                                    className="text-base font-semibold text-violet-700 hover:underline"
                                                 >
                                                     {service.name}
                                                 </Link>
-                                                <span className={`px-2 py-0.5 text-xs rounded-full ${service.type === "odoo" ? "bg-purple-500/20 text-purple-400" :
-                                                    service.type === "web" ? "bg-blue-500/20 text-blue-400" :
-                                                        service.type === "api" ? "bg-orange-500/20 text-orange-400" :
-                                                            "bg-gray-500/20 text-gray-400"
-                                                    }`}>
-                                                    {service.type}
-                                                </span>
+                                                <Badge variant="outline" className="text-xs">{service.type}</Badge>
                                             </div>
                                             {service.url && (
                                                 <a
                                                     href={service.url}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-sm text-gray-400 hover:text-cyan-400 flex items-center gap-1 mt-1"
+                                                    className="text-sm text-muted-foreground hover:text-violet-600 mt-1 block"
                                                 >
-                                                    🔗 {service.url}
+                                                    {service.url}
                                                 </a>
                                             )}
                                             {service.configFile && (
-                                                <p className="text-xs text-gray-500 mt-1 font-mono">📄 {service.configFile}</p>
+                                                <p className="text-xs text-muted-foreground mt-1 font-mono">{service.configFile}</p>
                                             )}
                                         </div>
-                                        <div className="text-right">
-                                            <p className="text-green-400 font-semibold">${service.monthlyCost}/mo</p>
+                                        <div className="text-right shrink-0">
+                                            <p className="text-emerald-700 font-semibold">${service.monthlyCost}/mes</p>
                                             {service.client ? (
-                                                <p className="text-xs text-gray-400">→ {service.client.name}</p>
+                                                <p className="text-xs text-muted-foreground">→ {service.client.name}</p>
                                             ) : (
-                                                <p className="text-xs text-yellow-400">No client</p>
+                                                <p className="text-xs text-amber-600">Sin cliente</p>
                                             )}
                                         </div>
                                     </div>
@@ -483,7 +468,8 @@ export default function VPSDetailPage() {
                             ))
                         )}
                     </div>
-                </div>
+                    </CardContent>
+                </Card>
             </div>
         </div>
     );

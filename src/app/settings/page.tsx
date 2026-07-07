@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface SettingsSection {
     id: string;
@@ -156,7 +158,7 @@ export default function SettingsPage() {
             const data = await res.json();
             if (data.success && data.connected) {
                 setOdooStatus("ok");
-                addToast("✅ Odoo conectado correctamente", "success");
+                addToast("Odoo conectado correctamente", "success");
             } else {
                 setOdooStatus("error");
                 addToast(data.error || "No se pudo conectar a Odoo", "error");
@@ -178,14 +180,13 @@ export default function SettingsPage() {
                 body: JSON.stringify({ settings }),
             });
             const data = await res.json();
-
             if (data.success) {
-                addToast("✅ Configuración guardada", "success");
+                addToast("Configuración guardada", "success");
                 checkSmtpStatus();
             } else {
                 addToast(data.error || "Error al guardar", "error");
             }
-        } catch (err) {
+        } catch {
             addToast("No se pudo guardar la configuración", "error");
         } finally {
             setSaving(false);
@@ -193,11 +194,7 @@ export default function SettingsPage() {
     };
 
     const updateSetting = (key: string, value: string) => {
-        setSettings(prev => ({ ...prev, [key]: value }));
-    };
-
-    const togglePassword = (key: string) => {
-        setShowPasswords(prev => ({ ...prev, [key]: !prev[key] }));
+        setSettings((prev) => ({ ...prev, [key]: value }));
     };
 
     if (loading) {
@@ -208,200 +205,160 @@ export default function SettingsPage() {
         );
     }
 
+    const smtpBannerClass =
+        smtpStatus === "ok"
+            ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+            : smtpStatus === "error"
+                ? "bg-red-50 border-red-200 text-red-900"
+                : "bg-gray-50 border-gray-200 text-gray-700";
+
+    const odooBannerClass =
+        odooStatus === "ok"
+            ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+            : odooStatus === "error"
+                ? "bg-red-50 border-red-200 text-red-900"
+                : "bg-gray-50 border-gray-200 text-gray-700";
+
     return (
-        <div className="space-y-8">
-            {/* Header */}
-            <div className="flex items-center justify-between">
+        <div className="space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-white">Configuración</h1>
-                    <p className="text-gray-400 mt-1">Gestiona las preferencias y conexiones de la aplicación</p>
+                    <h1 className="text-3xl font-bold text-gray-900">Configuración</h1>
+                    <p className="text-muted-foreground mt-1">Preferencias y conexiones de la aplicación</p>
                 </div>
-                <button
-                    onClick={saveSettings}
-                    disabled={saving}
-                    className="px-6 py-3 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-600 text-white font-medium rounded-xl transition flex items-center gap-2"
-                >
-                    {saving ? (
-                        <RefreshCw className="w-5 h-5 animate-spin" />
-                    ) : (
-                        <Save className="w-5 h-5" />
-                    )}
+                <Button onClick={saveSettings} disabled={saving} className="gap-2 rounded-xl">
+                    {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     Guardar Cambios
-                </button>
+                </Button>
             </div>
 
-            {/* SMTP Status Banner */}
-            <div className={`p-4 rounded-xl border ${smtpStatus === "ok"
-                    ? "bg-green-900/30 border-green-700"
-                    : smtpStatus === "error"
-                        ? "bg-red-900/30 border-red-700"
-                        : "bg-gray-800 border-gray-700"
-                }`}>
+            <div className={`p-4 rounded-2xl border-2 ${smtpBannerClass}`}>
                 <div className="flex items-center gap-3">
-                    {smtpStatus === "ok" ? (
-                        <CheckCircle className="w-5 h-5 text-green-400" />
-                    ) : smtpStatus === "error" ? (
-                        <AlertTriangle className="w-5 h-5 text-red-400" />
-                    ) : (
-                        <Mail className="w-5 h-5 text-gray-400" />
-                    )}
+                    {smtpStatus === "ok" ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> :
+                        smtpStatus === "error" ? <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" /> :
+                            <Mail className="w-5 h-5 shrink-0" />}
                     <div>
-                        <p className={`font-medium ${smtpStatus === "ok" ? "text-green-300" :
-                                smtpStatus === "error" ? "text-red-300" : "text-gray-300"
-                            }`}>
+                        <p className="font-semibold">
                             {smtpStatus === "ok" ? "Email configurado y funcionando" :
                                 smtpStatus === "error" ? "Email no configurado o con errores" :
                                     "Verificando configuración de email..."}
                         </p>
-                        <p className="text-sm text-gray-500">
-                            {smtpStatus === "error" && "Configura SMTP para recibir alertas por email"}
-                        </p>
+                        {smtpStatus === "error" && (
+                            <p className="text-sm opacity-80 mt-0.5">Configura SMTP para recibir alertas por email</p>
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Odoo Status */}
-            <div className={`p-4 rounded-xl border ${odooStatus === "ok"
-                    ? "bg-green-900/30 border-green-700"
-                    : odooStatus === "error"
-                        ? "bg-red-900/30 border-red-700"
-                        : "bg-gray-800 border-gray-700"
-                }`}>
-                <div className="flex items-center justify-between gap-3">
+            <div className={`p-4 rounded-2xl border-2 ${odooBannerClass}`}>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div className="flex items-center gap-3">
-                        {odooStatus === "ok" ? (
-                            <CheckCircle className="w-5 h-5 text-green-400" />
-                        ) : odooStatus === "error" ? (
-                            <AlertTriangle className="w-5 h-5 text-red-400" />
-                        ) : (
-                            <Key className="w-5 h-5 text-gray-400" />
-                        )}
+                        {odooStatus === "ok" ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> :
+                            odooStatus === "error" ? <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" /> :
+                                <Key className="w-5 h-5 shrink-0" />}
                         <div>
-                            <p className={`font-medium ${odooStatus === "ok" ? "text-green-300" :
-                                    odooStatus === "error" ? "text-red-300" : "text-gray-300"
-                                }`}>
+                            <p className="font-semibold">
                                 {odooStatus === "ok" ? "Odoo conectado — el asistente puede editar productos" :
                                     odooStatus === "error" ? "Odoo no conectado" :
                                         "Odoo — guarda credenciales y prueba la conexión"}
                             </p>
-                            <p className="text-sm text-gray-500">
-                                URL, DB, usuario y API key en la sección API Tokens
-                            </p>
+                            <p className="text-sm opacity-80 mt-0.5">URL, DB, usuario y API key en API Tokens</p>
                         </div>
                     </div>
-                    <button
-                        onClick={testOdooConnection}
-                        disabled={testingOdoo}
-                        className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-600 text-white text-sm rounded-lg flex items-center gap-2"
-                    >
+                    <Button variant="outline" onClick={testOdooConnection} disabled={testingOdoo} className="gap-2 rounded-xl border-2">
                         {testingOdoo ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Key className="w-4 h-4" />}
                         Probar Odoo
-                    </button>
+                    </Button>
                 </div>
             </div>
 
-            {/* Settings Sections */}
             <div className="grid gap-6">
                 {SETTINGS_SECTIONS.map((section) => (
-                    <div key={section.id} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-                        <div className="px-6 py-4 bg-gray-900 border-b border-gray-700 flex items-center gap-3">
-                            <section.icon className="w-5 h-5 text-violet-400" />
-                            <div>
-                                <h2 className="font-bold text-white">{section.title}</h2>
-                                <p className="text-sm text-gray-500">{section.description}</p>
-                            </div>
-                        </div>
-                        <div className="p-6 grid gap-4 md:grid-cols-2">
+                    <Card key={section.id} className="rounded-2xl border-2 border-gray-100 shadow-sm overflow-hidden">
+                        <CardHeader className="bg-gradient-to-r from-violet-50/80 to-transparent border-b border-gray-100">
+                            <CardTitle className="text-base flex items-center gap-2">
+                                <section.icon className="w-5 h-5 text-violet-600" />
+                                {section.title}
+                            </CardTitle>
+                            <p className="text-sm text-muted-foreground font-normal">{section.description}</p>
+                        </CardHeader>
+                        <CardContent className="pt-6 grid gap-4 md:grid-cols-2">
                             {section.fields.map((field) => (
-                                <div key={field.key} className="space-y-1">
-                                    <label className="text-sm font-medium text-gray-300">
-                                        {field.label}
-                                    </label>
+                                <div key={field.key} className="space-y-1.5">
+                                    <label className="text-sm font-medium text-gray-700">{field.label}</label>
                                     <div className="relative">
-                                        <input
+                                        <Input
                                             type={field.type === "password" && !showPasswords[field.key] ? "password" : field.type === "password" ? "text" : field.type}
                                             value={settings[field.key] || ""}
                                             onChange={(e) => updateSetting(field.key, e.target.value)}
                                             placeholder={field.placeholder}
-                                            className="w-full px-4 py-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none pr-10"
+                                            className={field.type === "password" ? "pr-10" : ""}
                                         />
                                         {field.type === "password" && (
                                             <button
                                                 type="button"
-                                                onClick={() => togglePassword(field.key)}
-                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                                                onClick={() => setShowPasswords((p) => ({ ...p, [field.key]: !p[field.key] }))}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                                             >
                                                 {showPasswords[field.key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                             </button>
                                         )}
                                     </div>
-                                    {field.description && (
-                                        <p className="text-xs text-gray-500">{field.description}</p>
-                                    )}
+                                    {field.description && <p className="text-xs text-muted-foreground">{field.description}</p>}
                                 </div>
                             ))}
                             {section.id === "ai" && (
-                                <div className="md:col-span-2 p-4 rounded-xl bg-violet-900/20 border border-violet-700/40 text-sm text-gray-300 space-y-2">
-                                    <p>El asistente flotante (cono violeta) usa <code className="bg-gray-700 px-1 rounded">GEMINI_API_KEY</code> en el servidor.</p>
-                                    <p>Puede buscar, crear y editar productos Odoo, consultar contactos y ver datos de RNV Manager.</p>
-                                    <p className="text-gray-500">Ejemplo en <code className="bg-gray-700 px-1 rounded">.env</code>: GEMINI_API_KEY=AIza... y GEMINI_MODEL=gemini-2.5-flash</p>
+                                <div className="md:col-span-2 p-4 rounded-xl bg-violet-50 border border-violet-100 text-sm text-gray-700 space-y-2">
+                                    <p>El asistente (cono violeta) usa <code className="bg-white px-1.5 py-0.5 rounded border text-violet-700">GEMINI_API_KEY</code> en el servidor.</p>
+                                    <p>Puede gestionar clientes, VPS, servicios, mapa de infraestructura, calendario y Odoo.</p>
                                 </div>
                             )}
-                        </div>
-                    </div>
+                        </CardContent>
+                    </Card>
                 ))}
 
-                {/* Backup & Restore Section */}
-                <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-                    <div className="px-6 py-4 bg-gray-900 border-b border-gray-700 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <RefreshCw className="w-5 h-5 text-violet-400" />
-                            <div>
-                                <h2 className="font-bold text-white">Copia de Seguridad y Restauración</h2>
-                                <p className="text-sm text-gray-500">Restaura datos de clientes, VPS y servicios desde un archivo JSON</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="p-6">
-                        <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-700 rounded-xl p-8 bg-gray-900/50 hover:bg-gray-900/80 transition-colors">
-                            <div className="p-4 rounded-full bg-violet-500/10 mb-4">
-                                <RefreshCw className={`w-8 h-8 text-violet-500 ${restoring ? "animate-spin" : ""}`} />
-                            </div>
-                            <h3 className="text-lg font-medium text-white mb-2">Restaurar desde JSON</h3>
-                            <p className="text-sm text-gray-500 text-center max-w-md mb-4">
-                                Selecciona un archivo de respaldo (.json) o restaura el backup incluido (6 clientes, 7 VPS, 55 servicios — marzo 2026).
+                <Card className="rounded-2xl border-2 border-gray-100">
+                    <CardHeader className="border-b border-gray-100">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <RefreshCw className="w-5 h-5 text-violet-600" />
+                            Copia de Seguridad y Restauración
+                        </CardTitle>
+                        <p className="text-sm text-muted-foreground font-normal">Restaura clientes, VPS y servicios desde JSON</p>
+                    </CardHeader>
+                    <CardContent className="pt-6">
+                        <div className="flex flex-col items-center border-2 border-dashed border-gray-200 rounded-2xl p-8 bg-gray-50/50">
+                            <RefreshCw className={`w-8 h-8 text-violet-500 mb-4 ${restoring ? "animate-spin" : ""}`} />
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">Restaurar desde JSON</h3>
+                            <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
+                                Backup incluido: 6 clientes, 7 VPS, 55 servicios (marzo 2026).
                             </p>
-
                             <div className="flex flex-wrap gap-3 justify-center mb-4">
                                 <Button
                                     type="button"
                                     variant="outline"
                                     disabled={restoring}
-                                    className="border-violet-500 text-violet-300"
+                                    className="border-violet-300 text-violet-700 rounded-xl"
                                     onClick={async () => {
                                         setRestoring(true);
                                         try {
-                                            const res = await fetch("/api/backup/restore/bundled/rnv_manager_backup_2026-03-14.json", {
-                                                method: "POST",
-                                            });
+                                            const res = await fetch("/api/backup/restore/bundled/rnv_manager_backup_2026-03-14.json", { method: "POST" });
                                             const data = await res.json();
                                             if (data.success) {
-                                                addToast(`✅ Restaurado: ${data.counts.clients} clientes, ${data.counts.vps} VPS, ${data.counts.services} servicios`, "success");
+                                                addToast(`Restaurado: ${data.counts.clients} clientes, ${data.counts.vps} VPS`, "success");
                                             } else {
                                                 addToast(data.error || "Error en restauración", "error");
                                             }
                                         } catch {
-                                            addToast("Error al restaurar backup incluido", "error");
+                                            addToast("Error al restaurar", "error");
                                         } finally {
                                             setRestoring(false);
                                         }
                                     }}
                                 >
-                                    Restaurar backup incluido (mar 2026)
+                                    Restaurar backup incluido
                                 </Button>
                             </div>
-
-                            <label className="relative cursor-pointer">
+                            <label className="cursor-pointer">
                                 <input
                                     type="file"
                                     accept=".json"
@@ -410,7 +367,6 @@ export default function SettingsPage() {
                                     onChange={async (e) => {
                                         const file = e.target.files?.[0];
                                         if (!file) return;
-
                                         const reader = new FileReader();
                                         reader.onload = async (event) => {
                                             try {
@@ -422,14 +378,13 @@ export default function SettingsPage() {
                                                     body: JSON.stringify(json),
                                                 });
                                                 const data = await res.json();
-
                                                 if (data.success) {
-                                                    addToast(`✅ Restauración Exitosa: ${data.counts.clients} clientes, ${data.counts.vps} VPS.`, "success");
+                                                    addToast(`Restaurado: ${data.counts.clients} clientes, ${data.counts.vps} VPS`, "success");
                                                 } else {
-                                                    addToast(data.error || "Error en restauración", "error");
+                                                    addToast(data.error || "Error", "error");
                                                 }
-                                            } catch (err) {
-                                                addToast("El archivo no es un JSON válido", "error");
+                                            } catch {
+                                                addToast("JSON inválido", "error");
                                             } finally {
                                                 setRestoring(false);
                                             }
@@ -437,29 +392,28 @@ export default function SettingsPage() {
                                         reader.readAsText(file);
                                     }}
                                 />
-                                <div className="px-6 py-2.5 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition border border-gray-600 flex items-center gap-2">
+                                <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-gray-200 bg-white text-sm font-medium hover:bg-gray-50">
                                     <Save className="w-4 h-4" />
-                                    {restoring ? "Restaurando..." : "Seleccionar Archivo y Restaurar"}
-                                </div>
+                                    {restoring ? "Restaurando..." : "Seleccionar archivo JSON"}
+                                </span>
                             </label>
                         </div>
-                    </div>
-                </div>
+                    </CardContent>
+                </Card>
             </div>
 
-            {/* Info */}
-            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
-                <div className="flex items-start gap-3">
-                    <Server className="w-5 h-5 text-cyan-400 mt-0.5" />
+            <Card className="rounded-2xl border-2 border-gray-100 bg-cyan-50/30">
+                <CardContent className="pt-5 flex gap-3">
+                    <Server className="w-5 h-5 text-cyan-600 shrink-0 mt-0.5" />
                     <div>
-                        <p className="text-sm text-gray-300 font-medium">Configuración almacenada en base de datos</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                            Los cambios se guardan en la tabla <code className="bg-gray-700 px-1 rounded">AppSettings</code>
-                            y están disponibles para todas las instancias de la aplicación.
+                        <p className="text-sm font-medium text-gray-900">Configuración en base de datos</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Los cambios se guardan en <code className="bg-white px-1 rounded border">AppSettings</code>.
+                            SMTP de producción también puede venir de <code className="bg-white px-1 rounded border">/etc/rnv-manager/secrets.local</code>.
                         </p>
                     </div>
-                </div>
-            </div>
+                </CardContent>
+            </Card>
         </div>
     );
 }

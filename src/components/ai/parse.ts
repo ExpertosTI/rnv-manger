@@ -73,6 +73,8 @@ export function suggestionsForPath(path: string): string[] {
     if (path.includes("/services/")) return ["Detalle del servicio", "Asignar a cliente", "Ver costos"];
     if (path.includes("/services")) return ["Listar servicios", "Servicios sin cliente"];
     if (path.includes("/billing")) return ["Pagos pendientes", "Resumen financiero", "Registrar un pago"];
+    if (path.includes("/map")) return ["Mapa de infraestructura", "Servicios por VPS", "Costos por cliente"];
+    if (path.includes("/calendar")) return ["Próximos vencimientos", "Programar recordatorio", "Tareas pendientes"];
     if (path.includes("/settings")) return ["Probar conexión Odoo", "Resumen RNV"];
     if (path === "/") return ["Resumen general", "Clientes morosos", "Estado servidores"];
     return ["Resumen general", "Buscar...", "¿Qué puedo hacer?"];

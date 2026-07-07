@@ -2,6 +2,7 @@ package services
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/renace/rnv-go-api/config"
@@ -89,7 +90,7 @@ func Overview(db *gorm.DB) gin.HandlerFunc {
 				}
 			}
 			groups = append(groups, overviewVPS{
-				ID: v.ID, Name: v.Name, IPAddress: v.IPAddress, Status: v.Status,
+				ID: v.ID, Name: v.Name, IPAddress: v.IPAddress, Status: normalizeOverviewStatus(v.Status),
 				ClientID: v.ClientID, Client: v.Client,
 				Services: enriched,
 			})
@@ -106,5 +107,19 @@ func Overview(db *gorm.DB) gin.HandlerFunc {
 			"data":    groups,
 			"count":   len(allServices),
 		})
+	}
+}
+
+func normalizeOverviewStatus(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "running", "active", "online":
+		return "online"
+	case "stopped", "offline":
+		return "offline"
+	default:
+		if s == "" {
+			return "unknown"
+		}
+		return s
 	}
 }

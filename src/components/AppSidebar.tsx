@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Server, Users, Settings, Database, FileCode, Zap, Palette, Menu, X, DollarSign, Shield, UsersRound, Calendar } from "lucide-react";
+import { LayoutDashboard, Server, Users, Settings, Database, FileCode, Zap, Palette, Menu, X, DollarSign, Shield, UsersRound, Calendar, Network } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { stats } from "@/lib/api";
 
@@ -11,6 +11,7 @@ const sidebarItems = [
     { icon: LayoutDashboard, label: "Panel Principal", href: "/" },
     { icon: Server, label: "Servidores VPS", href: "/vps" },
     { icon: Database, label: "Servicios", href: "/services" },
+    { icon: Network, label: "Mapa Infra", href: "/map" },
     { icon: Users, label: "Clientes", href: "/clients" },
     { icon: DollarSign, label: "Facturación", href: "/billing" },
     { icon: Calendar, label: "Calendario", href: "/calendar" },

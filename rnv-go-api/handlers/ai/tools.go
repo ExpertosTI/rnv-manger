@@ -93,6 +93,8 @@ func (te *toolExecutor) execute(name string, args map[string]interface{}) execut
 		result.Result = te.rnvListCalendar(args)
 	case "rnv_list_scheduled_tasks":
 		result.Result = te.rnvListScheduledTasks(args)
+	case "rnv_topology":
+		result.Result = te.rnvTopology(args)
 	default:
 		result.Result = map[string]interface{}{"success": false, "error": "función desconocida: " + name}
 	}
@@ -952,6 +954,58 @@ func (te *toolExecutor) rnvListScheduledTasks(args map[string]interface{}) map[s
 		out = append(out, item)
 	}
 	return map[string]interface{}{"success": true, "count": len(out), "tasks": out}
+}
+
+func (te *toolExecutor) rnvTopology(args map[string]interface{}) map[string]interface{} {
+	var clients []models.Client
+	var vpsList []models.VPS
+	var services []models.Service
+	te.db.Where("is_active = true").Find(&clients)
+	te.db.Preload("Client").Find(&vpsList)
+	te.db.Preload("Client").Preload("VPS").Find(&services)
+
+	clusters := make([]map[string]interface{}, 0, len(vpsList))
+	for _, v := range vpsList {
+		var svcs []models.Service
+		for _, s := range services {
+			if s.VpsID != nil && *s.VpsID == v.ID {
+				svcs = append(svcs, s)
+			}
+		}
+		clientName := ""
+		if v.Client != nil {
+			clientName = v.Client.Name
+		}
+		svcBrief := make([]map[string]interface{}, 0, len(svcs))
+		for _, s := range svcs {
+			cn := clientName
+			if s.Client != nil {
+				cn = s.Client.Name
+			}
+			svcBrief = append(svcBrief, map[string]interface{}{
+				"name": s.Name, "type": s.Type, "status": s.Status,
+				"monthlyCost": s.MonthlyCost, "client": cn,
+			})
+		}
+		clusters = append(clusters, map[string]interface{}{
+			"vps": v.Name, "ip": v.IPAddress, "client": clientName,
+			"status": v.Status, "services": len(svcs), "serviceList": svcBrief,
+		})
+	}
+
+	var revenue float64
+	for _, c := range clients {
+		revenue += serviceslayer.ClientChargeAmount(c)
+	}
+
+	return map[string]interface{}{
+		"success": true,
+		"totals": map[string]interface{}{
+			"clients": len(clients), "vps": len(vpsList), "services": len(services),
+			"monthlyRevenue": revenue,
+		},
+		"clusters": clusters,
+	}
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

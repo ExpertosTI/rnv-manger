@@ -22,6 +22,7 @@ export default function ServicesPage() {
     const [isScanning, setIsScanning] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isProbing, setIsProbing] = useState(false);
     const [controllingId, setControllingId] = useState<string | null>(null);
     const { addToast } = useToast();
 
@@ -93,6 +94,46 @@ export default function ServicesPage() {
     useEffect(() => {
         fetchServices();
     }, []);
+
+    const handleProbeUrl = async () => {
+        if (!formData.url.trim()) {
+            addToast("Escribe la URL primero", "error");
+            return;
+        }
+        setIsProbing(true);
+        try {
+            const res = await servicesApi.probe(formData.url.trim());
+            const d = res.data;
+            setFormData((prev) => ({
+                ...prev,
+                url: d.url,
+                name: prev.name || d.suggestedName,
+                type: d.suggestedType || prev.type,
+                status: d.status,
+            }));
+            addToast(
+                d.reachable ? `URL activa (${d.statusCode}) — nombre: ${d.suggestedName}` : "URL no responde — revisa el dominio",
+                d.reachable ? "success" : "error"
+            );
+        } catch (e) {
+            addToast(e instanceof Error ? e.message : "Error al detectar URL", "error");
+        } finally {
+            setIsProbing(false);
+        }
+    };
+
+    const vpsStatusBadge = (status: string) => {
+        const s = (status || "").toLowerCase();
+        if (["online", "running", "active"].includes(s)) return { variant: "success" as const, label: "Online" };
+        if (["offline", "stopped"].includes(s)) return { variant: "destructive" as const, label: "Offline" };
+        return { variant: "warning" as const, label: status || "Desconocido" };
+    };
+
+    const serviceStatusBadge = (status: string) => {
+        const s = (status || "").toLowerCase();
+        if (s === "running") return { variant: "success" as const, label: "ON" };
+        return { variant: "destructive" as const, label: "OFF" };
+    };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -256,15 +297,17 @@ export default function ServicesPage() {
                                         )}
                                     </CardTitle>
                                     <div className="flex items-center gap-2">
-                                        <Badge variant={group.status === "online" ? "success" : "destructive"}>
-                                            {group.status === "online" ? "Online" : group.status}
-                                        </Badge>
+                                        {(() => {
+                                            const st = vpsStatusBadge(group.status);
+                                            return <Badge variant={st.variant}>{st.label}</Badge>;
+                                        })()}
                                         <span className="text-sm text-muted-foreground">{group.services.length} servicios</span>
                                         {group.id !== "unassigned" && (
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
                                                 className="h-8"
+                                                title="Escanear este VPS"
                                                 disabled={isScanning}
                                                 onClick={() => handleScan(group.id)}
                                             >
@@ -300,20 +343,26 @@ export default function ServicesPage() {
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div className="flex items-center gap-3 text-sm text-gray-500 mt-0.5">
-                                                        <span>Puerto {service.port || "—"}</span>
-                                                        {service.url && (
-                                                            <a href={service.url} target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:underline flex items-center gap-1">
+                                                    <div className="flex items-center gap-3 text-sm text-gray-500 mt-0.5 flex-wrap">
+                                                        {service.port ? <span>Puerto {service.port}</span> : null}
+                                                        {service.url ? (
+                                                            <a href={service.url} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline flex items-center gap-1 font-medium">
                                                                 <Globe size={12} /> {service.url.replace(/^https?:\/\//, "")}
                                                             </a>
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground">Sin URL — escanea o añade manualmente</span>
+                                                        )}
+                                                        {(service.monthlyCost ?? 0) > 0 && (
+                                                            <span className="text-emerald-700 font-medium">${service.monthlyCost}/mes</span>
                                                         )}
                                                     </div>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2 shrink-0">
-                                                <Badge variant={service.status === "running" ? "success" : "destructive"} className="rounded-full">
-                                                    {service.status === "running" ? "ON" : "OFF"}
-                                                </Badge>
+                                                {(() => {
+                                                    const st = serviceStatusBadge(service.status);
+                                                    return <Badge variant={st.variant} className="rounded-full">{st.label}</Badge>;
+                                                })()}
                                                 <div className="flex items-center gap-0.5 opacity-70 group-hover:opacity-100">
                                                     {service.status === "running" ? (
                                                         <Button variant="ghost" size="icon" className="h-8 w-8" title="Stop"
@@ -448,15 +497,29 @@ export default function ServicesPage() {
 
                         <div className="space-y-2">
                             <label className="text-sm font-medium flex items-center gap-1">
-                                <Globe size={14} /> URL de Acceso
+                                <Globe size={14} /> URL de acceso
                             </label>
-                            <Input
-                                name="url"
-                                placeholder="https://app.ejemplo.com"
-                                value={formData.url}
-                                onChange={handleInputChange}
-                                className="rounded-xl border-2"
-                            />
+                            <div className="flex gap-2">
+                                <Input
+                                    name="url"
+                                    placeholder="https://miapp.renace.tech"
+                                    value={formData.url}
+                                    onChange={handleInputChange}
+                                    className="rounded-xl border-2"
+                                />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="shrink-0 rounded-xl border-2"
+                                    disabled={isProbing}
+                                    onClick={handleProbeUrl}
+                                >
+                                    {isProbing ? <RotateCw className="w-4 h-4 animate-spin" /> : "Detectar"}
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Pega la URL web y pulsa Detectar para rellenar nombre, tipo y estado automáticamente.
+                            </p>
                         </div>
 
                         <DialogFooter>

@@ -134,6 +134,19 @@ export const services = {
             results: VPSScanResult[];
             totals: { found: number; created: number; updated: number; vps: number };
         }>(`/services/scan${vpsId ? "?vpsId=" + vpsId : ""}`, { method: "POST" }),
+    probe: (url: string) =>
+        request<{
+            success: boolean;
+            data: {
+                url: string;
+                hostname: string;
+                suggestedName: string;
+                suggestedType: string;
+                reachable: boolean;
+                statusCode: number;
+                status: string;
+            };
+        }>("/services/probe", { method: "POST", body: JSON.stringify({ url }) }),
 };
 
 // ── SSH ─────────────────────────────────────────────────────────────────────
@@ -246,8 +259,42 @@ export const calendar = {
         request<{ success: boolean; data: ScheduledTask }>("/calendar/tasks", {
             method: "POST", body: JSON.stringify(data),
         }),
-    cancelTask: (id: string) =>
+        cancelTask: (id: string) =>
         request<{ success: boolean }>(`/calendar/tasks/${id}`, { method: "DELETE" }),
+};
+
+// ── Topology (infra map) ────────────────────────────────────────────────────
+
+export interface TopologyCluster {
+    vpsId: string;
+    vpsName: string;
+    ip: string;
+    status: string;
+    clientId?: string;
+    clientName?: string;
+    monthlyCost?: number;
+    serviceCount: number;
+    servicesMonthlyCost?: number;
+    totalClusterCost?: number;
+    services: {
+        id?: string;
+        name: string;
+        type?: string;
+        status: string;
+        charge?: number;
+        chargeCycle?: string;
+        url?: string;
+        clientName?: string;
+    }[];
+}
+
+export const topology = {
+    map: () =>
+        request<{
+            success: boolean;
+            clusters: TopologyCluster[];
+            totals: { clients: number; vps: number; services: number; monthlyRevenue: number };
+        }>("/topology"),
 };
 
 // ── History ───────────────────────────────────────────────────────────────────

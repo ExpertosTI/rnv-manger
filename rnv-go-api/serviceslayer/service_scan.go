@@ -60,6 +60,22 @@ func inferServiceType(name, image string) string {
 	}
 }
 
+
+func inferServiceURL(name string) *string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	lower := strings.ToLower(name)
+	if strings.Contains(lower, "traefik") || strings.Contains(lower, "portainer") ||
+		strings.Contains(lower, "postgres") || strings.Contains(lower, "redis") ||
+		strings.Contains(lower, "watchtower") {
+		return nil
+	}
+	u := fmt.Sprintf("https://%s.renace.tech", name)
+	return &u
+}
+
 func parseDockerLine(line string) (DiscoveredService, bool) {
 	line = strings.TrimSpace(line)
 	if line == "" {
@@ -141,6 +157,9 @@ func SyncScannedServices(db *gorm.DB, vps models.VPS, discovered []DiscoveredSer
 				VpsID:    &vps.ID,
 				ClientID: vps.ClientID,
 			}
+			if u := inferServiceURL(d.Name); u != nil {
+				svc.URL = u
+			}
 			svc.LastChecked = &now
 			if db.Create(&svc).Error == nil {
 				created++
@@ -152,6 +171,11 @@ func SyncScannedServices(db *gorm.DB, vps models.VPS, discovered []DiscoveredSer
 		}
 		if d.Port != nil {
 			updates["port"] = *d.Port
+		}
+		if existing.URL == nil || *existing.URL == "" {
+			if u := inferServiceURL(d.Name); u != nil {
+				updates["url"] = *u
+			}
 		}
 		if existing.ClientID == nil && vps.ClientID != nil {
 			updates["client_id"] = *vps.ClientID

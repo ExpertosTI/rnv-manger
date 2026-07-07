@@ -11,8 +11,8 @@ function Badge({ className, variant = "default", ...props }: BadgeProps) {
         secondary: "border-transparent bg-secondary text-secondary-foreground",
         destructive: "border-transparent bg-destructive text-destructive-foreground shadow",
         outline: "text-foreground",
-        success: "border-transparent bg-green-500/20 text-green-400 shadow",
-        warning: "border-transparent bg-yellow-500/20 text-yellow-400 shadow",
+        success: "border-transparent bg-emerald-100 text-emerald-800 shadow",
+        warning: "border-transparent bg-amber-100 text-amber-800 shadow",
     };
 
     return (

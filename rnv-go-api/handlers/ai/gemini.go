@@ -455,6 +455,11 @@ func toolDeclarations() []functionDeclaration {
 				"limit":  map[string]interface{}{"type": "integer"},
 			}, []string{}),
 		},
+		{
+			Name:        "rnv_topology",
+			Description: "Mapa de infraestructura: VPS, servicios por servidor, clientes asignados, costos y estado.",
+			Parameters:  emptyParams(),
+		},
 	}
 }
 
@@ -464,6 +469,7 @@ HERRAMIENTAS:
 - Datos: rnv_search, rnv_list_*, rnv_get_*, rnv_billing_summary, rnv_overdue_clients
 - Acciones: rnv_create/update_client, rnv_record_payment, rnv_service_control, rnv_schedule_task
 - Calendario: rnv_list_calendar, rnv_list_scheduled_tasks
+- Mapa infra: rnv_topology (VPS, servicios, clientes, costos)
 - Odoo: odoo_* (si configurado)
 
 REGLAS:
