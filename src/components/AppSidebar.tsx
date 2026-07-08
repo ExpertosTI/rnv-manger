@@ -11,7 +11,7 @@ const sidebarItems = [
     { icon: LayoutDashboard, label: "Panel Principal", href: "/" },
     { icon: Server, label: "Servidores VPS", href: "/vps" },
     { icon: Database, label: "Servicios", href: "/services" },
-    { icon: Network, label: "Mapa Infra", href: "/map" },
+    { icon: Network, label: "Neural Map", href: "/map" },
     { icon: Users, label: "Clientes", href: "/clients" },
     { icon: DollarSign, label: "Facturación", href: "/billing" },
     { icon: Calendar, label: "Calendario", href: "/calendar" },

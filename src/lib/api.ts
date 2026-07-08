@@ -288,10 +288,27 @@ export interface TopologyCluster {
     }[];
 }
 
+export interface TopologyNode {
+    id: string;
+    type: "client" | "vps" | "service" | string;
+    label: string;
+    status?: string;
+    parentId?: string;
+    meta?: Record<string, unknown>;
+}
+
+export interface TopologyEdge {
+    from: string;
+    to: string;
+    kind: "owns" | "hosts" | "bills" | string;
+}
+
 export const topology = {
     map: () =>
         request<{
             success: boolean;
+            nodes: TopologyNode[];
+            edges: TopologyEdge[];
             clusters: TopologyCluster[];
             totals: { clients: number; vps: number; services: number; monthlyRevenue: number };
         }>("/topology"),
