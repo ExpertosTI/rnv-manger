@@ -145,11 +145,11 @@ export function buildFlowGraph(
                 target: s.id,
                 type: "smoothstep",
                 animated: isOnline(s.status),
+                className: isOnline(s.status) ? "nm-edge-hosts" : "nm-edge-dim",
                 style: {
-                    stroke: isOnline(s.status) ? "#a78bfa" : "#3f3f46",
-                    strokeWidth: 1.5,
+                    stroke: isOnline(s.status) ? "#9b7bff" : "#3f3f46",
+                    strokeWidth: isOnline(s.status) ? 2 : 1.25,
                 },
-                className: isOnline(s.status) ? "opacity-80" : "opacity-40",
             });
         });
 
@@ -175,7 +175,8 @@ export function buildFlowGraph(
                 source: v.id,
                 target: overflowId,
                 type: "smoothstep",
-                style: { stroke: "#52525b", strokeWidth: 1, strokeDasharray: "4 4" },
+                className: "nm-edge-dim",
+                style: { stroke: "#52525b", strokeWidth: 1.25 },
             });
         }
     }
@@ -190,12 +191,13 @@ export function buildFlowGraph(
             target: e.to,
             type: "smoothstep",
             animated: true,
-            style: { stroke: "#22d3ee", strokeWidth: 2 },
+            className: "nm-edge-owns",
+            style: { stroke: "#2ee6d6", strokeWidth: 2.5 },
             label: "owns",
-            labelStyle: { fill: "#67e8f9", fontSize: 9, fontWeight: 600 },
-            labelBgStyle: { fill: "#0a0a0f", fillOpacity: 0.8 },
-            labelBgPadding: [4, 6] as [number, number],
-            labelBgBorderRadius: 4,
+            labelStyle: { fill: "#a5f3fc", fontSize: 10, fontWeight: 700, fontFamily: "monospace" },
+            labelBgStyle: { fill: "#05060b", fillOpacity: 0.85 },
+            labelBgPadding: [5, 8] as [number, number],
+            labelBgBorderRadius: 6,
         });
     }
 
@@ -234,7 +236,8 @@ export function buildFlowGraph(
                 source: id,
                 target: s.id,
                 type: "smoothstep",
-                style: { stroke: "#52525b", strokeWidth: 1 },
+                className: "nm-edge-dim",
+                style: { stroke: "#52525b", strokeWidth: 1.25 },
             });
         });
     }

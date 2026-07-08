@@ -1,0 +1,236 @@
+/* Neural Map — living canvas aesthetics */
+
+.neural-map {
+  --nm-ink: #05060b;
+  --nm-panel: #0a0c14;
+  --nm-cyan: #2ee6d6;
+  --nm-violet: #9b7bff;
+  --nm-magenta: #ff5ec8;
+  --nm-lime: #7dffb3;
+  font-family: var(--font-outfit), "Segoe UI", system-ui, sans-serif;
+}
+
+.neural-map .react-flow__edge-path {
+  stroke-linecap: round;
+}
+
+.neural-map .react-flow__edge.animated .react-flow__edge-path {
+  stroke-dasharray: 6 10;
+  animation: nm-flow 1.1s linear infinite;
+}
+
+.neural-map .nm-edge-owns .react-flow__edge-path {
+  stroke: url(#nm-grad-cyan) #2ee6d6;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px rgba(46, 230, 214, 0.55));
+}
+
+.neural-map .nm-edge-hosts .react-flow__edge-path {
+  stroke: url(#nm-grad-violet) #9b7bff;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 5px rgba(155, 123, 255, 0.45));
+}
+
+.neural-map .nm-edge-dim .react-flow__edge-path {
+  stroke: #3a3a4a;
+  stroke-width: 1.25;
+  stroke-dasharray: 4 8;
+  opacity: 0.55;
+  filter: none;
+  animation: none;
+}
+
+.neural-map .react-flow__edge.selected .react-flow__edge-path {
+  stroke-width: 3;
+  filter: drop-shadow(0 0 10px rgba(255, 94, 200, 0.7));
+}
+
+.neural-map .react-flow__controls {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  border-radius: 14px !important;
+  overflow: hidden;
+}
+
+.neural-map .react-flow__minimap {
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.neural-map .react-flow__node {
+  transition: filter 0.25s ease, transform 0.25s ease;
+}
+
+.neural-map .react-flow__node:hover {
+  filter: brightness(1.08);
+  z-index: 20 !important;
+}
+
+.neural-map .react-flow__handle {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.neural-map .react-flow__handle:hover {
+  transform: scale(1.35);
+}
+
+@keyframes nm-flow {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+
+@keyframes nm-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes nm-breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes nm-scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(220%);
+  }
+}
+
+@keyframes nm-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes nm-pulse-ring {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+
+@keyframes nm-bar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes nm-orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes nm-drift {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  33% {
+    transform: translate(12px, -18px);
+  }
+  66% {
+    transform: translate(-10px, 10px);
+  }
+}
+
+.nm-float {
+  animation: nm-float 4.5s ease-in-out infinite;
+}
+
+.nm-float-delay-1 {
+  animation-delay: 0.4s;
+}
+.nm-float-delay-2 {
+  animation-delay: 0.9s;
+}
+.nm-float-delay-3 {
+  animation-delay: 1.3s;
+}
+
+.nm-scanline {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0.35;
+}
+
+.nm-scanline::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(255, 255, 255, 0.06),
+    transparent
+  );
+  animation: nm-scan 5.5s linear infinite;
+}
+
+.nm-shimmer-text {
+  background: linear-gradient(
+    90deg,
+    #fff 0%,
+    #a78bfa 40%,
+    #2ee6d6 60%,
+    #fff 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: nm-shimmer 6s linear infinite;
+}
+
+.nm-activity-bar {
+  transform-origin: bottom;
+  animation: nm-bar 1.2s ease-in-out infinite;
+}
+
+.nm-pulse-ring {
+  animation: nm-pulse-ring 2s ease-out infinite;
+}
+
+.nm-orbit {
+  animation: nm-orbit 12s linear infinite;
+}
+
+.nm-drift {
+  animation: nm-drift 18s ease-in-out infinite;
+}
+
+.nm-noise {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.08'/%3E%3C/svg%3E");
+}

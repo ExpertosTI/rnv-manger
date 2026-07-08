@@ -15,9 +15,10 @@ import {
     type NodeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import "@/components/map/map.css";
 import {
     Network, RefreshCw, Users, Server, Database, DollarSign,
-    ExternalLink, Sparkles, Maximize2, ZoomIn,
+    ExternalLink, Sparkles, Maximize2, ZoomIn, Radio, Cpu,
 } from "lucide-react";
 import {
     topology as topologyApi,
@@ -113,46 +114,50 @@ export default function MapPage() {
     );
 
     const nodeTypes = useMemo(() => mapNodeTypes, []);
+    const liveEdges = edges.filter((e) => e.animated).length;
 
     return (
-        <div className="h-full min-h-0 flex flex-col bg-[#07070c] text-white overflow-hidden">
+        <div className="neural-map h-full min-h-0 flex flex-col overflow-hidden text-white bg-[#05060b]">
             {/* Top chrome */}
-            <div className="relative z-20 flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-white/5 bg-[#0c0c14]/90 backdrop-blur-xl">
-                <div className="flex items-center gap-3 min-w-0">
+            <div className="relative z-20 flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-white/[0.06] bg-[#080a12]/80 backdrop-blur-2xl">
+                <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-violet-400/40 to-transparent" />
+                <div className="flex items-center gap-3.5 min-w-0">
                     <div className="relative shrink-0">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center shadow-[0_0_24px_rgba(139,92,246,0.45)]">
-                            <Network className="w-5 h-5 text-white" />
+                        <div className="absolute inset-0 rounded-2xl bg-violet-500/40 blur-lg animate-pulse" />
+                        <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#9b7bff] via-[#ff5ec8] to-[#2ee6d6] shadow-[0_0_28px_rgba(155,123,255,0.55)]">
+                            <Network className="h-5 w-5 text-white" />
                         </div>
-                        <Sparkles className="absolute -top-1 -right-1 w-3.5 h-3.5 text-cyan-300 animate-pulse" />
+                        <Sparkles className="absolute -right-1 -top-1 h-3.5 w-3.5 text-cyan-200 animate-pulse" />
                     </div>
                     <div className="min-w-0">
-                        <h1 className="text-base sm:text-lg font-bold tracking-tight flex items-center gap-2">
-                            Infra Neural Map
-                            <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-400/30">
-                                AI · n8n style
-                            </span>
+                        <h1 className="text-lg font-semibold tracking-tight nm-shimmer-text sm:text-xl">
+                            Neural Topology
                         </h1>
-                        <p className="text-xs text-zinc-500 truncate">
-                            Cliente → VPS → Servicios · arrastra · zoom · click en nodos
+                        <p className="mt-0.5 flex items-center gap-2 text-[11px] text-zinc-500">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-emerald-300">
+                                <Radio className="h-3 w-3" />
+                                {liveEdges} live links
+                            </span>
+                            <span className="hidden sm:inline truncate">Cliente → VPS → Servicios · canvas vivo</span>
                         </p>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                    <StatChip icon={<Users className="w-3.5 h-3.5 text-cyan-400" />} label="Clientes" value={totals.clients} />
-                    <StatChip icon={<Server className="w-3.5 h-3.5 text-violet-400" />} label="VPS" value={totals.vps} />
-                    <StatChip icon={<Database className="w-3.5 h-3.5 text-fuchsia-400" />} label="Svcs" value={totals.services} />
+                    <StatChip icon={<Users className="w-3.5 h-3.5 text-cyan-300" />} label="Clients" value={totals.clients} tone="cyan" />
+                    <StatChip icon={<Server className="w-3.5 h-3.5 text-violet-300" />} label="VPS" value={totals.vps} tone="violet" />
+                    <StatChip icon={<Database className="w-3.5 h-3.5 text-fuchsia-300" />} label="Svcs" value={totals.services} tone="fuchsia" />
                     <StatChip
-                        icon={<DollarSign className="w-3.5 h-3.5 text-emerald-400" />}
-                        label="/mes"
+                        icon={<DollarSign className="w-3.5 h-3.5 text-emerald-300" />}
+                        label="MRR"
                         value={`$${totals.monthlyRevenue.toFixed(0)}`}
-                        accent
+                        tone="lime"
                     />
                     <Button
                         size="sm"
                         onClick={load}
                         disabled={loading}
-                        className="gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white border-0 shadow-[0_0_16px_rgba(139,92,246,0.35)]"
+                        className="gap-1.5 rounded-xl border-0 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-[0_0_20px_rgba(155,123,255,0.4)] hover:from-violet-500 hover:to-fuchsia-500"
                     >
                         <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
                         Sync
@@ -160,28 +165,41 @@ export default function MapPage() {
                 </div>
             </div>
 
-            {/* Canvas + panel */}
             <div className="relative flex-1 min-h-0 flex">
-                <div className="relative flex-1 min-w-0">
-                    {/* Ambient glow */}
-                    <div className="pointer-events-none absolute inset-0 z-0">
-                        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-violet-600/10 rounded-full blur-[100px]" />
-                        <div className="absolute bottom-1/4 right-1/3 w-80 h-80 bg-cyan-500/8 rounded-full blur-[90px]" />
-                        <div className="absolute top-1/2 right-1/4 w-64 h-64 bg-fuchsia-500/8 rounded-full blur-[80px]" />
+                <div className="relative flex-1 min-w-0 overflow-hidden">
+                    {/* Living atmosphere */}
+                    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+                        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_20%,rgba(155,123,255,0.18),transparent_50%),radial-gradient(ellipse_at_80%_30%,rgba(46,230,214,0.12),transparent_45%),radial-gradient(ellipse_at_60%_80%,rgba(255,94,200,0.12),transparent_50%)]" />
+                        <div className="nm-noise absolute inset-0 opacity-40 mix-blend-soft-light" />
+                        <div className="nm-drift absolute left-[12%] top-[18%] h-72 w-72 rounded-full bg-violet-600/20 blur-[90px]" />
+                        <div className="nm-drift absolute right-[18%] bottom-[12%] h-64 w-64 rounded-full bg-cyan-500/15 blur-[80px]" style={{ animationDelay: "-6s" }} />
+                        <div className="nm-drift absolute left-[40%] top-[55%] h-52 w-52 rounded-full bg-fuchsia-500/15 blur-[70px]" style={{ animationDelay: "-11s" }} />
+                        {/* subtle grid overlay */}
+                        <div
+                            className="absolute inset-0 opacity-[0.07]"
+                            style={{
+                                backgroundImage:
+                                    "linear-gradient(rgba(155,123,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(46,230,214,0.35) 1px, transparent 1px)",
+                                backgroundSize: "64px 64px",
+                            }}
+                        />
                     </div>
 
                     {loading && nodes.length === 0 ? (
-                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[#07070c]">
-                            <div className="w-12 h-12 rounded-2xl border border-violet-500/40 bg-violet-500/10 flex items-center justify-center">
-                                <RefreshCw className="w-6 h-6 text-violet-400 animate-spin" />
+                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[#05060b]">
+                            <div className="relative">
+                                <div className="absolute inset-0 rounded-3xl bg-violet-500/30 blur-xl animate-pulse" />
+                                <div className="relative flex h-16 w-16 items-center justify-center rounded-3xl border border-violet-400/40 bg-violet-500/10">
+                                    <Cpu className="h-7 w-7 text-violet-300 animate-pulse" />
+                                </div>
                             </div>
-                            <p className="text-sm text-zinc-400">Construyendo grafo neural…</p>
+                            <p className="nm-shimmer-text text-sm font-medium">Synthesizing neural graph…</p>
                         </div>
                     ) : nodes.length === 0 ? (
                         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-6 text-center">
-                            <Network className="w-10 h-10 text-zinc-600" />
-                            <p className="text-zinc-400">Sin nodos. Restaura backup o escanea VPS en Servicios.</p>
-                            <Link href="/services" className="text-sm text-violet-400 hover:underline">
+                            <Network className="h-10 w-10 text-zinc-600" />
+                            <p className="text-zinc-400">Sin nodos. Restaura backup o escanea VPS.</p>
+                            <Link href="/services" className="text-sm text-violet-300 hover:underline">
                                 Ir a Servicios →
                             </Link>
                         </div>
@@ -194,77 +212,86 @@ export default function MapPage() {
                             onNodeClick={onNodeClick}
                             nodeTypes={nodeTypes}
                             fitView
-                            fitViewOptions={{ padding: 0.15, maxZoom: 1.1 }}
-                            minZoom={0.2}
-                            maxZoom={1.8}
+                            fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
+                            minZoom={0.15}
+                            maxZoom={1.9}
                             proOptions={{ hideAttribution: true }}
                             className="!bg-transparent"
                             defaultEdgeOptions={{ type: "smoothstep" }}
                         >
                             <Background
+                                id="dots"
                                 variant={BackgroundVariant.Dots}
-                                gap={22}
-                                size={1.2}
-                                color="#2a2a3a"
+                                gap={28}
+                                size={1.4}
+                                color="rgba(155,123,255,0.22)"
+                            />
+                            <Background
+                                id="cross"
+                                variant={BackgroundVariant.Lines}
+                                gap={112}
+                                size={1}
+                                color="rgba(46,230,214,0.05)"
                             />
                             <Controls
-                                className="!bg-[#12121a] !border-white/10 !shadow-xl [&>button]:!bg-[#1a1a28] [&>button]:!border-white/10 [&>button]:!text-zinc-300 [&>button:hover]:!bg-violet-600/30"
+                                className="!m-4 !overflow-hidden !rounded-2xl !border !border-white/10 !bg-[#0c101c]/90 !shadow-[0_12px_40px_rgba(0,0,0,0.5)] [&>button]:!bg-transparent [&>button]:!border-white/5 [&>button]:!text-zinc-300 [&>button:hover]:!bg-violet-500/20"
                                 showInteractive={false}
                             />
                             <MiniMap
-                                className="!bg-[#0c0c14]/90 !border !border-white/10 !rounded-xl overflow-hidden"
+                                className="!m-4 !overflow-hidden !rounded-2xl !border !border-white/10 !bg-[#080a12]/95"
                                 nodeColor={(n) => {
-                                    if (n.type === "client") return "#22d3ee";
-                                    if (n.type === "vps") return "#a78bfa";
-                                    return "#e879f9";
+                                    if (n.type === "client") return "#2ee6d6";
+                                    if (n.type === "vps") return "#9b7bff";
+                                    return "#ff5ec8";
                                 }}
-                                maskColor="rgba(7,7,12,0.75)"
+                                maskColor="rgba(5,6,11,0.78)"
                                 pannable
                                 zoomable
                             />
                         </ReactFlow>
                     )}
 
-                    {/* Floating hint */}
-                    <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/50 border border-white/10 text-[11px] text-zinc-400 backdrop-blur">
-                        <ZoomIn className="w-3.5 h-3.5" />
-                        Scroll = zoom · Arrastra nodos · Click = detalle
-                        <Maximize2 className="w-3.5 h-3.5 ml-1" />
+                    <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3.5 py-1.5 text-[11px] text-zinc-400 backdrop-blur-xl">
+                        <ZoomIn className="h-3.5 w-3.5 text-violet-300" />
+                        Scroll zoom · drag nodes · click inspect
+                        <Maximize2 className="ml-1 h-3.5 w-3.5 text-cyan-300" />
                     </div>
 
-                    {/* Legend */}
-                    <div className="absolute top-4 left-4 z-10 flex flex-col gap-1.5 px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 backdrop-blur-md text-[11px]">
-                        <LegendDot color="bg-cyan-400 shadow-[0_0_8px_#22d3ee]" label="Cliente" />
-                        <LegendDot color="bg-violet-400 shadow-[0_0_8px_#a78bfa]" label="VPS" />
-                        <LegendDot color="bg-fuchsia-400 shadow-[0_0_8px_#e879f9]" label="Servicio" />
-                        <LegendDot color="bg-emerald-400 animate-pulse" label="En línea" />
+                    <div className="absolute left-4 top-4 z-10 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-3 text-[11px] backdrop-blur-xl">
+                        <LegendDot color="bg-[#2ee6d6] shadow-[0_0_10px_#2ee6d6]" label="Cliente" />
+                        <LegendDot color="bg-[#9b7bff] shadow-[0_0_10px_#9b7bff]" label="VPS" />
+                        <LegendDot color="bg-[#ff5ec8] shadow-[0_0_10px_#ff5ec8]" label="Servicio" />
+                        <LegendDot color="bg-[#7dffb3] animate-pulse" label="Live signal" />
                     </div>
                 </div>
 
-                {/* Side detail panel */}
-                <aside
-                    className={`relative z-20 w-full sm:w-[320px] shrink-0 border-l border-white/5 bg-[#0c0c14]/95 backdrop-blur-xl transition-transform ${
-                        detail ? "translate-x-0" : "sm:translate-x-0"
-                    } overflow-y-auto`}
-                >
-                    <div className="p-4 border-b border-white/5">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-semibold">Inspector</p>
-                        <p className="text-sm font-bold text-white mt-1">
+                {/* Inspector */}
+                <aside className="relative z-20 w-full sm:w-[340px] shrink-0 overflow-y-auto border-l border-white/[0.06] bg-[#080a12]/90 backdrop-blur-2xl">
+                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-violet-500/40 via-fuchsia-400/30 to-transparent" />
+                    <div className="p-4 border-b border-white/[0.06]">
+                        <div className="flex items-center justify-between gap-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
+                                Node Inspector
+                            </p>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-violet-400/20 bg-violet-500/10 px-2 py-0.5 text-[9px] text-violet-300">
+                                <Sparkles className="h-3 w-3" /> AI ready
+                            </span>
+                        </div>
+                        <p className="mt-1.5 text-base font-semibold tracking-tight text-white">
                             {detail ? detail.label : "Selecciona un nodo"}
                         </p>
                     </div>
-                    <div className="p-4 space-y-4 text-sm">
+                    <div className="space-y-4 p-4 text-sm">
                         {!detail && (
-                            <div className="rounded-xl border border-dashed border-white/10 p-4 text-zinc-500 text-xs leading-relaxed">
-                                Haz click en un cliente, VPS o servicio del canvas para ver costos, estado y enlaces.
-                                El asistente IA también lee este grafo con{" "}
-                                <code className="text-violet-300">rnv_topology</code>.
+                            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-xs leading-relaxed text-zinc-500">
+                                Explora el canvas: bordes animados = señal en vivo. El asistente lee este grafo con{" "}
+                                <code className="rounded bg-violet-500/15 px-1.5 py-0.5 text-violet-300">rnv_topology</code>.
                             </div>
                         )}
 
                         {detail?.kind === "client" && (
                             <>
-                                <Tag color="cyan">CLIENTE</Tag>
+                                <Tag color="cyan">CLIENT NODE</Tag>
                                 <MetaRow label="Email" value={String(detail.meta.email || "—")} />
                                 <MetaRow
                                     label="Cargo"
@@ -273,7 +300,7 @@ export default function MapPage() {
                                 <MetaRow label="Vencimiento" value={String(detail.meta.dueDesc || "—")} />
                                 <Link
                                     href={`/clients/${detail.id}`}
-                                    className="inline-flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 text-xs font-medium"
+                                    className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-300 hover:text-cyan-200"
                                 >
                                     Abrir cliente <ExternalLink size={12} />
                                 </Link>
@@ -295,23 +322,29 @@ export default function MapPage() {
                                 )}
                                 {detail.cluster?.services && detail.cluster.services.length > 0 && (
                                     <div className="space-y-1.5">
-                                        <p className="text-[10px] uppercase tracking-wider text-zinc-500">Servicios</p>
-                                        <div className="max-h-48 overflow-y-auto space-y-1">
+                                        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                                            Servicios vivos
+                                        </p>
+                                        <div className="max-h-52 space-y-1.5 overflow-y-auto pr-1">
                                             {detail.cluster.services.map((s, i) => (
                                                 <div
                                                     key={s.id || i}
-                                                    className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-white/[0.03] border border-white/5"
+                                                    className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-2.5 py-2"
                                                 >
-                                                    <div className="flex items-center gap-2 min-w-0">
+                                                    <div className="flex min-w-0 items-center gap-2">
                                                         <span
-                                                            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                                                isOnline(s.status) ? "bg-emerald-400" : "bg-zinc-600"
+                                                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                                                                isOnline(s.status)
+                                                                    ? "bg-emerald-300 shadow-[0_0_8px_#7dffb3]"
+                                                                    : "bg-zinc-600"
                                                             }`}
                                                         />
                                                         <span className="truncate text-xs text-zinc-200">{s.name}</span>
                                                     </div>
                                                     {(s.charge ?? 0) > 0 && (
-                                                        <span className="text-[11px] text-violet-300 shrink-0">${s.charge}</span>
+                                                        <span className="shrink-0 font-mono text-[11px] text-violet-300">
+                                                            ${s.charge}
+                                                        </span>
                                                     )}
                                                 </div>
                                             ))}
@@ -321,7 +354,7 @@ export default function MapPage() {
                                 {detail.id !== "unassigned" && (
                                     <Link
                                         href={`/vps/${detail.id}`}
-                                        className="inline-flex items-center gap-1.5 text-violet-400 hover:text-violet-300 text-xs font-medium"
+                                        className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-300 hover:text-violet-200"
                                     >
                                         Gestionar VPS <ExternalLink size={12} />
                                     </Link>
@@ -331,7 +364,7 @@ export default function MapPage() {
 
                         {detail?.kind === "service" && (
                             <>
-                                <Tag color="fuchsia">SERVICIO</Tag>
+                                <Tag color="fuchsia">SERVICE NODE</Tag>
                                 <MetaRow label="Tipo" value={String(detail.meta.type || "—")} />
                                 <MetaRow label="Estado" value={String(detail.meta.status || "—")} />
                                 <MetaRow
@@ -348,7 +381,7 @@ export default function MapPage() {
                                         href={String(detail.meta.url)}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1.5 text-fuchsia-400 hover:text-fuchsia-300 text-xs font-medium break-all"
+                                        className="inline-flex items-center gap-1.5 break-all text-xs font-medium text-fuchsia-300 hover:text-fuchsia-200"
                                     >
                                         {String(detail.meta.url).replace(/^https?:\/\//, "")} <ExternalLink size={12} />
                                     </a>
@@ -356,7 +389,7 @@ export default function MapPage() {
                                 {detail.id && !detail.id.startsWith("overflow-") && (
                                     <Link
                                         href={`/services/${detail.id}`}
-                                        className="inline-flex items-center gap-1.5 text-fuchsia-400 hover:text-fuchsia-300 text-xs font-medium"
+                                        className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-300 hover:text-fuchsia-200"
                                     >
                                         Detalle servicio <ExternalLink size={12} />
                                     </Link>
@@ -374,21 +407,21 @@ function StatChip({
     icon,
     label,
     value,
-    accent,
+    tone,
 }: {
     icon: ReactNode;
     label: string;
     value: string | number;
-    accent?: boolean;
+    tone: "cyan" | "violet" | "fuchsia" | "lime";
 }) {
+    const tones = {
+        cyan: "border-cyan-400/20 bg-cyan-400/5",
+        violet: "border-violet-400/20 bg-violet-400/5",
+        fuchsia: "border-fuchsia-400/20 bg-fuchsia-400/5",
+        lime: "border-emerald-400/25 bg-emerald-400/10",
+    };
     return (
-        <div
-            className={`hidden md:flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs ${
-                accent
-                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
-                    : "bg-white/[0.03] border-white/8 text-zinc-300"
-            }`}
-        >
+        <div className={`hidden md:flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs ${tones[tone]}`}>
             {icon}
             <span className="text-zinc-500">{label}</span>
             <span className="font-bold tabular-nums text-white">{value}</span>
@@ -399,7 +432,7 @@ function StatChip({
 function LegendDot({ color, label }: { color: string; label: string }) {
     return (
         <div className="flex items-center gap-2 text-zinc-400">
-            <span className={`w-2 h-2 rounded-full ${color}`} />
+            <span className={`h-2 w-2 rounded-full ${color}`} />
             {label}
         </div>
     );
@@ -407,12 +440,12 @@ function LegendDot({ color, label }: { color: string; label: string }) {
 
 function Tag({ children, color }: { children: ReactNode; color: "cyan" | "violet" | "fuchsia" }) {
     const map = {
-        cyan: "bg-cyan-500/15 text-cyan-300 border-cyan-500/25",
-        violet: "bg-violet-500/15 text-violet-300 border-violet-500/25",
-        fuchsia: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/25",
+        cyan: "bg-cyan-500/15 text-cyan-200 border-cyan-400/30 shadow-[0_0_16px_rgba(46,230,214,0.15)]",
+        violet: "bg-violet-500/15 text-violet-200 border-violet-400/30 shadow-[0_0_16px_rgba(155,123,255,0.15)]",
+        fuchsia: "bg-fuchsia-500/15 text-fuchsia-200 border-fuchsia-400/30 shadow-[0_0_16px_rgba(255,94,200,0.15)]",
     };
     return (
-        <span className={`inline-flex text-[10px] font-bold tracking-widest px-2 py-0.5 rounded-md border ${map[color]}`}>
+        <span className={`inline-flex rounded-lg border px-2.5 py-1 text-[10px] font-bold tracking-[0.18em] ${map[color]}`}>
             {children}
         </span>
     );
@@ -420,9 +453,9 @@ function Tag({ children, color }: { children: ReactNode; color: "cyan" | "violet
 
 function MetaRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
     return (
-        <div className="flex justify-between gap-3">
-            <span className="text-zinc-500 text-xs shrink-0">{label}</span>
-            <span className={`text-zinc-200 text-xs text-right ${mono ? "font-mono" : ""}`}>{value}</span>
+        <div className="flex justify-between gap-3 rounded-xl border border-white/[0.04] bg-white/[0.02] px-3 py-2">
+            <span className="shrink-0 text-xs text-zinc-500">{label}</span>
+            <span className={`text-right text-xs text-zinc-100 ${mono ? "font-mono" : ""}`}>{value}</span>
         </div>
     );
 }
