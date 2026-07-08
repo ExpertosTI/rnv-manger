@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Database, Settings, Search, Play, Pause, RotateCw, Plus, Server, Globe, ExternalLink, Radar, Users } from "lucide-react";
+import { Database, Settings, Search, Play, Pause, RotateCw, Plus, Server, Globe, ExternalLink, Radar, Users, ListTodo } from "lucide-react";
 import { motion } from "framer-motion";
 import { services as servicesApi, type ServiceOverviewGroup } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
+import { ServiceTaskPanel, type ServiceTaskTarget } from "@/components/ServiceTaskPanel";
 
 export default function ServicesPage() {
     const [services, setServices] = useState<any[]>([]);
@@ -24,6 +25,7 @@ export default function ServicesPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isProbing, setIsProbing] = useState(false);
     const [controllingId, setControllingId] = useState<string | null>(null);
+    const [taskTarget, setTaskTarget] = useState<ServiceTaskTarget | null>(null);
     const { addToast } = useToast();
 
     const handleServiceControl = async (serviceId: string, action: "start" | "stop" | "restart") => {
@@ -382,6 +384,21 @@ export default function ServicesPage() {
                                                         onClick={() => handleServiceControl(service.id, "restart")}>
                                                         <RotateCw size={14} className={controllingId === service.id ? "animate-spin" : ""} />
                                                     </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-violet-600"
+                                                        title="Asignar tarea"
+                                                        onClick={() => setTaskTarget({
+                                                            serviceId: service.id,
+                                                            serviceName: service.name,
+                                                            clientId: service.client?.id,
+                                                            clientName: service.client?.name,
+                                                            url: service.url,
+                                                        })}
+                                                    >
+                                                        <ListTodo size={14} />
+                                                    </Button>
                                                     {service.url && (
                                                         <a
                                                             href={service.url}
@@ -547,6 +564,12 @@ export default function ServicesPage() {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            <ServiceTaskPanel
+                target={taskTarget}
+                open={!!taskTarget}
+                onOpenChange={(o) => !o && setTaskTarget(null)}
+            />
         </div>
     );
 }

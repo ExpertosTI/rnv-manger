@@ -18,7 +18,7 @@ import "@xyflow/react/dist/style.css";
 import "@/components/map/map.css";
 import {
     Network, RefreshCw, Users, Server, Database, DollarSign,
-    ExternalLink, Sparkles, Maximize2, ZoomIn, Radio, Cpu,
+    ExternalLink, Sparkles, Maximize2, ZoomIn, Radio, Cpu, ListTodo,
 } from "lucide-react";
 import {
     topology as topologyApi,
@@ -29,6 +29,7 @@ import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { mapNodeTypes } from "@/components/map/nodes";
 import { buildFlowGraph } from "@/components/map/layout";
+import { ServiceTaskPanel, type ServiceTaskTarget } from "@/components/ServiceTaskPanel";
 
 type Detail =
     | { kind: "client"; id: string; label: string; meta: Record<string, unknown> }
@@ -46,6 +47,8 @@ export default function MapPage() {
     const [clusters, setClusters] = useState<TopologyCluster[]>([]);
     const [topoNodes, setTopoNodes] = useState<TopologyNode[]>([]);
     const [detail, setDetail] = useState<Detail>(null);
+    const [taskTarget, setTaskTarget] = useState<ServiceTaskTarget | null>(null);
+    const [taskOpen, setTaskOpen] = useState(false);
     const { addToast } = useToast();
 
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -98,16 +101,27 @@ export default function MapPage() {
                 });
             } else if (node.type === "service") {
                 const raw = topoNodes.find((n) => n.id === node.id);
+                const meta = {
+                    ...((raw?.meta as Record<string, unknown>) || {}),
+                    status: raw?.status,
+                    ...node.data,
+                };
                 setDetail({
                     kind: "service",
                     id: node.id,
                     label: String(node.data.label || ""),
-                    meta: {
-                        ...((raw?.meta as Record<string, unknown>) || {}),
-                        status: raw?.status,
-                        ...node.data,
-                    },
+                    meta,
                 });
+                if (node.id && !node.id.startsWith("overflow-")) {
+                    setTaskTarget({
+                        serviceId: node.id,
+                        serviceName: String(node.data.label || raw?.label || "Servicio"),
+                        clientId: meta.clientId as string | undefined,
+                        clientName: meta.clientName as string | undefined,
+                        url: meta.url as string | undefined,
+                    });
+                    setTaskOpen(true);
+                }
             }
         },
         [topoNodes, clusters]
@@ -153,6 +167,16 @@ export default function MapPage() {
                         value={`$${totals.monthlyRevenue.toFixed(0)}`}
                         tone="lime"
                     />
+                    <Link href="/workflow">
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 rounded-xl border-white/15 bg-white/5 text-zinc-200 hover:bg-white/10"
+                        >
+                            <ListTodo size={14} />
+                            Mi Flujo
+                        </Button>
+                    </Link>
                     <Button
                         size="sm"
                         onClick={load}
@@ -387,18 +411,44 @@ export default function MapPage() {
                                     </a>
                                 )}
                                 {detail.id && !detail.id.startsWith("overflow-") && (
-                                    <Link
-                                        href={`/services/${detail.id}`}
-                                        className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-300 hover:text-fuchsia-200"
-                                    >
-                                        Detalle servicio <ExternalLink size={12} />
-                                    </Link>
+                                    <>
+                                        <Button
+                                            size="sm"
+                                            className="w-full gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 border-0 text-white shadow-[0_0_20px_rgba(155,123,255,0.35)]"
+                                            onClick={() => {
+                                                setTaskTarget({
+                                                    serviceId: detail.id,
+                                                    serviceName: detail.label,
+                                                    clientId: detail.meta.clientId as string | undefined,
+                                                    clientName: detail.meta.clientName as string | undefined,
+                                                    url: detail.meta.url as string | undefined,
+                                                });
+                                                setTaskOpen(true);
+                                            }}
+                                        >
+                                            <ListTodo className="h-4 w-4" />
+                                            Asignar tarea de trabajo
+                                        </Button>
+                                        <Link
+                                            href={`/services/${detail.id}`}
+                                            className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-300 hover:text-fuchsia-200"
+                                        >
+                                            Detalle servicio <ExternalLink size={12} />
+                                        </Link>
+                                    </>
                                 )}
                             </>
                         )}
                     </div>
                 </aside>
             </div>
+
+            <ServiceTaskPanel
+                target={taskTarget}
+                open={taskOpen}
+                onOpenChange={setTaskOpen}
+                dark
+            />
         </div>
     );
 }

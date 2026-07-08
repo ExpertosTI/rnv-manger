@@ -3,12 +3,14 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Server, Users, Settings, Database, FileCode, Zap, Palette, Menu, X, DollarSign, Shield, UsersRound, Calendar, Network } from "lucide-react";
+import { LayoutDashboard, Server, Users, Settings, Database, FileCode, Zap, Palette, Menu, X, DollarSign, Shield, UsersRound, Calendar, Network, ListTodo } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { stats } from "@/lib/api";
+import { useSidebar } from "@/contexts/SidebarContext";
 
 const sidebarItems = [
     { icon: LayoutDashboard, label: "Panel Principal", href: "/" },
+    { icon: ListTodo, label: "Mi Flujo", href: "/workflow" },
     { icon: Server, label: "Servidores VPS", href: "/vps" },
     { icon: Database, label: "Servicios", href: "/services" },
     { icon: Network, label: "Neural Map", href: "/map" },
@@ -24,6 +26,7 @@ const sidebarItems = [
 
 export function AppSidebar() {
     const pathname = usePathname();
+    const { collapsed } = useSidebar();
     const [isOpen, setIsOpen] = useState(false);
     const [vpsCount, setVpsCount] = useState<number | string>("...");
 
@@ -42,21 +45,25 @@ export function AppSidebar() {
     const SidebarContent = () => (
         <>
             {/* Logo */}
-            <div className="p-5 border-b border-gray-100">
+            <div className={`border-b border-gray-100 ${collapsed ? "p-3" : "p-5"}`}>
                 <Link href="/" className="flex items-center gap-3 group" onClick={() => setIsOpen(false)}>
-                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-200 group-hover:shadow-purple-300 transition-shadow">
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-200 group-hover:shadow-purple-300 transition-shadow shrink-0">
                         <Zap className="w-6 h-6 text-white" />
                     </div>
-                    <div>
-                        <h1 className="text-lg font-bold text-gray-900">RNV Manager</h1>
-                        <p className="text-xs text-gray-500">Panel de Control</p>
-                    </div>
+                    {!collapsed && (
+                        <div>
+                            <h1 className="text-lg font-bold text-gray-900">RNV Manager</h1>
+                            <p className="text-xs text-gray-500">Panel de Control</p>
+                        </div>
+                    )}
                 </Link>
             </div>
 
             {/* Navigation */}
             <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-                <p className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Menú</p>
+                {!collapsed && (
+                    <p className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Menú</p>
+                )}
                 {sidebarItems.map((item) => {
                     const isActive = pathname === item.href;
                     return (
@@ -64,12 +71,13 @@ export function AppSidebar() {
                             key={item.href}
                             href={item.href}
                             onClick={() => setIsOpen(false)}
-                            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative ${isActive
+                            title={collapsed ? item.label : undefined}
+                            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative ${collapsed ? "justify-center px-2" : ""} ${isActive
                                 ? "bg-violet-100 text-violet-700 font-medium"
                                 : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                                 }`}
                         >
-                            {isActive && (
+                            {isActive && !collapsed && (
                                 <motion.div
                                     layoutId="activeTab"
                                     className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-violet-500 rounded-r-full"
@@ -77,8 +85,8 @@ export function AppSidebar() {
                                 />
                             )}
                             <item.icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-                            <span className="text-sm">{item.label}</span>
-                            {item.label === "Pizarra Blanca" && (
+                            {!collapsed && <span className="text-sm">{item.label}</span>}
+                            {!collapsed && item.label === "Pizarra Blanca" && (
                                 <span className="ml-auto text-[10px] bg-violet-500 text-white px-1.5 py-0.5 rounded-full font-medium">
                                     NUEVO
                                 </span>
@@ -89,8 +97,9 @@ export function AppSidebar() {
             </nav>
 
             {/* Quick Stats */}
-            <div className="p-3 border-t border-gray-100">
-                <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl p-4">
+            {!collapsed && (
+                <div className="p-3 border-t border-gray-100">
+                    <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl p-4">
                     <div className="flex items-center justify-between mb-2">
                         <span className="text-xs font-medium text-gray-500">VPS Activos</span>
                         <span className="text-lg font-bold text-violet-600">{vpsCount}</span>
@@ -101,21 +110,24 @@ export function AppSidebar() {
                     <p className="text-[10px] text-gray-400 mt-1">{vpsCount === 0 ? "Sin servidores" : "Todos funcionales"}</p>
                 </div>
             </div>
+            )}
 
-            {/* User */}
-            <div className="p-3 border-t border-gray-100">
+            <div className={`border-t border-gray-100 ${collapsed ? "p-2" : "p-3"}`}>
                 <Link
                     href="/users"
                     onClick={() => setIsOpen(false)}
-                    className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-gray-50 transition-colors"
+                    className={`flex items-center gap-3 rounded-xl hover:bg-gray-50 transition-colors ${collapsed ? "justify-center p-2" : "px-3 py-2"}`}
+                    title={collapsed ? "Admin" : undefined}
                 >
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center text-white font-bold text-sm shadow-md shrink-0">
                         A
                     </div>
-                    <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">Admin</p>
-                        <p className="text-xs text-gray-500 truncate">Super Admin</p>
-                    </div>
+                    {!collapsed && (
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">Admin</p>
+                            <p className="text-xs text-gray-500 truncate">Super Admin</p>
+                        </div>
+                    )}
                 </Link>
             </div>
         </>
@@ -132,7 +144,7 @@ export function AppSidebar() {
             </button>
 
             {/* Desktop Sidebar */}
-            <aside className="hidden lg:flex w-64 h-screen bg-white border-r-2 border-gray-200 flex-col shadow-sm sticky top-0">
+            <aside className={`hidden lg:flex h-screen bg-white border-r-2 border-gray-200 flex-col shadow-sm sticky top-0 transition-all duration-300 ${collapsed ? "w-[72px]" : "w-64"}`}>
                 <SidebarContent />
             </aside>
 

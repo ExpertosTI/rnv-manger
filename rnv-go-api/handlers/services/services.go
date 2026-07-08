@@ -102,6 +102,19 @@ func Delete(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+func ListTasks(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		var tasks []models.ScheduledTask
+		q := db.Where("service_id = ?", id).Preload("Client").Order("scheduled_at asc")
+		if status := c.Query("status"); status != "" {
+			q = q.Where("status = ?", status)
+		}
+		q.Limit(100).Find(&tasks)
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": tasks, "count": len(tasks)})
+	}
+}
+
 func Import(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Returns available service types for import reference

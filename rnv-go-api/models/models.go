@@ -193,6 +193,7 @@ type ScheduledTask struct {
 	ClientID    *string    `json:"clientId,omitempty"`
 	Client      *Client    `gorm:"foreignKey:ClientID" json:"client,omitempty"`
 	ServiceID   *string    `json:"serviceId,omitempty"`
+	Service     *Service   `gorm:"foreignKey:ServiceID" json:"service,omitempty"`
 	Status      string     `gorm:"default:'pending'" json:"status"` // pending|done|cancelled
 	NotifyEmail bool       `gorm:"default:false" json:"notifyEmail"`
 	Metadata    JSON       `gorm:"type:jsonb" json:"metadata,omitempty"`

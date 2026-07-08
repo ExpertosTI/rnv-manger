@@ -1,6 +1,7 @@
 package serviceslayer
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -13,11 +14,12 @@ import (
 )
 
 type DiscoveredService struct {
-	Name   string `json:"name"`
-	Type   string `json:"type"`
-	Port   *int   `json:"port,omitempty"`
-	Status string `json:"status"`
-	Image  string `json:"image,omitempty"`
+	Name   string  `json:"name"`
+	Type   string  `json:"type"`
+	Port   *int    `json:"port,omitempty"`
+	Status string  `json:"status"`
+	Image  string  `json:"image,omitempty"`
+	URL    *string `json:"url,omitempty"`
 }
 
 type VPSScanResult struct {
@@ -33,6 +35,7 @@ type VPSScanResult struct {
 }
 
 var portRe = regexp.MustCompile(`:(\d+)->`)
+var hostRuleRe = regexp.MustCompile(`Host\(` + "`" + `([^` + "`" + `]+)` + "`" + `\)`)
 
 func inferServiceType(name, image string) string {
 	s := strings.ToLower(name + " " + image)
@@ -128,18 +131,108 @@ func parseDockerPS(output string) []DiscoveredService {
 	return out
 }
 
-// ScanVPSServices discovers docker containers on a VPS via SSH.
+func isInfraContainer(name string) bool {
+	n := strings.ToLower(strings.TrimPrefix(name, "/"))
+	infra := []string{"traefik", "portainer", "watchtower", "rnv-manager", "postgres", "redis", "db-"}
+	for _, p := range infra {
+		if strings.Contains(n, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func mergeTraefikHosts(existing []DiscoveredService, inspectOutput string) []DiscoveredService {
+	byName := map[string]*DiscoveredService{}
+	for i := range existing {
+		byName[existing[i].Name] = &existing[i]
+	}
+
+	for _, line := range strings.Split(inspectOutput, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "|", 2)
+		if len(parts) < 2 {
+			continue
+		}
+		name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
+		var labels map[string]string
+		if err := json.Unmarshal([]byte(parts[1]), &labels); err != nil {
+			continue
+		}
+		var host string
+		for k, v := range labels {
+			if strings.Contains(k, "traefik.http.routers") && strings.Contains(k, ".rule") {
+				if m := hostRuleRe.FindStringSubmatch(v); len(m) > 1 {
+					host = strings.TrimSpace(m[1])
+					break
+				}
+			}
+		}
+		if host == "" {
+			continue
+		}
+		u := "https://" + host
+		if d, ok := byName[name]; ok {
+			d.URL = &u
+		} else {
+			existing = append(existing, DiscoveredService{
+				Name: name, Type: inferServiceType(name, ""), Status: "running", URL: &u,
+			})
+			byName[name] = &existing[len(existing)-1]
+		}
+	}
+	return existing
+}
+
+// ScanVPSServices discovers running docker containers + traefik routes on a VPS via SSH.
 func ScanVPSServices(vps models.VPS, cfg *config.Config) ([]DiscoveredService, string, error) {
 	if cfg.MasterPassword == "" {
-		return nil, "", fmt.Errorf("MASTER_PASSWORD no configurado para SSH")
+		return nil, "", fmt.Errorf("MASTER_PASSWORD no configurado — añádelo en /etc/rnv-manager/rnv.env")
 	}
 	sshCfg := VPSSSHConfig(vps, cfg)
-	cmd := "docker ps -a --format '{{.Names}}|{{.Image}}|{{.Ports}}|{{.State}}' 2>/dev/null"
-	result := SSHExec(sshCfg, cmd, 90)
-	if !result.Success && result.Output == "" {
-		return nil, result.Output, fmt.Errorf(result.Error)
+
+	// Running containers only
+	cmd := `docker ps --filter status=running --format '{{.Names}}|{{.Image}}|{{.Ports}}|{{.State}}' 2>/dev/null`
+	result := SSHExec(sshCfg, cmd, 120)
+	if !result.Success && strings.TrimSpace(result.Output) == "" {
+		errMsg := result.Error
+		if errMsg == "" {
+			errMsg = "no se pudo conectar por SSH o docker no responde"
+		}
+		return nil, result.Output, fmt.Errorf("%s (%s)", errMsg, vps.IPAddress)
 	}
-	return parseDockerPS(result.Output), result.Output, nil
+
+	discovered := parseDockerPS(result.Output)
+
+	// Traefik / router hosts from container labels
+	labelsCmd := `docker ps --filter status=running -q | xargs -r docker inspect --format '{{.Name}}|{{json .Config.Labels}}' 2>/dev/null`
+	labelsOut := SSHExec(sshCfg, labelsCmd, 90)
+	if labelsOut.Success {
+		discovered = mergeTraefikHosts(discovered, labelsOut.Output)
+	}
+
+	// Deduplicate by name, prefer entry with URL/host
+	seen := map[string]DiscoveredService{}
+	for _, d := range discovered {
+		if isInfraContainer(d.Name) {
+			continue
+		}
+		if prev, ok := seen[d.Name]; ok {
+			if d.URL != nil && prev.URL == nil {
+				seen[d.Name] = d
+			}
+			continue
+		}
+		seen[d.Name] = d
+	}
+	out := make([]DiscoveredService, 0, len(seen))
+	for _, d := range seen {
+		out = append(out, d)
+	}
+	return out, result.Output + "\n" + labelsOut.Output, nil
 }
 
 // SyncScannedServices upserts discovered services for a VPS (inherits client from VPS).
@@ -160,6 +253,9 @@ func SyncScannedServices(db *gorm.DB, vps models.VPS, discovered []DiscoveredSer
 			if u := inferServiceURL(d.Name); u != nil {
 				svc.URL = u
 			}
+			if d.URL != nil {
+				svc.URL = d.URL
+			}
 			svc.LastChecked = &now
 			if db.Create(&svc).Error == nil {
 				created++
@@ -173,7 +269,9 @@ func SyncScannedServices(db *gorm.DB, vps models.VPS, discovered []DiscoveredSer
 			updates["port"] = *d.Port
 		}
 		if existing.URL == nil || *existing.URL == "" {
-			if u := inferServiceURL(d.Name); u != nil {
+			if d.URL != nil {
+				updates["url"] = *d.URL
+			} else if u := inferServiceURL(d.Name); u != nil {
 				updates["url"] = *u
 			}
 		}

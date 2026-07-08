@@ -19,6 +19,9 @@ type CalendarEvent struct {
 	Date        string  `json:"date"`
 	ClientID    *string `json:"clientId,omitempty"`
 	ClientName  string  `json:"clientName,omitempty"`
+	ServiceID   *string `json:"serviceId,omitempty"`
+	ServiceName string  `json:"serviceName,omitempty"`
+	TaskType    string  `json:"taskType,omitempty"`
 	Amount      float64 `json:"amount,omitempty"`
 	Status      string  `json:"status,omitempty"`
 	BillingCycle string `json:"billingCycle,omitempty"`
@@ -90,10 +93,15 @@ func Events(db *gorm.DB) gin.HandlerFunc {
 			if t.Client != nil {
 				clientName = t.Client.Name
 			}
+			serviceName := ""
+			if t.Service != nil {
+				serviceName = t.Service.Name
+			}
 			events = append(events, CalendarEvent{
 				ID: t.ID, Type: "task", Title: t.Title, Description: desc,
 				Date: t.ScheduledAt.Format("2006-01-02"), ClientID: t.ClientID,
 				ClientName: clientName, Status: t.Status,
+				ServiceID: t.ServiceID, ServiceName: serviceName, TaskType: t.Type,
 			})
 		}
 
@@ -120,11 +128,17 @@ func Events(db *gorm.DB) gin.HandlerFunc {
 func ListTasks(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var tasks []models.ScheduledTask
-		q := db.Preload("Client").Order("scheduled_at asc")
+		q := db.Preload("Client").Preload("Service").Order("scheduled_at asc")
 		if status := c.Query("status"); status != "" {
 			q = q.Where("status = ?", status)
 		}
-		q.Limit(100).Find(&tasks)
+		if serviceID := c.Query("serviceId"); serviceID != "" {
+			q = q.Where("service_id = ?", serviceID)
+		}
+		if taskType := c.Query("type"); taskType != "" {
+			q = q.Where("type = ?", taskType)
+		}
+		q.Limit(200).Find(&tasks)
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": tasks, "count": len(tasks)})
 	}
 }
@@ -149,6 +163,12 @@ func CreateTask(db *gorm.DB) gin.HandlerFunc {
 		}
 		if task.Status == "" {
 			task.Status = "pending"
+		}
+		if task.ServiceID != nil && task.ClientID == nil {
+			var svc models.Service
+			if db.First(&svc, "id = ?", *task.ServiceID).Error == nil && svc.ClientID != nil {
+				task.ClientID = svc.ClientID
+			}
 		}
 		if err := db.Create(&task).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})

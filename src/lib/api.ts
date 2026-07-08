@@ -113,6 +113,26 @@ export const clients = {
 
 // ── Services ─────────────────────────────────────────────────────────────────
 
+export interface ProbeResult {
+    url: string;
+    hostname: string;
+    title?: string;
+    description?: string;
+    faviconUrl?: string;
+    suggestedName: string;
+    suggestedType: string;
+    reachable: boolean;
+    statusCode: number;
+    status: string;
+    isRenaceApp?: boolean;
+    suggestedClientId?: string;
+    suggestedClientName?: string;
+    clientMatchReason?: string;
+    suggestedVpsId?: string;
+    suggestedVpsName?: string;
+    vpsMatchReason?: string;
+}
+
 export const services = {
     list: () => request<ApiList<Service>>("/services"),
     get: (id: string) => request<ApiItem<Service>>(`/services/${id}`),
@@ -137,16 +157,12 @@ export const services = {
     probe: (url: string) =>
         request<{
             success: boolean;
-            data: {
-                url: string;
-                hostname: string;
-                suggestedName: string;
-                suggestedType: string;
-                reachable: boolean;
-                statusCode: number;
-                status: string;
-            };
+            data: ProbeResult;
         }>("/services/probe", { method: "POST", body: JSON.stringify({ url }) }),
+    listTasks: (id: string, status?: string) =>
+        request<{ success: boolean; data: ScheduledTask[] }>(
+            `/services/${id}/tasks${status ? "?status=" + status : ""}`
+        ),
 };
 
 // ── SSH ─────────────────────────────────────────────────────────────────────
@@ -251,15 +267,25 @@ export const calendar = {
         request<{ success: boolean; data: CalendarEvent[]; count: number }>(
             `/calendar?from=${from || ""}&to=${to || ""}`
         ),
-    listTasks: (status?: string) =>
-        request<{ success: boolean; data: ScheduledTask[] }>(
-            `/calendar/tasks${status ? "?status=" + status : ""}`
-        ),
+    listTasks: (opts?: { status?: string; serviceId?: string; type?: string }) => {
+        const q = new URLSearchParams();
+        if (opts?.status) q.set("status", opts.status);
+        if (opts?.serviceId) q.set("serviceId", opts.serviceId);
+        if (opts?.type) q.set("type", opts.type);
+        const qs = q.toString();
+        return request<{ success: boolean; data: ScheduledTask[] }>(
+            `/calendar/tasks${qs ? "?" + qs : ""}`
+        );
+    },
     createTask: (data: Partial<ScheduledTask> & { title: string; scheduledAt: string }) =>
         request<{ success: boolean; data: ScheduledTask }>("/calendar/tasks", {
             method: "POST", body: JSON.stringify(data),
         }),
-        cancelTask: (id: string) =>
+    updateTask: (id: string, data: Partial<ScheduledTask>) =>
+        request<{ success: boolean; data: ScheduledTask }>(`/calendar/tasks/${id}`, {
+            method: "PUT", body: JSON.stringify(data),
+        }),
+    cancelTask: (id: string) =>
         request<{ success: boolean }>(`/calendar/tasks/${id}`, { method: "DELETE" }),
 };
 
@@ -452,6 +478,9 @@ export interface ScheduledTask {
     type: string;
     scheduledAt: string;
     clientId?: string;
+    serviceId?: string;
+    service?: { id: string; name: string; url?: string; type?: string };
+    client?: { id: string; name: string };
     status: string;
     notifyEmail: boolean;
 }
