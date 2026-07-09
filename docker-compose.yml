@@ -55,6 +55,11 @@ services:
       NOTIFICATION_EMAIL: ${NOTIFICATION_EMAIL:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-https://evoapi.renace.tech}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-RENACE.TECH}
+      WHATSAPP_NOTIFY_NUMBERS: ${WHATSAPP_NOTIFY_NUMBERS:-}
+      WHATSAPP_SENDER_LABEL: ${WHATSAPP_SENDER_LABEL:-Renace}
     volumes:
       - ./backups:/backups:ro
     networks:

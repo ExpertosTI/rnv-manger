@@ -86,15 +86,18 @@ ensure_env_file() {
     if [ -f "$ENV_FILE" ]; then
         cp "$ENV_FILE" "$ROOT/.env"
     fi
-    # secrets.local opcional — carga segura (nunca source directo)
-    if [ -f "/etc/rnv-manager/secrets.local" ]; then
+    # Sincronizar .evolution.local / seed.local.sh → rnv.env
+    if [ -x "$ROOT/scripts/seed-env.sh" ] && {
+        [ -f "$ROOT/.evolution.local" ] || [ -f "$ROOT/scripts/seed.local.sh" ] || [ -f "/etc/rnv-manager/secrets.local" ];
+    }; then
         # shellcheck disable=SC1091
-        source "$ROOT/scripts/lib-secrets.sh"
-        secrets_quarantine_if_corrupt "/etc/rnv-manager/secrets.local"
-        secrets_load_safe "/etc/rnv-manager/secrets.local" || true
-        if [ -x "$ROOT/scripts/seed-env.sh" ]; then
-            "$ROOT/scripts/seed-env.sh" >/dev/null 2>&1 || true
-        fi
+        [ -f "$ROOT/scripts/lib-secrets.sh" ] && source "$ROOT/scripts/lib-secrets.sh"
+        [ -f "/etc/rnv-manager/secrets.local" ] && secrets_quarantine_if_corrupt "/etc/rnv-manager/secrets.local"
+        [ -f "/etc/rnv-manager/secrets.local" ] && secrets_load_safe "/etc/rnv-manager/secrets.local" || true
+        "$ROOT/scripts/seed-env.sh" >/dev/null 2>&1 || true
+    fi
+    if [ -f "$ENV_FILE" ]; then
+        cp "$ENV_FILE" "$ROOT/.env"
     fi
     if [ -x "$ROOT/scripts/bootstrap-vps.sh" ]; then
         "$ROOT/scripts/bootstrap-vps.sh" || true
@@ -118,6 +121,9 @@ validate_env() {
     fi
     if [ -z "${GEMINI_API_KEY:-}" ]; then
         warn "⚠️  GEMINI_API_KEY vacío — asistente IA desactivado"
+    fi
+    if [ -z "${EVOLUTION_API_KEY:-}" ]; then
+        warn "⚠️  EVOLUTION_API_KEY vacío — WhatsApp desactivado (crea .evolution.local y ./scripts/seed.sh)"
     fi
 }
 
