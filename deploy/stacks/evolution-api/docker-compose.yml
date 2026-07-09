@@ -1,0 +1,67 @@
+# Evolution API — stack Renace (Traefik + RenaceNet)
+# Uso: scripts/replace-n8n-with-evolution.sh
+
+services:
+  api:
+    container_name: evolution_api
+    image: evoapicloud/evolution-api:latest
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_started
+      evolution-postgres:
+        condition: service_started
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - evolution-net
+      - RenaceNet
+    env_file:
+      - .env
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=RenaceNet
+      - traefik.http.routers.evolution-api.rule=Host(`${EVOLUTION_DOMAIN}`)
+      - traefik.http.routers.evolution-api.entrypoints=websecure
+      - traefik.http.routers.evolution-api.tls=true
+      - traefik.http.routers.evolution-api.tls.certresolver=letsencryptresolver
+      - traefik.http.services.evolution-api.loadbalancer.server.port=8080
+
+  redis:
+    container_name: evolution_redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --port 6379 --appendonly yes
+    volumes:
+      - evolution_redis:/data
+    networks:
+      evolution-net:
+        aliases:
+          - evolution-redis
+
+  evolution-postgres:
+    container_name: evolution_postgres
+    image: postgres:15-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DATABASE}
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - evolution-net
+
+volumes:
+  evolution_instances:
+  evolution_redis:
+  postgres_data:
+
+networks:
+  evolution-net:
+    name: evolution-net
+    driver: bridge
+  RenaceNet:
+    external: true

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Database, Globe, Zap, Bot, Server, Box } from "lucide-react";
+import { Database, Globe, Zap, Bot, Server, Box, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -41,6 +41,9 @@ function resolveSrc(faviconUrl?: string | null, url?: string | null, type?: stri
         odoo: "https://www.odoo.com/favicon.ico",
         ai: "https://n8n.io/favicon.ico",
         n8n: "https://n8n.io/favicon.ico",
+        evoapi: "https://www.google.com/s2/favicons?domain=evolution-api.com&sz=128",
+        evolution: "https://www.google.com/s2/favicons?domain=evolution-api.com&sz=128",
+        whatsapp: "https://www.google.com/s2/favicons?domain=web.whatsapp.com&sz=128",
         postgres: "https://www.postgresql.org/favicon.ico",
         mysql: "https://www.mysql.com/favicon.ico",
         redis: "https://redis.io/favicon.ico",
@@ -54,6 +57,7 @@ function TypeFallback({ type, className }: { type?: string; className?: string }
     const t = (type || "").toLowerCase();
     if (t === "odoo") return <Zap className={className} />;
     if (t === "ai" || t === "n8n") return <Bot className={className} />;
+    if (t === "evoapi" || t === "evolution" || t === "whatsapp") return <MessageCircle className={className} />;
     if (t === "web" || t === "api") return <Globe className={className} />;
     if (t === "postgres" || t === "mysql" || t === "redis") return <Database className={className} />;
     if (t === "nginx" || t === "docker") return <Server className={className} />;

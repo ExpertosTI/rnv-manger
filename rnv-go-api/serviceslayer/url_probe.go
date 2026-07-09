@@ -68,6 +68,8 @@ func DefaultTypeFavicon(svcType string) string {
 		return "https://www.odoo.com/favicon.ico"
 	case "n8n", "ai":
 		return "https://n8n.io/favicon.ico"
+	case "evoapi", "evolution", "whatsapp":
+		return "https://www.google.com/s2/favicons?domain=evolution-api.com&sz=128"
 	case "postgres", "postgresql":
 		return "https://www.postgresql.org/favicon.ico"
 	case "mysql":
@@ -250,8 +252,10 @@ func resolveProbeURL(base, href string) string {
 func inferTypeFromProbe(host, title, html string, isRenace bool) string {
 	h := strings.ToLower(host + " " + title + " " + html)
 	switch {
+	case strings.Contains(h, "evolution"), strings.Contains(host, "evoapi"):
+		return "evoapi"
 	case strings.Contains(h, "n8n"), strings.Contains(host, "ai."):
-		return "ai"
+		return "n8n"
 	case strings.Contains(h, "odoo"):
 		return "odoo"
 	case strings.Contains(host, "api"):

@@ -56,6 +56,10 @@ func inferServiceType(name, image string) string {
 		return "rabbitmq"
 	case strings.Contains(s, "elastic"):
 		return "elasticsearch"
+	case strings.Contains(s, "n8n"):
+		return "n8n"
+	case strings.Contains(s, "evolution"), strings.Contains(s, "evoapi"):
+		return "evoapi"
 	case strings.Contains(s, "node"):
 		return "nodejs"
 	default:
@@ -257,7 +261,7 @@ func SyncScannedServices(db *gorm.DB, vps models.VPS, discovered []DiscoveredSer
 				svc.URL = d.URL
 			}
 			svc.LastChecked = &now
-			serviceslayer.EnrichServiceIcon(&svc)
+			EnrichServiceIcon(&svc)
 			if db.Create(&svc).Error == nil {
 				created++
 			}
@@ -287,7 +291,7 @@ func SyncScannedServices(db *gorm.DB, vps models.VPS, discovered []DiscoveredSer
 		if (existing.FaviconURL == nil || *existing.FaviconURL == "") && urlToEnrich != nil && *urlToEnrich != "" {
 			tmp := existing
 			tmp.URL = urlToEnrich
-			serviceslayer.EnrichServiceIcon(&tmp)
+			EnrichServiceIcon(&tmp)
 			if tmp.FaviconURL != nil {
 				updates["favicon_url"] = *tmp.FaviconURL
 			}
