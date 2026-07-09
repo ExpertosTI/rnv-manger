@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, User, Shield, Settings, ChevronDown } from "lucide-react";
+import { LogOut, Settings, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { auth, type User as UserData } from "@/lib/api";
 
@@ -82,18 +82,6 @@ export function UserMenu() {
                 className="flex items-center gap-3 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
               >
                 <Settings size={16} /> Configuración
-              </button>
-              <button
-                onClick={() => { router.push("/audit"); setIsOpen(false); }}
-                className="flex items-center gap-3 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-              >
-                <Shield size={16} /> Auditoría
-              </button>
-              <button
-                onClick={() => { router.push("/users"); setIsOpen(false); }}
-                className="flex items-center gap-3 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-              >
-                <User size={16} /> Usuarios
               </button>
             </div>
             <div className="p-1 border-t border-gray-100">

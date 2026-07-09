@@ -30,8 +30,8 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="es" className={`${inter.variable} ${outfit.variable} ${jetbrains.variable}`} suppressHydrationWarning>
-            <body className="font-sans antialiased min-h-screen bg-gradient-to-br from-slate-50 to-purple-50/30">
+        <html lang="es" className={`light ${inter.variable} ${outfit.variable} ${jetbrains.variable}`} suppressHydrationWarning>
+            <body className="font-sans antialiased min-h-screen bg-[#f8f7fc] text-gray-900">
                 <ToastProvider>
                     <AppShell>{children}</AppShell>
                 </ToastProvider>

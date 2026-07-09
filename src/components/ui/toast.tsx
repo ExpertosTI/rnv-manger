@@ -79,7 +79,7 @@ function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast:
     };
 
     return (
-        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 max-w-sm">
+        <div className="fixed bottom-6 left-6 lg:left-auto lg:right-6 z-50 flex flex-col gap-3 max-w-sm">
             <AnimatePresence>
                 {toasts.map((toast) => {
                     const Icon = icons[toast.type];

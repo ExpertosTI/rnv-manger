@@ -46,7 +46,8 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
             setPos({ x: 20, y: 20 });
             setIsOpen(true);
         } else {
-            setPos({ x: window.innerWidth - 80, y: window.innerHeight - 80 });
+            const margin = window.innerWidth < 768 ? 100 : 80;
+            setPos({ x: window.innerWidth - margin, y: window.innerHeight - margin });
         }
     }, [isWidget]);
 

@@ -83,24 +83,11 @@ export function FloatingNavDock({ items, onExpand }: Props) {
 
                 <div className="h-px w-6 bg-gradient-to-r from-transparent via-gray-300/80 to-transparent" />
 
-                {/* Scrollable icons */}
                 <div className="flex flex-col items-center gap-1.5 overflow-y-auto py-1 px-0.5 scrollbar-none flex-1 min-h-0">
                     {items.map((item) => (
-                        <DockIcon key={item.href} item={item} active={pathname === item.href} />
+                        <DockIcon key={item.href} item={item} active={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href + "/"))} />
                     ))}
                 </div>
-
-                <div className="h-px w-6 bg-gradient-to-r from-transparent via-gray-300/80 to-transparent" />
-
-                <Link href="/users" title="Admin">
-                    <motion.div
-                        whileHover={{ scale: 1.06 }}
-                        whileTap={{ scale: 0.95 }}
-                        className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-violet-400 to-purple-500 text-white text-sm font-bold shadow-[0_6px_20px_rgba(124,58,237,0.35)] border-2 border-white"
-                    >
-                        A
-                    </motion.div>
-                </Link>
             </motion.div>
         </AnimatePresence>
     );
