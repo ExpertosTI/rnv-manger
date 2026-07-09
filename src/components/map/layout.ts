@@ -8,7 +8,13 @@ const VPS_X = 360;
 const SERVICE_X = 700;
 const CLIENT_GAP = 160;
 const SERVICE_GAP = 88;
-const MAX_SERVICES_VISIBLE = 8;
+export type MapLayoutOptions = {
+    /** Solo VPS + clientes; servicios al expandir un VPS */
+    compact?: boolean;
+    expandedVpsId?: string | null;
+};
+
+const MAX_SERVICES_VISIBLE = 6;
 
 function num(v: unknown, fallback = 0): number {
     return typeof v === "number" ? v : fallback;
@@ -18,7 +24,7 @@ function str(v: unknown, fallback = ""): string {
     return typeof v === "string" ? v : fallback;
 }
 
-/** Radial: VPS en anillo, servicios alrededor (sin clientes) */
+/** Radial: VPS en anillo central, servicios alrededor de cada VPS */
 export function buildRadialGraph(
     topoNodes: TopologyNode[],
     clusters: TopologyCluster[]
@@ -36,19 +42,24 @@ export function buildRadialGraph(
     const flowEdges: Edge[] = [];
     const clusterByVps = new Map(clusters.map((c) => [c.vpsId, c]));
 
-    const centerX = 500;
-    let clusterY = 80;
+    const centerX = 520;
+    const centerY = 380;
+    const vpsRingR = 200;
+    const svcRingR = 130;
     const vpsList = [...vpsNodes].sort((a, b) => a.label.localeCompare(b.label));
+    const n = vpsList.length || 1;
 
-    for (const v of vpsList) {
-        const svcs = servicesByParent.get(v.id) || [];
+    vpsList.forEach((v, vi) => {
+        const angle = (vi / n) * Math.PI * 2 - Math.PI / 2;
+        const vx = centerX + Math.cos(angle) * vpsRingR - 125;
+        const vy = centerY + Math.sin(angle) * vpsRingR - 60;
         const cluster = clusterByVps.get(v.id);
-        const radius = 140 + Math.min(svcs.length, 6) * 12;
+        const svcs = servicesByParent.get(v.id) || [];
 
         flowNodes.push({
             id: v.id,
             type: "vps",
-            position: { x: centerX - 125, y: clusterY },
+            position: { x: vx, y: vy },
             data: {
                 label: v.label,
                 status: v.status || cluster?.status,
@@ -56,14 +67,15 @@ export function buildRadialGraph(
                 serviceCount: svcs.length,
                 totalClusterCost: cluster?.totalClusterCost,
                 clientName: str(v.meta?.clientName, cluster?.clientName),
+                compact: false,
             },
         });
 
         const visible = svcs.slice(0, MAX_SERVICES_VISIBLE);
-        visible.forEach((s, i) => {
-            const angle = (i / Math.max(visible.length, 1)) * Math.PI * 1.6 - Math.PI * 0.3;
-            const sx = centerX + 200 + Math.cos(angle) * radius;
-            const sy = clusterY + 30 + Math.sin(angle) * (radius * 0.55);
+        visible.forEach((s, si) => {
+            const svcAngle = angle + ((si - (visible.length - 1) / 2) * 0.35);
+            const sx = centerX + Math.cos(svcAngle) * (vpsRingR + svcRingR) - 90;
+            const sy = centerY + Math.sin(svcAngle) * (vpsRingR + svcRingR) - 30;
             flowNodes.push({
                 id: s.id,
                 type: "service",
@@ -88,8 +100,29 @@ export function buildRadialGraph(
             });
         });
 
-        clusterY += radius * 1.2 + 120;
-    }
+        if (svcs.length > MAX_SERVICES_VISIBLE) {
+            const overflowId = `overflow-${v.id}`;
+            const svcAngle = angle + 0.5;
+            flowNodes.push({
+                id: overflowId,
+                type: "service",
+                position: {
+                    x: centerX + Math.cos(svcAngle) * (vpsRingR + svcRingR) - 90,
+                    y: centerY + Math.sin(svcAngle) * (vpsRingR + svcRingR) - 30,
+                },
+                data: { label: `+${svcs.length - MAX_SERVICES_VISIBLE} más`, status: "running", type: "more", charge: 0 },
+                selectable: false,
+            });
+            flowEdges.push({
+                id: `radial-${v.id}-${overflowId}`,
+                source: v.id,
+                target: overflowId,
+                type: "default",
+                className: "nm-edge-dim",
+                style: { stroke: "#52525b", strokeWidth: 1.25 },
+            });
+        }
+    });
 
     return { nodes: flowNodes, edges: flowEdges };
 }
@@ -98,19 +131,23 @@ export function buildFlowGraph(
     mode: MapViewMode,
     topoNodes: TopologyNode[],
     topoEdges: TopologyEdge[],
-    clusters: TopologyCluster[]
+    clusters: TopologyCluster[],
+    opts?: MapLayoutOptions
 ): { nodes: Node[]; edges: Edge[] } {
     if (mode === "radial") {
         return buildRadialGraph(topoNodes, clusters);
     }
-    return buildHierarchyGraph(topoNodes, topoEdges, clusters);
+    return buildHierarchyGraph(topoNodes, topoEdges, clusters, opts);
 }
 
 function buildHierarchyGraph(
     topoNodes: TopologyNode[],
     topoEdges: TopologyEdge[],
-    clusters: TopologyCluster[]
+    clusters: TopologyCluster[],
+    opts?: MapLayoutOptions
 ): { nodes: Node[]; edges: Edge[] } {
+    const compact = opts?.compact !== false;
+    const expandedVpsId = opts?.expandedVpsId ?? null;
     const clients = topoNodes.filter((n) => n.type === "client");
     const vpsNodes = topoNodes.filter((n) => n.type === "vps");
     const services = topoNodes.filter((n) => n.type === "service");
@@ -129,16 +166,32 @@ function buildHierarchyGraph(
     const flowNodes: Node[] = [];
     const flowEdges: Edge[] = [];
 
-    // Layout VPS columns first to compute Y centers
+    // Layout VPS — grid horizontal en modo compacto
     const vpsY = new Map<string, number>();
+    const vpsX = new Map<string, number>();
+    const VPS_COLS = compact ? 3 : 1;
+    const VPS_COL_W = compact ? 320 : 0;
+    const VPS_ROW_H = compact ? 200 : 0;
+
     let cursorY = 40;
-    for (const v of sortedVps) {
+    sortedVps.forEach((v, idx) => {
         const svcs = servicesByParent.get(v.id) || [];
-        const visible = Math.min(svcs.length, MAX_SERVICES_VISIBLE);
-        const blockH = Math.max(140, visible * SERVICE_GAP + 40);
-        vpsY.set(v.id, cursorY + blockH / 2 - 60);
-        cursorY += blockH + 48;
-    }
+        const showServices = !compact || expandedVpsId === v.id;
+        const visibleCount = showServices ? Math.min(svcs.length, MAX_SERVICES_VISIBLE) : 0;
+        const blockH = compact
+            ? VPS_ROW_H
+            : Math.max(140, visibleCount * SERVICE_GAP + 40);
+
+        if (compact) {
+            const col = idx % VPS_COLS;
+            const row = Math.floor(idx / VPS_COLS);
+            vpsX.set(v.id, VPS_X + col * VPS_COL_W);
+            vpsY.set(v.id, 60 + row * VPS_ROW_H);
+        } else {
+            vpsY.set(v.id, cursorY + blockH/2 - 60);
+            cursorY += blockH + 48;
+        }
+    });
 
     // Clients on the left — center near connected VPS if possible
     const clientVpsLinks = new Map<string, string[]>();
@@ -175,7 +228,7 @@ function buildHierarchyGraph(
         flowNodes.push({
             id: c.id,
             type: "client",
-            position: { x: CLIENT_X, y },
+            position: { x: CLIENT_X, y: compact ? 80 + (placedClients.size % 4) * 140 : y },
             data: {
                 label: c.label,
                 status: c.status,
@@ -187,37 +240,47 @@ function buildHierarchyGraph(
         });
     }
 
-    // VPS + services
+    // VPS + servicios (solo si no compacto o VPS expandido)
     for (const v of sortedVps) {
         const cluster = clusterByVps.get(v.id);
         const y = vpsY.get(v.id) ?? 40;
+        const x = compact ? (vpsX.get(v.id) ?? VPS_X) : VPS_X;
+        const svcs = servicesByParent.get(v.id) || [];
+        const isExpanded = expandedVpsId === v.id;
+
         flowNodes.push({
             id: v.id,
             type: "vps",
-            position: { x: VPS_X, y },
+            position: { x, y },
             data: {
                 label: v.label,
                 status: v.status || cluster?.status,
                 ip: str(v.meta?.ip, cluster?.ip),
                 provider: str(v.meta?.provider),
                 monthlyCost: num(v.meta?.monthlyCost, cluster?.monthlyCost),
-                serviceCount: num(v.meta?.serviceCount, cluster?.serviceCount),
+                serviceCount: num(v.meta?.serviceCount, cluster?.serviceCount) || svcs.length,
                 clientName: str(v.meta?.clientName, cluster?.clientName),
                 totalClusterCost:
                     cluster?.totalClusterCost
                     ?? (num(v.meta?.servicesMonthlyCost) + num(v.meta?.monthlyCost)),
+                compact,
+                expanded: isExpanded,
             },
         });
 
-        const svcs = servicesByParent.get(v.id) || [];
+        if (compact && !isExpanded) {
+            continue;
+        }
+
         const visible = svcs.slice(0, MAX_SERVICES_VISIBLE);
         const startY = y - ((visible.length - 1) * SERVICE_GAP) / 2;
+        const svcX = compact ? x + 280 : SERVICE_X;
 
         visible.forEach((s, i) => {
             flowNodes.push({
                 id: s.id,
                 type: "service",
-                position: { x: SERVICE_X, y: startY + i * SERVICE_GAP },
+                position: { x: svcX, y: startY + i * SERVICE_GAP },
                 data: {
                     label: s.label,
                     status: s.status,
@@ -250,7 +313,7 @@ function buildHierarchyGraph(
                 id: overflowId,
                 type: "service",
                 position: {
-                    x: SERVICE_X,
+                    x: svcX,
                     y: startY + visible.length * SERVICE_GAP,
                 },
                 data: {
@@ -292,9 +355,9 @@ function buildHierarchyGraph(
         });
     }
 
-    // Orphan unassigned services cluster
+    // Orphan unassigned services cluster (solo en modo expandido / no compacto)
     const orphans = servicesByParent.get("orphan") || [];
-    if (orphans.length > 0) {
+    if (orphans.length > 0 && !compact) {
         const id = "unassigned";
         const y = cursorY + 40;
         flowNodes.push({

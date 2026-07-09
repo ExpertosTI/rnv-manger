@@ -353,6 +353,7 @@ type OTPCode struct {
 	ID        string    `gorm:"type:text;primaryKey" json:"id"`
 	Email     string    `gorm:"not null;index" json:"email"`
 	CodeHash  string    `gorm:"not null" json:"-"`
+	Channel   string    `gorm:"default:email" json:"channel"` // email | whatsapp
 	ExpiresAt time.Time `gorm:"not null" json:"expiresAt"`
 	Used      bool      `gorm:"default:false" json:"used"`
 	Attempts  int       `gorm:"default:0" json:"attempts"`

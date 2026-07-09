@@ -138,6 +138,24 @@ func SendOTPEmail(db *gorm.DB, cfg *config.Config, to, code string) error {
 	return SendEmail(db, cfg, to, subject, body)
 }
 
+// SendOTPWhatsApp sends the OTP code to configured admin WhatsApp numbers.
+func SendOTPWhatsApp(db *gorm.DB, cfg *config.Config, userEmail, code string) error {
+	text := fmt.Sprintf(
+		"🔐 *RNV Manager*\nCódigo de acceso para *%s*:\n\n*%s*\n\nExpira en 5 minutos. Si no lo solicitaste, ignora este mensaje.",
+		userEmail, code,
+	)
+	return SendWhatsAppAlert(db, cfg, text)
+}
+
+// SendLoginNotificationWhatsApp alerts admin via WhatsApp on successful login.
+func SendLoginNotificationWhatsApp(db *gorm.DB, cfg *config.Config, email, ip, timestamp string) error {
+	text := fmt.Sprintf(
+		"✅ *RNV Manager — Nuevo acceso*\n\nEmail: %s\nIP: %s\nFecha: %s",
+		email, ip, timestamp,
+	)
+	return SendWhatsAppAlert(db, cfg, text)
+}
+
 // SendLoginNotification sends a notification about a new login.
 func SendLoginNotification(db *gorm.DB, cfg *config.Config, email, ip, timestamp string) error {
 	if cfg.NotificationEmail == "" {

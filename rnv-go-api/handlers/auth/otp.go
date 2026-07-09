@@ -18,7 +18,8 @@ import (
 )
 
 type OTPRequest struct {
-	Email string `json:"email" binding:"required"`
+	Email   string `json:"email" binding:"required"`
+	Channel string `json:"channel"` // email | whatsapp
 }
 
 type OTPVerify struct {
@@ -36,6 +37,10 @@ func RequestOTP(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 		email := strings.ToLower(strings.TrimSpace(req.Email))
 		ip := middleware.GetClientIP(c)
+		channel := strings.ToLower(strings.TrimSpace(req.Channel))
+		if channel != "whatsapp" {
+			channel = "email"
+		}
 
 		// Check if email is allowed
 		var allowed models.AllowedEmail
@@ -72,12 +77,29 @@ func RequestOTP(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		otp := models.OTPCode{
 			Email:     email,
 			CodeHash:  string(codeHash),
+			Channel:   channel,
 			ExpiresAt: time.Now().Add(5 * time.Minute),
 			IPAddress: ip,
 		}
 		db.Create(&otp)
 
-		// Send email
+		// Send code via chosen channel
+		if channel == "whatsapp" {
+			if err := serviceslayer.SendOTPWhatsApp(db, cfg, email, code); err != nil {
+				c.JSON(http.StatusServiceUnavailable, gin.H{
+					"success": false,
+					"error":   "No se pudo enviar por WhatsApp. Verifica Evolution API y WHATSAPP_NOTIFY_NUMBERS.",
+				})
+				return
+			}
+			// Copia al correo del admin
+			if cfg.NotificationEmail != "" {
+				_ = serviceslayer.SendOTPEmail(db, cfg, cfg.NotificationEmail, code)
+			}
+			c.JSON(http.StatusOK, gin.H{"success": true, "message": "Codigo enviado por WhatsApp (copia al admin por correo)", "channel": "whatsapp"})
+			return
+		}
+
 		if err := serviceslayer.SendOTPEmail(db, cfg, email, code); err != nil {
 			errText := err.Error()
 			userMsg := "No se pudo enviar el correo. Contacta al administrador."
@@ -93,7 +115,7 @@ func RequestOTP(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"success": true, "message": "Codigo enviado a " + email})
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "Codigo enviado a " + email, "channel": "email"})
 	}
 }
 
@@ -171,12 +193,22 @@ func VerifyOTP(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			"Login OTP exitoso: "+email,
 			models.JSON{"email": email, "role": allowed.Role}, ip, &email)
 
-		// Send login notification
+		// Send login notification (email admin + WhatsApp si aplicó)
 		ipStr := "desconocida"
 		if ip != nil {
 			ipStr = *ip
 		}
-		go serviceslayer.SendLoginNotification(db, cfg, email, ipStr, time.Now().Format("2006-01-02 15:04:05 MST"))
+		ts := time.Now().Format("2006-01-02 15:04:05 MST")
+		ch := otp.Channel
+		if ch == "" {
+			ch = "email"
+		}
+		go func() {
+			_ = serviceslayer.SendLoginNotification(db, cfg, email, ipStr, ts)
+			if ch == "whatsapp" {
+				_ = serviceslayer.SendLoginNotificationWhatsApp(db, cfg, email, ipStr, ts)
+			}
+		}()
 
 		// Set cookie
 		secure := strings.HasPrefix(cfg.AppURL, "https")

@@ -5,15 +5,19 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Lock, Zap, Loader2, User, ArrowRight } from "lucide-react";
+import { Lock, Zap, Loader2, User, ArrowRight, Mail, MessageCircle } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { motion } from "framer-motion";
 import { auth } from "@/lib/api";
+
+type OTPChannel = "email" | "whatsapp";
 
 function LoginForm() {
     const [mode, setMode] = useState<"email" | "otp">("email");
     const [email, setEmail] = useState("");
     const [code, setCode] = useState("");
+    const [channel, setChannel] = useState<OTPChannel>("email");
+    const [sentChannel, setSentChannel] = useState<OTPChannel>("email");
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -24,8 +28,14 @@ function LoginForm() {
         e.preventDefault();
         setIsLoading(true);
         try {
-            await auth.requestOTP(email);
-            addToast("Código enviado correctamente", "success");
+            const res = await auth.requestOTP(email, channel);
+            setSentChannel((res.channel as OTPChannel) || channel);
+            addToast(
+                channel === "whatsapp"
+                    ? "Código enviado por WhatsApp (copia al correo del admin)"
+                    : "Código enviado a tu correo",
+                "success"
+            );
             setMode("otp");
         } catch (err) {
             const msg = err instanceof Error ? err.message : "";
@@ -75,6 +85,44 @@ function LoginForm() {
                         />
                     </div>
                 </div>
+
+                <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700 ml-1">
+                        ¿Cómo quieres recibir el código?
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setChannel("email")}
+                            className={`flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-3 text-sm font-medium transition-all ${
+                                channel === "email"
+                                    ? "border-violet-500 bg-violet-50 text-violet-700"
+                                    : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                            }`}
+                        >
+                            <Mail className="h-4 w-4" />
+                            Correo
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setChannel("whatsapp")}
+                            className={`flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-3 text-sm font-medium transition-all ${
+                                channel === "whatsapp"
+                                    ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                                    : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                            }`}
+                        >
+                            <MessageCircle className="h-4 w-4" />
+                            WhatsApp
+                        </button>
+                    </div>
+                    {channel === "whatsapp" && (
+                        <p className="text-xs text-gray-500 px-1">
+                            Se envía al WhatsApp del admin y una copia al correo configurado.
+                        </p>
+                    )}
+                </div>
+
                 <Button
                     type="submit"
                     className="w-full h-14 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-bold text-lg rounded-2xl shadow-xl shadow-indigo-200 transition-all active:scale-[0.98]"
@@ -85,7 +133,7 @@ function LoginForm() {
                     ) : (
                         <>
                             Enviar Código de Acceso
-                            <ArrowRight className="ml-2 h-5 h-5" />
+                            <ArrowRight className="ml-2 h-5 w-5" />
                         </>
                     )}
                 </Button>
@@ -97,7 +145,11 @@ function LoginForm() {
         <form onSubmit={verifyOTP} className="space-y-6">
             <div className="space-y-3">
                 <div className="text-center mb-2">
-                    <p className="text-sm text-gray-500">Hemos enviado un código a:</p>
+                    <p className="text-sm text-gray-500">
+                        {sentChannel === "whatsapp"
+                            ? "Código enviado por WhatsApp (y copia al admin):"
+                            : "Hemos enviado un código a:"}
+                    </p>
                     <p className="text-sm font-bold text-violet-600">{email}</p>
                 </div>
                 <div className="relative">

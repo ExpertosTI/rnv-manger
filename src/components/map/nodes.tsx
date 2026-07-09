@@ -38,6 +38,8 @@ export type VpsNodeData = {
     serviceCount?: number;
     clientName?: string;
     totalClusterCost?: number;
+    compact?: boolean;
+    expanded?: boolean;
 };
 
 export type ServiceNodeData = {
@@ -155,8 +157,8 @@ export const VpsNode = memo(function VpsNode({ data, selected }: NodeProps) {
     return (
         <div
             className={`nm-float nm-float-delay-1 group relative min-w-[250px] rounded-[22px] transition-all duration-300 ${
-                selected ? "scale-[1.03]" : "hover:scale-[1.015]"
-            }`}
+                selected || d.expanded ? "scale-[1.03]" : "hover:scale-[1.015]"
+            } ${d.expanded ? "ring-2 ring-fuchsia-400/50" : ""}`}
         >
             <div
                 className={`absolute -inset-[1px] rounded-[23px] ${
@@ -244,6 +246,11 @@ export const VpsNode = memo(function VpsNode({ data, selected }: NodeProps) {
                         <p className="mt-3 flex items-center gap-1.5 truncate text-[11px] text-cyan-300/80">
                             <Users className="h-3 w-3 shrink-0" />
                             {d.clientName}
+                        </p>
+                    )}
+                    {d.compact && (
+                        <p className="mt-2 text-center text-[10px] text-zinc-500">
+                            {d.expanded ? "Clic para colapsar" : "Clic para ver servicios"}
                         </p>
                     )}
                 </div>

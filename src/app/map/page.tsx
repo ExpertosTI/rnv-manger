@@ -8,11 +8,15 @@ import {
     Controls,
     MiniMap,
     BackgroundVariant,
+    ReactFlowProvider,
     useNodesState,
     useEdgesState,
+    useReactFlow,
+    ConnectionMode,
     type Node,
     type Edge,
     type NodeMouseHandler,
+    type OnConnect,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "@/components/map/map.css";
@@ -33,7 +37,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { mapNodeTypes } from "@/components/map/nodes";
-import { buildFlowGraph, type MapViewMode } from "@/components/map/layout";
+import { buildFlowGraph, type MapViewMode, type MapLayoutOptions } from "@/components/map/layout";
 import { buildDNSCloudGraph, buildByIPGraph } from "@/components/map/layout-dns";
 import { ServiceTaskPanel, type ServiceTaskTarget } from "@/components/ServiceTaskPanel";
 import { SidebarToggle } from "@/components/SidebarToggle";
@@ -57,6 +61,127 @@ function isOnline(status?: string) {
     return ["running", "online", "active"].includes((status || "").toLowerCase());
 }
 
+function needsDnsData(mode: MapViewMode) {
+    return mode === "dns-cloud" || mode === "by-ip";
+}
+
+function MapCanvas({
+    viewKey,
+    nodes,
+    edges,
+    onNodesChange,
+    onEdgesChange,
+    onNodeClick,
+    onConnect,
+    nodeTypes,
+    loading,
+    emptyHint,
+}: {
+    viewKey: string;
+    nodes: Node[];
+    edges: Edge[];
+    onNodesChange: ReturnType<typeof useNodesState<Node>>[2];
+    onEdgesChange: ReturnType<typeof useEdgesState<Edge>>[2];
+    onNodeClick: NodeMouseHandler;
+    onConnect: OnConnect;
+    nodeTypes: typeof mapNodeTypes;
+    loading: boolean;
+    emptyHint?: string;
+}) {
+    const { fitView } = useReactFlow();
+
+    useEffect(() => {
+        if (nodes.length === 0) return;
+        const t = window.setTimeout(() => {
+            fitView({ padding: 0.18, maxZoom: 1.05, duration: 350 });
+        }, 50);
+        return () => window.clearTimeout(t);
+    }, [viewKey, nodes.length, fitView]);
+
+    if (loading && nodes.length === 0) {
+        return (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[#05060b]">
+                <div className="relative">
+                    <div className="absolute inset-0 rounded-3xl bg-violet-500/30 blur-xl animate-pulse" />
+                    <div className="relative flex h-16 w-16 items-center justify-center rounded-3xl border border-violet-400/40 bg-violet-500/10">
+                        <Cpu className="h-7 w-7 text-violet-300 animate-pulse" />
+                    </div>
+                </div>
+                <p className="nm-shimmer-text text-sm font-medium">Synthesizing neural graph…</p>
+            </div>
+        );
+    }
+
+    if (nodes.length === 0) {
+        return (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-6 text-center">
+                <Network className="h-10 w-10 text-zinc-600" />
+                <p className="text-zinc-400">{emptyHint || "Sin nodos. Restaura backup o escanea VPS."}</p>
+                {!emptyHint && (
+                    <Link href="/services" className="text-sm text-violet-300 hover:underline">
+                        Ir a Servicios →
+                    </Link>
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <ReactFlow
+            key={viewKey}
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeClick={onNodeClick}
+            onConnect={onConnect}
+            nodeTypes={nodeTypes}
+            nodesConnectable
+            nodesDraggable
+            connectionMode={ConnectionMode.Loose}
+            fitView
+            fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
+            minZoom={0.15}
+            maxZoom={1.9}
+            proOptions={{ hideAttribution: true }}
+            className="!bg-transparent"
+            defaultEdgeOptions={{ type: "smoothstep" }}
+        >
+            <Background
+                id="dots"
+                variant={BackgroundVariant.Dots}
+                gap={28}
+                size={1.4}
+                color="rgba(155,123,255,0.22)"
+            />
+            <Background
+                id="cross"
+                variant={BackgroundVariant.Lines}
+                gap={112}
+                size={1}
+                color="rgba(46,230,214,0.05)"
+            />
+            <Controls
+                className="!m-4 !overflow-hidden !rounded-2xl !border !border-white/10 !bg-[#0c101c]/90 !shadow-[0_12px_40px_rgba(0,0,0,0.5)] [&>button]:!bg-transparent [&>button]:!border-white/5 [&>button]:!text-zinc-300 [&>button:hover]:!bg-violet-500/20"
+                showInteractive={false}
+            />
+            <MiniMap
+                className="!m-4 !overflow-hidden !rounded-2xl !border !border-white/10 !bg-[#080a12]/95"
+                nodeColor={(n) => {
+                    if (n.type === "client") return "#2ee6d6";
+                    if (n.type === "vps") return "#9b7bff";
+                    if (n.type === "dnsRoot") return "#f59e0b";
+                    if (n.type === "ipHub") return "#2dd4bf";
+                    return "#ff5ec8";
+                }}
+                maskColor="rgba(5,6,11,0.78)"
+                pannable
+                zoomable
+            />
+        </ReactFlow>
+    );
+}
+
 export default function MapPage() {
     const [loading, setLoading] = useState(true);
     const [totals, setTotals] = useState({ clients: 0, vps: 0, services: 0, monthlyRevenue: 0 });
@@ -64,7 +189,10 @@ export default function MapPage() {
     const [topoNodes, setTopoNodes] = useState<TopologyNode[]>([]);
     const [topoEdges, setTopoEdges] = useState<TopologyEdge[]>([]);
     const [dnsAudit, setDnsAudit] = useState<DNSZoneAudit | null>(null);
-    const [viewMode, setViewMode] = useState<MapViewMode>("dns-cloud");
+    const [dnsLoading, setDnsLoading] = useState(false);
+    const [viewMode, setViewMode] = useState<MapViewMode>("hierarchy");
+    const [expandedVpsId, setExpandedVpsId] = useState<string | null>(null);
+    const [compactMap, setCompactMap] = useState(true);
     const [detail, setDetail] = useState<Detail>(null);
     const [taskTarget, setTaskTarget] = useState<ServiceTaskTarget | null>(null);
     const [taskOpen, setTaskOpen] = useState(false);
@@ -72,54 +200,123 @@ export default function MapPage() {
 
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+    const [manualEdges, setManualEdges] = useState<Edge[]>([]);
+
+    const layoutOpts: MapLayoutOptions = useMemo(
+        () => ({ compact: compactMap && viewMode === "hierarchy", expandedVpsId }),
+        [compactMap, viewMode, expandedVpsId]
+    );
 
     const applyGraph = useCallback(
-        (mode: MapViewMode, nodes: TopologyNode[], edges: TopologyEdge[], cls: TopologyCluster[], audit: DNSZoneAudit | null) => {
+        (
+            mode: MapViewMode,
+            nodes: TopologyNode[],
+            edges: TopologyEdge[],
+            cls: TopologyCluster[],
+            audit: DNSZoneAudit | null,
+            opts?: MapLayoutOptions
+        ) => {
             if (mode === "dns-cloud" && audit) return buildDNSCloudGraph(audit);
             if (mode === "by-ip" && audit) return buildByIPGraph(audit);
-            return buildFlowGraph(mode, nodes, edges, cls);
+            if (needsDnsData(mode) && !audit) return { nodes: [], edges: [] };
+            return buildFlowGraph(mode, nodes, edges, cls, opts);
         },
         []
     );
 
-    const load = useCallback(async () => {
+    const viewKey = `${viewMode}-${expandedVpsId ?? "none"}-${compactMap ? "c" : "f"}`;
+
+    const baseGraph = useMemo(
+        () => applyGraph(viewMode, topoNodes, topoEdges, clusters, dnsAudit, layoutOpts),
+        [viewMode, topoNodes, topoEdges, clusters, dnsAudit, layoutOpts, applyGraph]
+    );
+
+    const switchView = useCallback((mode: MapViewMode) => {
+        setViewMode(mode);
+        setDetail(null);
+    }, []);
+
+    const loadTopology = useCallback(async () => {
         setLoading(true);
         try {
-            const [topoRes, dnsRes] = await Promise.all([
-                topologyApi.map(),
-                dnsApi.audit().catch(() => null),
-            ]);
+            const topoRes = await topologyApi.map();
             const tNodes = topoRes.nodes || [];
             const tEdges = topoRes.edges || [];
             const tClusters = topoRes.clusters || [];
-            const audit = dnsRes?.data ?? null;
             setTopoNodes(tNodes);
             setTopoEdges(tEdges);
             setClusters(tClusters);
-            setDnsAudit(audit);
             setTotals(topoRes.totals || { clients: 0, vps: 0, services: 0, monthlyRevenue: 0 });
-            const graph = applyGraph(viewMode, tNodes, tEdges, tClusters, audit);
-            setNodes(graph.nodes);
-            setEdges(graph.edges);
             setDetail(null);
         } catch {
             addToast("Error al cargar mapa", "error");
         } finally {
             setLoading(false);
         }
-    }, [addToast, setNodes, setEdges, applyGraph, viewMode]);
+    }, [addToast]);
+
+    const loadDns = useCallback(async () => {
+        if (dnsLoading) return;
+        setDnsLoading(true);
+        try {
+            const dnsRes = await dnsApi.audit().catch(() => null);
+            setDnsAudit(dnsRes?.data ?? null);
+        } catch {
+            addToast("Error al cargar auditoría DNS", "error");
+        } finally {
+            setDnsLoading(false);
+        }
+    }, [addToast, dnsLoading]);
+
+    const load = useCallback(async () => {
+        await loadTopology();
+        if (needsDnsData(viewMode)) await loadDns();
+    }, [loadTopology, loadDns, viewMode]);
 
     useEffect(() => {
-        if (topoNodes.length === 0 && !dnsAudit) return;
-        const graph = applyGraph(viewMode, topoNodes, topoEdges, clusters, dnsAudit);
-        setNodes(graph.nodes);
-        setEdges(graph.edges);
-        setDetail(null);
-    }, [viewMode, topoNodes, topoEdges, clusters, dnsAudit, applyGraph, setNodes, setEdges]);
+        setManualEdges([]);
+    }, [viewKey]);
 
     useEffect(() => {
-        load();
-    }, [load]);
+        setNodes(baseGraph.nodes);
+        setEdges([...baseGraph.edges, ...manualEdges]);
+    }, [baseGraph, manualEdges, setNodes, setEdges]);
+
+    const onConnect: OnConnect = useCallback(
+        (connection) => {
+            if (!connection.source || !connection.target) return;
+            const newEdge: Edge = {
+                ...connection,
+                id: `manual-${connection.source}-${connection.target}-${Date.now()}`,
+                source: connection.source,
+                target: connection.target,
+                type: "smoothstep",
+                animated: true,
+                className: "nm-edge-owns",
+                style: { stroke: "#fbbf24", strokeWidth: 2.5, strokeDasharray: "6 4" },
+                label: "link",
+                labelStyle: { fill: "#fde68a", fontSize: 9, fontWeight: 700 },
+                labelBgStyle: { fill: "#05060b", fillOpacity: 0.85 },
+            };
+            setManualEdges((prev) => [...prev, newEdge]);
+            addToast("Conexión creada", "success");
+        },
+        [addToast]
+    );
+
+    useEffect(() => {
+        loadTopology();
+    }, [loadTopology]);
+
+    useEffect(() => {
+        if (needsDnsData(viewMode) && !dnsAudit && !dnsLoading) {
+            loadDns();
+        }
+    }, [viewMode, dnsAudit, dnsLoading, loadDns]);
+
+    useEffect(() => {
+        if (viewMode !== "hierarchy") setExpandedVpsId(null);
+    }, [viewMode]);
 
     const onNodeClick: NodeMouseHandler = useCallback(
         (_evt, node) => {
@@ -134,6 +331,9 @@ export default function MapPage() {
             } else if (node.type === "vps") {
                 const cluster = clusters.find((c) => c.vpsId === node.id);
                 const raw = topoNodes.find((n) => n.id === node.id);
+                if (viewMode === "hierarchy" && compactMap) {
+                    setExpandedVpsId((prev) => (prev === node.id ? null : node.id));
+                }
                 setDetail({
                     kind: "vps",
                     id: node.id,
@@ -182,7 +382,7 @@ export default function MapPage() {
                 }
             }
         },
-        [topoNodes, clusters, dnsAudit]
+        [topoNodes, clusters, dnsAudit, viewMode, compactMap]
     );
 
     const nodeTypes = useMemo(() => mapNodeTypes, []);
@@ -210,11 +410,14 @@ export default function MapPage() {
                                 <Radio className="h-3 w-3" />
                                 {liveEdges} live
                             </span>
-                            {dnsAudit && (
+                            {dnsAudit && needsDnsData(viewMode) && (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-amber-200">
                                     <Cloud className="h-3 w-3" />
                                     {dnsAudit.totalRecords} DNS · {dnsAudit.uniqueIPs} IPs
                                 </span>
+                            )}
+                            {viewMode === "hierarchy" && compactMap && (
+                                <span className="text-zinc-600">· clic VPS = expandir</span>
                             )}
                         </p>
                     </div>
@@ -228,7 +431,7 @@ export default function MapPage() {
                                 key={m.id}
                                 type="button"
                                 title={m.desc}
-                                onClick={() => setViewMode(m.id)}
+                                onClick={() => switchView(m.id)}
                                 className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all ${
                                     viewMode === m.id
                                         ? "bg-violet-600 text-white shadow-[0_0_12px_rgba(155,123,255,0.4)]"
@@ -240,6 +443,40 @@ export default function MapPage() {
                             </button>
                         ))}
                     </div>
+                    <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-black/30 p-1 lg:hidden w-full overflow-x-auto">
+                        {VIEW_MODES.map((m) => (
+                            <button
+                                key={m.id}
+                                type="button"
+                                title={m.desc}
+                                onClick={() => switchView(m.id)}
+                                className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all ${
+                                    viewMode === m.id
+                                        ? "bg-violet-600 text-white shadow-[0_0_12px_rgba(155,123,255,0.4)]"
+                                        : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                                }`}
+                            >
+                                <m.icon className="h-3.5 w-3.5" />
+                                {m.label}
+                            </button>
+                        ))}
+                    </div>
+                    {viewMode === "hierarchy" && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setCompactMap((c) => !c);
+                                setExpandedVpsId(null);
+                            }}
+                            className={`hidden sm:flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-medium transition-all ${
+                                compactMap
+                                    ? "border-violet-400/30 bg-violet-500/15 text-violet-200"
+                                    : "border-white/10 bg-white/5 text-zinc-400"
+                            }`}
+                        >
+                            {compactMap ? "Compacto" : "Todos los svcs"}
+                        </button>
+                    )}
                     <StatChip icon={<Users className="w-3.5 h-3.5 text-cyan-300" />} label="Clients" value={totals.clients} tone="cyan" />
                     <StatChip icon={<Server className="w-3.5 h-3.5 text-violet-300" />} label="VPS" value={totals.vps} tone="violet" />
                     <StatChip icon={<Database className="w-3.5 h-3.5 text-fuchsia-300" />} label="Svcs" value={totals.services} tone="fuchsia" />
@@ -291,75 +528,35 @@ export default function MapPage() {
                         />
                     </div>
 
-                    {loading && nodes.length === 0 ? (
-                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[#05060b]">
-                            <div className="relative">
-                                <div className="absolute inset-0 rounded-3xl bg-violet-500/30 blur-xl animate-pulse" />
-                                <div className="relative flex h-16 w-16 items-center justify-center rounded-3xl border border-violet-400/40 bg-violet-500/10">
-                                    <Cpu className="h-7 w-7 text-violet-300 animate-pulse" />
-                                </div>
-                            </div>
-                            <p className="nm-shimmer-text text-sm font-medium">Synthesizing neural graph…</p>
+                    {needsDnsData(viewMode) && (
+                        <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-full border border-amber-400/25 bg-amber-500/10 px-4 py-1.5 text-[11px] text-amber-100 backdrop-blur-xl">
+                            Vista DNS — solo referencia Cloudflare, <strong>no importa</strong> servicios a RNV
+                            {dnsLoading && " · cargando…"}
                         </div>
-                    ) : nodes.length === 0 ? (
-                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-6 text-center">
-                            <Network className="h-10 w-10 text-zinc-600" />
-                            <p className="text-zinc-400">Sin nodos. Restaura backup o escanea VPS.</p>
-                            <Link href="/services" className="text-sm text-violet-300 hover:underline">
-                                Ir a Servicios →
-                            </Link>
-                        </div>
-                    ) : (
-                        <ReactFlow
+                    )}
+
+                    <ReactFlowProvider>
+                        <MapCanvas
+                            viewKey={viewKey}
                             nodes={nodes}
                             edges={edges}
                             onNodesChange={onNodesChange}
                             onEdgesChange={onEdgesChange}
                             onNodeClick={onNodeClick}
+                            onConnect={onConnect}
                             nodeTypes={nodeTypes}
-                            fitView
-                            fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
-                            minZoom={0.15}
-                            maxZoom={1.9}
-                            proOptions={{ hideAttribution: true }}
-                            className="!bg-transparent"
-                            defaultEdgeOptions={{ type: "smoothstep" }}
-                        >
-                            <Background
-                                id="dots"
-                                variant={BackgroundVariant.Dots}
-                                gap={28}
-                                size={1.4}
-                                color="rgba(155,123,255,0.22)"
-                            />
-                            <Background
-                                id="cross"
-                                variant={BackgroundVariant.Lines}
-                                gap={112}
-                                size={1}
-                                color="rgba(46,230,214,0.05)"
-                            />
-                            <Controls
-                                className="!m-4 !overflow-hidden !rounded-2xl !border !border-white/10 !bg-[#0c101c]/90 !shadow-[0_12px_40px_rgba(0,0,0,0.5)] [&>button]:!bg-transparent [&>button]:!border-white/5 [&>button]:!text-zinc-300 [&>button:hover]:!bg-violet-500/20"
-                                showInteractive={false}
-                            />
-                            <MiniMap
-                                className="!m-4 !overflow-hidden !rounded-2xl !border !border-white/10 !bg-[#080a12]/95"
-                                nodeColor={(n) => {
-                                    if (n.type === "client") return "#2ee6d6";
-                                    if (n.type === "vps") return "#9b7bff";
-                                    return "#ff5ec8";
-                                }}
-                                maskColor="rgba(5,6,11,0.78)"
-                                pannable
-                                zoomable
-                            />
-                        </ReactFlow>
-                    )}
+                            loading={loading || (needsDnsData(viewMode) && dnsLoading)}
+                            emptyHint={
+                                needsDnsData(viewMode) && (dnsLoading || !dnsAudit)
+                                    ? "Cargando auditoría DNS…"
+                                    : undefined
+                            }
+                        />
+                    </ReactFlowProvider>
 
                     <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3.5 py-1.5 text-[11px] text-zinc-400 backdrop-blur-xl">
                         <ZoomIn className="h-3.5 w-3.5 text-violet-300" />
-                        Scroll zoom · drag nodes · click inspect
+                        Arrastra handles para conectar · clic VPS = expandir
                         <Maximize2 className="ml-1 h-3.5 w-3.5 text-cyan-300" />
                     </div>
 
@@ -398,7 +595,17 @@ export default function MapPage() {
                         </p>
                     </div>
                     <div className="space-y-4 p-4 text-sm">
-                        {!detail && dnsAudit && (
+                        {!detail && viewMode === "hierarchy" && (
+                            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-xs leading-relaxed text-zinc-500">
+                                <p className="text-zinc-300 font-medium mb-2">Inventario RNV</p>
+                                Los {totals.services} servicios vienen de tu backup/escaneos — el archivo DNS{" "}
+                                <strong className="text-zinc-400">no los agrega</strong> a la base de datos.
+                                <p className="mt-2">Clic en un VPS para ver sus servicios. Usa <em>Por IP</em> o{" "}
+                                <em>DNS Cloud</em> solo para auditar subdominios de renace.tech.</p>
+                            </div>
+                        )}
+
+                        {!detail && needsDnsData(viewMode) && dnsAudit && (
                             <div className="space-y-3">
                                 <Tag color="violet">AUDITORÍA DNS</Tag>
                                 <MetaRow label="Registros A" value={String(dnsAudit.totalRecords)} />
@@ -413,7 +620,7 @@ export default function MapPage() {
                                         <button
                                             key={g.ip}
                                             type="button"
-                                            onClick={() => setViewMode("by-ip")}
+                                            onClick={() => switchView("by-ip")}
                                             className="w-full rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-left hover:border-teal-400/30 transition-colors"
                                         >
                                             <p className="text-xs font-semibold text-teal-200">{g.label}</p>
@@ -428,10 +635,19 @@ export default function MapPage() {
                             </div>
                         )}
 
-                        {!detail && !dnsAudit && (
+                        {!detail && viewMode === "radial" && (
                             <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-xs leading-relaxed text-zinc-500">
-                                Explora el canvas: bordes animados = señal en vivo. El asistente lee este grafo con{" "}
+                                Vista radial: cada VPS con hasta 6 servicios en anillo. El asistente lee este grafo con{" "}
                                 <code className="rounded bg-violet-500/15 px-1.5 py-0.5 text-violet-300">rnv_topology</code>.
+                            </div>
+                        )}
+
+                        {!detail && needsDnsData(viewMode) && !dnsAudit && !dnsLoading && (
+                            <div className="rounded-2xl border border-dashed border-amber-400/20 bg-amber-500/5 p-4 text-xs text-amber-200/80">
+                                Sin datos DNS. Pulsa Sync o el botón abajo.
+                                <Button size="sm" variant="outline" className="mt-3 w-full" onClick={loadDns}>
+                                    Cargar auditoría DNS
+                                </Button>
                             </div>
                         )}
 
