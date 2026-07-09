@@ -80,7 +80,7 @@ func Test(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 		text := req.Text
 		if text == "" {
-			text = fmt.Sprintf("✅ RNV Manager — canal WhatsApp Renace activo\nInstancia: %s\nRemitente: +1 809 348 7921", wc.Instance)
+			text = serviceslayer.FormatTestMessage(db, cfg, wc.Instance)
 		}
 
 		if err := serviceslayer.SendWhatsApp(db, cfg, to, text); err != nil {

@@ -149,8 +149,7 @@ func SendWhatsAppAlert(db *gorm.DB, cfg *config.Config, text string) error {
 	if !wc.IsConfigured() || len(wc.NotifyNums) == 0 {
 		return nil
 	}
-	prefix := fmt.Sprintf("*%s*\n", wc.SenderLabel)
-	msg := prefix + strings.TrimSpace(text)
+	msg := strings.TrimSpace(text)
 	var lastErr error
 	sent := 0
 	for _, num := range wc.NotifyNums {

@@ -66,52 +66,85 @@ func SendWhatsAppTo(db *gorm.DB, cfg *config.Config, to, text string) ([]string,
 	return sent, nil
 }
 
+var reportMeta = map[string]struct{ title, subtitle string }{
+	"dashboard": {"Resumen general", "Panorama del ecosistema"},
+	"billing":     {"Facturación", "Pagos, mora y cobros próximos"},
+	"offline":     {"Servicios caídos", "Estado de disponibilidad"},
+	"topology":    {"Infraestructura", "Mapa de VPS y servicios"},
+	"workflow":    {"Mi Flujo", "Tareas de trabajo pendientes"},
+	"overdue":     {"Clientes morosos", "Pagos vencidos"},
+	"vps":         {"Servidores VPS", "Estado y detalle"},
+	"client":      {"Ficha de cliente", "Datos y servicios asignados"},
+	"services":    {"Servicios", "Estado y asignación"},
+}
+
 // BuildWhatsAppReport builds a formatted report for WhatsApp.
 func BuildWhatsAppReport(db *gorm.DB, cfg *config.Config, reportType string, opts ReportOptions) (string, error) {
 	reportType = strings.ToLower(strings.TrimSpace(reportType))
-	now := time.Now()
-	header := fmt.Sprintf("*📋 RNV Manager*\n_%s_\n\n", now.Format("02/01/2006 15:04"))
+	// aliases
+	switch reportType {
+	case "resumen", "summary":
+		reportType = "dashboard"
+	case "facturacion", "finanzas":
+		reportType = "billing"
+	case "caidos", "down":
+		reportType = "offline"
+	case "infra", "mapa":
+		reportType = "topology"
+	case "tareas", "flujo":
+		reportType = "workflow"
+	case "morosos", "mora":
+		reportType = "overdue"
+	case "servidores":
+		reportType = "vps"
+	case "cliente":
+		reportType = "client"
+	case "servicios":
+		reportType = "services"
+	}
 
 	var body string
 	var err error
 
 	switch reportType {
-	case "dashboard", "resumen", "summary":
+	case "dashboard":
 		body, err = reportDashboard(db)
-	case "billing", "facturacion", "finanzas":
+	case "billing":
 		body, err = reportBilling(db)
-	case "offline", "caidos", "down":
+	case "offline":
 		body, err = reportOffline(db)
-	case "topology", "infra", "mapa":
+	case "topology":
 		body, err = reportTopology(db)
-	case "workflow", "tareas", "flujo":
+	case "workflow":
 		body, err = reportWorkflow(db, opts)
-	case "overdue", "morosos", "mora":
+	case "overdue":
 		body, err = reportOverdue(db)
-	case "vps", "servidores":
+	case "vps":
 		body, err = reportVPS(db, opts)
-	case "client", "cliente":
+	case "client":
 		body, err = reportClient(db, opts)
-	case "services", "servicios":
+	case "services":
 		body, err = reportServices(db, opts)
 	default:
-		return "", fmt.Errorf("tipo de reporte desconocido: %s (usa: dashboard, billing, offline, topology, workflow, overdue, vps, client, services)", reportType)
+		return "", fmt.Errorf("tipo de reporte desconocido: %s", reportType)
 	}
 	if err != nil {
 		return "", err
 	}
-	return truncateWA(header + body), nil
+
+	meta := reportMeta[reportType]
+	if meta.title == "" {
+		meta.title = "Reporte"
+	}
+	msg := WAReportEnvelope(db, cfg, meta.title, meta.subtitle, body)
+	return truncateWA(msg), nil
 }
 
 func truncateWA(s string) string {
 	if len(s) <= whatsAppMaxLen {
 		return s
 	}
-	return s[:whatsAppMaxLen-40] + "\n\n… _(reporte truncado, ver panel)_"
-}
-
-func fmtMoney(v float64) string {
-	return fmt.Sprintf("$%.2f", v)
+	return s[:whatsAppMaxLen-40] + "\n\n… _(reporte truncado — ver panel)_"
 }
 
 func reportDashboard(db *gorm.DB) (string, error) {
@@ -136,23 +169,29 @@ func reportDashboard(db *gorm.DB) (string, error) {
 	offlineList, offlineN := ListOfflineServices(db)
 
 	var b strings.Builder
-	b.WriteString("*Resumen general*\n")
-	b.WriteString(fmt.Sprintf("👥 Clientes activos: %d\n", clients))
-	b.WriteString(fmt.Sprintf("🖥 VPS: %d (%d online, %d offline)\n", vpsCount, vpsOnline, vpsOffline))
-	b.WriteString(fmt.Sprintf("⚙️ Servicios: %d (%d offline)\n", svcCount, offlineN))
-	b.WriteString(fmt.Sprintf("💰 Ingresos/mes: %s\n", fmtMoney(revenue)))
-	b.WriteString(fmt.Sprintf("📉 Gastos VPS/mes: %s\n", fmtMoney(expenses)))
-	b.WriteString(fmt.Sprintf("📊 Utilidad neta: %s\n", fmtMoney(revenue-expenses)))
+	b.WriteString(waSection("📊", "Indicadores"))
+	b.WriteString(waTreeMid("Clientes activos", fmt.Sprintf("%d", clients)))
+	b.WriteString(waTreeMid("VPS", fmt.Sprintf("%d  (%d 🟢 · %d 🔴)", vpsCount, vpsOnline, vpsOffline)))
+	b.WriteString(waTreeMid("Servicios", fmt.Sprintf("%d  (%d 🔴 offline)", svcCount, offlineN)))
+	b.WriteString(waTreeLast("Utilidad neta", waMoney(revenue-expenses)))
+
+	b.WriteString(waSection("💰", "Finanzas mensuales"))
+	b.WriteString(waTreeMid("Ingresos", waMoney(revenue)))
+	b.WriteString(waTreeLast("Gastos VPS", waMoney(expenses)))
+
 	if offlineN > 0 {
-		b.WriteString("\n*Servicios caídos:*\n")
+		b.WriteString(waSection("🔴", fmt.Sprintf("Servicios caídos (%d)", offlineN)))
 		for i, s := range offlineList {
 			if i >= 8 {
-				b.WriteString(fmt.Sprintf("… y %d más\n", offlineN-8))
+				b.WriteString(waMore(offlineN - 8))
 				break
 			}
 			name, _ := s["name"].(string)
-			b.WriteString(fmt.Sprintf("🔴 %s\n", name))
+			b.WriteString(waBullet("*" + name + "*"))
 		}
+	} else {
+		b.WriteString(waSection("✅", "Disponibilidad"))
+		b.WriteString(waRow("", "Todos los servicios responden"))
 	}
 	return b.String(), nil
 }
@@ -172,7 +211,7 @@ func reportBilling(db *gorm.DB) (string, error) {
 		revenue += ClientChargeAmount(c)
 		if ok, days, amt := ClientOverdueInfo(db, c, now); ok && amt > 0 {
 			overdueCount++
-			overdueLines = append(overdueLines, fmt.Sprintf("• %s — %s (%d días)", c.Name, fmtMoney(amt), days))
+			overdueLines = append(overdueLines, fmt.Sprintf("*%s*\n     %s · _%d días de mora_", c.Name, waMoney(amt), days))
 		}
 	}
 
@@ -182,25 +221,30 @@ func reportBilling(db *gorm.DB) (string, error) {
 		Order("payment_day asc").Find(&upcoming)
 
 	var b strings.Builder
-	b.WriteString("*Facturación*\n")
-	b.WriteString(fmt.Sprintf("Ingresos/mes: %s\n", fmtMoney(revenue)))
-	b.WriteString(fmt.Sprintf("Gastos VPS: %s\n", fmtMoney(expenses)))
-	b.WriteString(fmt.Sprintf("Utilidad: %s\n", fmtMoney(revenue-expenses)))
-	b.WriteString(fmt.Sprintf("Morosos: %d\n", overdueCount))
+	b.WriteString(waSection("💰", "Resumen financiero"))
+	b.WriteString(waTreeMid("Ingresos/mes", waMoney(revenue)))
+	b.WriteString(waTreeMid("Gastos VPS", waMoney(expenses)))
+	b.WriteString(waTreeMid("Utilidad", waMoney(revenue-expenses)))
+	b.WriteString(waTreeLast("Morosos", fmt.Sprintf("%d", overdueCount)))
+
 	if len(overdueLines) > 0 {
-		b.WriteString("\n*En mora:*\n")
+		b.WriteString(waSection("⚠️", fmt.Sprintf("En mora (%d)", len(overdueLines))))
 		for i, line := range overdueLines {
 			if i >= 10 {
-				b.WriteString(fmt.Sprintf("… y %d más\n", len(overdueLines)-10))
+				b.WriteString(waMore(len(overdueLines) - 10))
 				break
 			}
-			b.WriteString(line + "\n")
+			b.WriteString(waBullet(line))
 		}
+	} else {
+		b.WriteString(waSection("✅", "Cobros"))
+		b.WriteString(waRow("", "Sin clientes en mora"))
 	}
+
 	if len(upcoming) > 0 {
-		b.WriteString("\n*Cobros próx. 7 días:*\n")
+		b.WriteString(waSection("📅", "Próximos 7 días"))
 		for _, c := range upcoming {
-			b.WriteString(fmt.Sprintf("• %s — día %d — %s\n", c.Name, c.PaymentDay, fmtMoney(ClientChargeAmount(c))))
+			b.WriteString(waBullet(fmt.Sprintf("*%s* — día *%d* — %s", c.Name, c.PaymentDay, waMoney(ClientChargeAmount(c)))))
 		}
 	}
 	return b.String(), nil
@@ -209,27 +253,32 @@ func reportBilling(db *gorm.DB) (string, error) {
 func reportOffline(db *gorm.DB) (string, error) {
 	list, count := ListOfflineServices(db)
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("*Servicios offline (%d)*\n", count))
 	if count == 0 {
-		b.WriteString("✅ Todos los servicios responden\n")
+		b.WriteString(waSection("✅", "Todo operativo"))
+		b.WriteString(waRow("", "No hay servicios caídos en este momento"))
 		return b.String(), nil
 	}
+
+	b.WriteString(waSection("🔴", fmt.Sprintf("Sin respuesta (%d)", count)))
 	for i, s := range list {
-		if i >= 20 {
-			b.WriteString(fmt.Sprintf("… y %d más\n", count-20))
+		if i >= 15 {
+			b.WriteString(waMore(count - 15))
 			break
 		}
 		name, _ := s["name"].(string)
 		vps, _ := s["vpsName"].(string)
 		url, _ := s["url"].(string)
-		line := fmt.Sprintf("🔴 %s", name)
+		block := fmt.Sprintf("*%s*", name)
 		if vps != "" {
-			line += " · " + vps
+			block += "\n     VPS → " + vps
 		}
 		if url != "" {
-			line += "\n   " + url
+			block += "\n     " + url
 		}
-		b.WriteString(line + "\n")
+		b.WriteString(waBullet(block))
+		if i < len(list)-1 && i < 14 {
+			b.WriteString(waDividerThin + "\n")
+		}
 	}
 	return b.String(), nil
 }
@@ -237,19 +286,15 @@ func reportOffline(db *gorm.DB) (string, error) {
 func reportTopology(db *gorm.DB) (string, error) {
 	var vpsList []models.VPS
 	var services []models.Service
-	db.Preload("Client").Find(&vpsList)
+	db.Preload("Client").Order("name asc").Find(&vpsList)
 	db.Find(&services)
 
 	var b strings.Builder
-	b.WriteString("*Mapa de infraestructura*\n")
+	b.WriteString(waSection("🗺️", fmt.Sprintf("VPS (%d)", len(vpsList))))
 	for i, v := range vpsList {
 		if i >= 12 {
-			b.WriteString(fmt.Sprintf("… y %d VPS más\n", len(vpsList)-12))
+			b.WriteString(waMore(len(vpsList) - 12))
 			break
-		}
-		icon := "🟢"
-		if v.Status == "offline" {
-			icon = "🔴"
 		}
 		svcN := 0
 		for _, s := range services {
@@ -259,9 +304,12 @@ func reportTopology(db *gorm.DB) (string, error) {
 		}
 		client := ""
 		if v.Client != nil {
-			client = " · " + v.Client.Name
+			client = "\n     Cliente → " + v.Client.Name
 		}
-		b.WriteString(fmt.Sprintf("%s *%s* (%s) — %d svc%s\n", icon, v.Name, v.IPAddress, svcN, client))
+		line := fmt.Sprintf("%s *%s*\n     %s · %d servicios%s",
+			map[bool]string{true: "🔴", false: "🟢"}[v.Status == "offline"],
+			v.Name, v.IPAddress, svcN, client)
+		b.WriteString(waBullet(line))
 	}
 	return b.String(), nil
 }
@@ -276,29 +324,40 @@ func reportWorkflow(db *gorm.DB, opts ReportOptions) (string, error) {
 
 	now := time.Now()
 	overdue, stale := 0, 0
+
 	var b strings.Builder
-	b.WriteString("*Mi Flujo — tareas pendientes*\n")
 	if len(tasks) == 0 {
-		b.WriteString("✅ Sin tareas de trabajo pendientes\n")
+		b.WriteString(waSection("✅", "Cola vacía"))
+		b.WriteString(waRow("", "No hay tareas de trabajo pendientes"))
 		return b.String(), nil
 	}
-	for _, t := range tasks {
+
+	b.WriteString(waSection("📋", fmt.Sprintf("Pendientes (%d)", len(tasks))))
+	for i, t := range tasks {
 		days := int(now.Sub(t.ScheduledAt).Hours() / 24)
 		svc := "sin app"
 		if t.Service != nil {
 			svc = t.Service.Name
 		}
-		prefix := "•"
+		icon := "•"
 		if t.ScheduledAt.Before(now) {
-			prefix = "⚠️"
+			icon = "⚠️"
 			overdue++
 		} else if days > 3 {
-			prefix = "⏳"
+			icon = "⏳"
 			stale++
 		}
-		b.WriteString(fmt.Sprintf("%s %s [%s] (%d d)\n", prefix, t.Title, svc, days))
+		block := fmt.Sprintf("%s *%s*\n     App → %s · _%d días_", icon, t.Title, svc, days)
+		b.WriteString(waBullet(block))
+		if i < len(tasks)-1 && i < 39 {
+			b.WriteString(waDividerThin + "\n")
+		}
 	}
-	b.WriteString(fmt.Sprintf("\nTotal: %d | Vencidas: %d | Estancadas: %d\n", len(tasks), overdue, stale))
+
+	b.WriteString(waSection("📈", "Totales"))
+	b.WriteString(waTreeMid("Vencidas", fmt.Sprintf("%d", overdue)))
+	b.WriteString(waTreeMid("Estancadas (+3d)", fmt.Sprintf("%d", stale)))
+	b.WriteString(waTreeLast("Total", fmt.Sprintf("%d", len(tasks))))
 	return b.String(), nil
 }
 
@@ -311,22 +370,27 @@ func reportOverdue(db *gorm.DB) (string, error) {
 	for _, c := range clients {
 		ok, days, amt := ClientOverdueInfo(db, c, now)
 		if ok && amt > 0 {
-			lines = append(lines, fmt.Sprintf("• *%s* — %s — %d días de mora", c.Name, fmtMoney(amt), days))
+			lines = append(lines, fmt.Sprintf("*%s*\n     Deuda: %s · _%d días_", c.Name, waMoney(amt), days))
 		}
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("*Clientes morosos (%d)*\n", len(lines)))
 	if len(lines) == 0 {
-		b.WriteString("✅ Sin mora activa\n")
+		b.WriteString(waSection("✅", "Al día"))
+		b.WriteString(waRow("", "No hay clientes en mora"))
 		return b.String(), nil
 	}
+
+	b.WriteString(waSection("⚠️", fmt.Sprintf("Morosos (%d)", len(lines))))
 	for i, line := range lines {
-		if i >= 15 {
-			b.WriteString(fmt.Sprintf("… y %d más\n", len(lines)-15))
+		if i >= 12 {
+			b.WriteString(waMore(len(lines) - 12))
 			break
 		}
-		b.WriteString(line + "\n")
+		b.WriteString(waBullet(line))
+		if i < len(lines)-1 && i < 11 {
+			b.WriteString(waDividerThin + "\n")
+		}
 	}
 	return b.String(), nil
 }
@@ -347,37 +411,33 @@ func reportVPS(db *gorm.DB, opts ReportOptions) (string, error) {
 	var b strings.Builder
 	if len(list) == 1 {
 		v := list[0]
-		icon := "🟢"
-		if v.Status == "offline" {
-			icon = "🔴"
-		}
-		b.WriteString(fmt.Sprintf("*VPS %s*\n", v.Name))
-		b.WriteString(fmt.Sprintf("%s Estado: %s\n", icon, v.Status))
-		b.WriteString(fmt.Sprintf("IP: %s:%d\n", v.IPAddress, v.SSHPort))
-		b.WriteString(fmt.Sprintf("Costo/mes: %s\n", fmtMoney(v.MonthlyCost)))
+		b.WriteString(waSection("🖥️", v.Name))
+		b.WriteString(waTreeMid("Estado", waStatusBadge(v.Status)))
+		b.WriteString(waTreeMid("IP", fmt.Sprintf("%s:%d", v.IPAddress, v.SSHPort)))
+		b.WriteString(waTreeMid("Costo/mes", waMoney(v.MonthlyCost)))
 		if v.Client != nil {
-			b.WriteString(fmt.Sprintf("Cliente: %s\n", v.Client.Name))
+			b.WriteString(waTreeMid("Cliente", v.Client.Name))
 		}
 		var svcs []models.Service
 		db.Where("vps_id = ?", v.ID).Find(&svcs)
-		b.WriteString(fmt.Sprintf("\nServicios (%d):\n", len(svcs)))
-		for _, s := range svcs {
-			st := s.Status
-			if st == "stopped" {
-				st = "🔴 " + st
+		b.WriteString(waTreeLast("Servicios", fmt.Sprintf("%d", len(svcs))))
+
+		if len(svcs) > 0 {
+			b.WriteString(waSection("⚙️", "Servicios en este VPS"))
+			for _, s := range svcs {
+				b.WriteString(waBullet(fmt.Sprintf("*%s* — %s", s.Name, waStatusBadge(s.Status))))
 			}
-			b.WriteString(fmt.Sprintf("• %s — %s\n", s.Name, st))
 		}
 		return b.String(), nil
 	}
 
-	b.WriteString("*Servidores VPS*\n")
+	b.WriteString(waSection("🖥️", fmt.Sprintf("Servidores (%d)", len(list))))
 	for _, v := range list {
 		icon := "🟢"
 		if v.Status == "offline" {
 			icon = "🔴"
 		}
-		b.WriteString(fmt.Sprintf("%s %s — %s\n", icon, v.Name, v.IPAddress))
+		b.WriteString(waBullet(fmt.Sprintf("%s *%s* — %s", icon, v.Name, v.IPAddress)))
 	}
 	return b.String(), nil
 }
@@ -401,30 +461,33 @@ func reportClient(db *gorm.DB, opts ReportOptions) (string, error) {
 	overdue, days, amt := ClientOverdueInfo(db, c, now)
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("*Cliente: %s*\n", c.Name))
+	b.WriteString(waSection("👤", c.Name))
 	if c.CompanyName != nil && *c.CompanyName != "" {
-		b.WriteString(fmt.Sprintf("Empresa: %s\n", *c.CompanyName))
+		b.WriteString(waField("Empresa", *c.CompanyName))
 	}
-	if c.Email != nil {
-		b.WriteString(fmt.Sprintf("Email: %s\n", *c.Email))
+	if c.Email != nil && *c.Email != "" {
+		b.WriteString(waField("Email", *c.Email))
 	}
-	b.WriteString(fmt.Sprintf("Ciclo: %s — Cuota: %s\n", ClientBillingCycle(c), fmtMoney(charge)))
-	b.WriteString(fmt.Sprintf("Día de pago: %d\n", c.PaymentDay))
+	b.WriteString(waField("Ciclo", ClientBillingCycle(c)))
+	b.WriteString(waField("Cuota", waMoney(charge)))
+	b.WriteString(waField("Día de pago", fmt.Sprintf("%d", c.PaymentDay)))
+
 	if overdue && amt > 0 {
-		b.WriteString(fmt.Sprintf("⚠️ *EN MORA* — %s (%d días)\n", fmtMoney(amt), days))
+		b.WriteString(waField("Estado", fmt.Sprintf("⚠️ *EN MORA* — %s (%d días)", waMoney(amt), days)))
 	} else {
-		b.WriteString("✅ Al día\n")
+		b.WriteString(waField("Estado", "✅ *Al día*"))
 	}
+
 	if len(c.VPSList) > 0 {
-		b.WriteString(fmt.Sprintf("\nVPS (%d):\n", len(c.VPSList)))
+		b.WriteString(waSection("🖥️", fmt.Sprintf("VPS (%d)", len(c.VPSList))))
 		for _, v := range c.VPSList {
-			b.WriteString(fmt.Sprintf("• %s — %s\n", v.Name, v.Status))
+			b.WriteString(waBullet(fmt.Sprintf("*%s* — %s", v.Name, waStatusBadge(v.Status))))
 		}
 	}
 	if len(c.Services) > 0 {
-		b.WriteString(fmt.Sprintf("\nServicios (%d):\n", len(c.Services)))
+		b.WriteString(waSection("⚙️", fmt.Sprintf("Servicios (%d)", len(c.Services))))
 		for _, s := range c.Services {
-			b.WriteString(fmt.Sprintf("• %s — %s\n", s.Name, s.Status))
+			b.WriteString(waBullet(fmt.Sprintf("*%s* — %s", s.Name, waStatusBadge(s.Status))))
 		}
 	}
 	return b.String(), nil
@@ -446,29 +509,26 @@ func reportServices(db *gorm.DB, opts ReportOptions) (string, error) {
 	if len(list) == 1 {
 		s := list[0]
 		var b strings.Builder
-		b.WriteString(fmt.Sprintf("*Servicio: %s*\n", s.Name))
-		b.WriteString(fmt.Sprintf("Tipo: %s — Estado: %s\n", s.Type, s.Status))
-		if s.URL != nil {
-			b.WriteString(fmt.Sprintf("URL: %s\n", *s.URL))
+		b.WriteString(waSection("⚙️", s.Name))
+		b.WriteString(waTreeMid("Tipo", s.Type))
+		b.WriteString(waTreeMid("Estado", waStatusBadge(s.Status)))
+		if s.URL != nil && *s.URL != "" {
+			b.WriteString(waTreeMid("URL", *s.URL))
 		}
 		if s.VPS != nil {
-			b.WriteString(fmt.Sprintf("VPS: %s\n", s.VPS.Name))
+			b.WriteString(waTreeMid("VPS", s.VPS.Name))
 		}
 		if s.Client != nil {
-			b.WriteString(fmt.Sprintf("Cliente: %s\n", s.Client.Name))
+			b.WriteString(waTreeMid("Cliente", s.Client.Name))
 		}
-		b.WriteString(fmt.Sprintf("Costo/mes: %s\n", fmtMoney(s.MonthlyCost)))
+		b.WriteString(waTreeLast("Costo/mes", waMoney(s.MonthlyCost)))
 		return b.String(), nil
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("*Servicios (%d)*\n", len(list)))
+	b.WriteString(waSection("⚙️", fmt.Sprintf("Listado (%d)", len(list))))
 	for _, s := range list {
-		st := s.Status
-		if st == "stopped" {
-			st = "🔴 offline"
-		}
-		b.WriteString(fmt.Sprintf("• %s — %s\n", s.Name, st))
+		b.WriteString(waBullet(fmt.Sprintf("*%s* — %s", s.Name, waStatusBadge(s.Status))))
 	}
 	return b.String(), nil
 }

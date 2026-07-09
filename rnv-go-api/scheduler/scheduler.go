@@ -49,13 +49,8 @@ func checkAllVPS(db *gorm.DB, cfg *config.Config) {
 					"status": status,
 				})
 				if cfg != nil {
-					if status == "offline" {
-						_ = serviceslayer.SendWhatsAppAlert(db, cfg,
-							fmt.Sprintf("🔴 VPS *%s* OFFLINE\nIP: %s", v.Name, v.IPAddress))
-					} else {
-						_ = serviceslayer.SendWhatsAppAlert(db, cfg,
-							fmt.Sprintf("🟢 VPS *%s* online\nIP: %s", v.Name, v.IPAddress))
-					}
+					_ = serviceslayer.SendWhatsAppAlert(db, cfg,
+						serviceslayer.FormatVPSAlert(db, cfg, v.Name, v.IPAddress, status))
 				}
 				log.Printf("[Monitor] VPS %s (%s) status changed to %s", v.Name, v.IPAddress, status)
 			}
