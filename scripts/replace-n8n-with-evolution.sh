@@ -2,7 +2,7 @@
 # Quita n8n del VPS e instala Evolution API (WhatsApp) con Traefik.
 # Ejecutar EN EL VPS como root (ej. ronuimport.srl / 86.38.217.170):
 #
-#   curl -sSL https://raw.githubusercontent.com/ExpertosTI/rnv-manger/main/scripts/replace-n8n-with-evolution.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/ExpertosTI/rnv-manger/main/scripts/replace-n8n-with-evolution.sh | bash -s -- --domain evoapi.renace.tech
 #   # o, con repo ya clonado:
 #   ./scripts/replace-n8n-with-evolution.sh --domain evoapi.renace.tech
 #
@@ -11,8 +11,14 @@ set -euo pipefail
 DOMAIN="${EVOLUTION_DOMAIN:-evoapi.renace.tech}"
 INSTALL_DIR="${EVOLUTION_DIR:-/opt/evolution-api}"
 BACKUP_ROOT="${BACKUP_ROOT:-/opt/backups}"
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STACK_DIR="${REPO_ROOT}/deploy/stacks/evolution-api"
+GITHUB_RAW="${GITHUB_RAW:-https://raw.githubusercontent.com/ExpertosTI/rnv-manger/main}"
+SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
+if [[ -f "$SCRIPT_PATH" ]]; then
+    REPO_ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+else
+    REPO_ROOT=""
+fi
+STACK_DIR="${REPO_ROOT:+$REPO_ROOT/deploy/stacks/evolution-api}"
 DRY_RUN=0
 REMOVE_N8N=1
 
@@ -152,14 +158,18 @@ gen_secret() {
 }
 
 prepare_stack() {
-    local pg_pass api_key src
+    local pg_pass api_key src tmp
     src="$STACK_DIR"
-    if [[ ! -f "${src}/docker-compose.yml" ]]; then
-        err "No encuentro ${src}/docker-compose.yml — clona rnv-manger en el VPS"
-        exit 1
+    mkdir -p "$INSTALL_DIR"
+
+    if [[ -z "$src" ]] || [[ ! -f "${src}/docker-compose.yml" ]]; then
+        log "Descargando stack desde GitHub (${GITHUB_RAW})"
+        tmp="$(mktemp -d)"
+        curl -fsSL "${GITHUB_RAW}/deploy/stacks/evolution-api/docker-compose.yml" -o "${tmp}/docker-compose.yml"
+        curl -fsSL "${GITHUB_RAW}/deploy/stacks/evolution-api/env.template" -o "${tmp}/env.template"
+        src="$tmp"
     fi
 
-    mkdir -p "$INSTALL_DIR"
     cp "${src}/docker-compose.yml" "${INSTALL_DIR}/"
     cp "${src}/env.template" "${INSTALL_DIR}/.env.template"
 
