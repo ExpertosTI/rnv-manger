@@ -19,14 +19,14 @@ export function SidebarToggle({ variant = "light", className }: Props) {
             variant="ghost"
             size="icon"
             className={cn(
-                "hidden lg:flex h-9 w-9 rounded-xl shrink-0",
+                "hidden lg:flex h-9 w-9 rounded-xl shrink-0 transition-all",
                 isDark
                     ? "text-zinc-300 hover:bg-white/10 hover:text-white border border-white/10"
-                    : "",
+                    : "text-gray-500 hover:text-violet-600 hover:bg-violet-50",
                 className
             )}
             onClick={toggle}
-            title={collapsed ? "Expandir menú" : "Colapsar menú"}
+            title={collapsed ? "Expandir menú" : "Minimizar a iconos flotantes"}
         >
             {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
         </Button>

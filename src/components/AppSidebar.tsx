@@ -3,10 +3,14 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Server, Users, Settings, Database, FileCode, Zap, Palette, Menu, X, DollarSign, Shield, UsersRound, Calendar, Network, ListTodo, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+    LayoutDashboard, Server, Users, Settings, Database, FileCode, Zap, Palette,
+    Menu, X, DollarSign, Shield, UsersRound, Calendar, Network, ListTodo, ChevronLeft,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { stats } from "@/lib/api";
 import { useSidebar } from "@/contexts/SidebarContext";
+import { FloatingNavDock } from "@/components/FloatingNavDock";
 
 const sidebarItems = [
     { icon: LayoutDashboard, label: "Panel Principal", href: "/" },
@@ -26,7 +30,7 @@ const sidebarItems = [
 
 export function AppSidebar() {
     const pathname = usePathname();
-    const { collapsed, toggle } = useSidebar();
+    const { collapsed, toggle, setCollapsed } = useSidebar();
     const [isOpen, setIsOpen] = useState(false);
     const [vpsCount, setVpsCount] = useState<number | string>("...");
 
@@ -40,64 +44,60 @@ export function AppSidebar() {
             .catch(() => setVpsCount(0));
     }, []);
 
-    const toggleSidebar = () => setIsOpen(!isOpen);
+    const closeMobile = () => setIsOpen(false);
 
-    const SidebarContent = () => (
+    const ExpandedContent = ({ mobile = false }: { mobile?: boolean }) => (
         <>
-            {/* Logo */}
-            <div className={`border-b border-gray-100 ${collapsed ? "p-2" : "p-5"}`}>
-                <div className={`flex items-center ${collapsed ? "flex-col gap-2" : "justify-between gap-2"}`}>
-                    <Link href="/" className={`flex items-center gap-3 group min-w-0 ${collapsed ? "justify-center" : ""}`} onClick={() => setIsOpen(false)}>
-                        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-200 group-hover:shadow-purple-300 transition-shadow shrink-0">
-                            <Zap className="w-6 h-6 text-white" />
+            <div className="p-4 border-b border-gray-100/80">
+                <div className="flex items-center justify-between gap-2">
+                    <Link href="/" className="flex items-center gap-3 group min-w-0" onClick={closeMobile}>
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-200/60 group-hover:shadow-violet-300/80 transition-shadow shrink-0">
+                            <Zap className="w-5 h-5 text-white" />
                         </div>
-                        {!collapsed && (
-                            <div className="min-w-0">
-                                <h1 className="text-lg font-bold text-gray-900 truncate">RNV Manager</h1>
-                                <p className="text-xs text-gray-500">Panel de Control</p>
-                            </div>
-                        )}
+                        <div className="min-w-0">
+                            <h1 className="text-base font-bold text-gray-900 truncate">RNV Manager</h1>
+                            <p className="text-[11px] text-gray-500">Panel de Control</p>
+                        </div>
                     </Link>
-                    <button
-                        type="button"
-                        onClick={toggle}
-                        className="hidden lg:flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors shrink-0"
-                        title={collapsed ? "Expandir menú" : "Colapsar menú"}
-                    >
-                        {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-                    </button>
+                    {!mobile && (
+                        <button
+                            type="button"
+                            onClick={toggle}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors shrink-0"
+                            title="Minimizar a iconos"
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                        </button>
+                    )}
                 </div>
             </div>
 
-            {/* Navigation */}
-            <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-                {!collapsed && (
-                    <p className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Menú</p>
-                )}
+            <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
+                <p className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Menú</p>
                 {sidebarItems.map((item) => {
                     const isActive = pathname === item.href;
                     return (
                         <Link
                             key={item.href}
                             href={item.href}
-                            onClick={() => setIsOpen(false)}
-                            title={collapsed ? item.label : undefined}
-                            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative ${collapsed ? "justify-center px-2" : ""} ${isActive
-                                ? "bg-violet-100 text-violet-700 font-medium"
-                                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                                }`}
+                            onClick={closeMobile}
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 group relative ${
+                                isActive
+                                    ? "bg-violet-50 text-violet-700 font-medium shadow-sm shadow-violet-100/50"
+                                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                            }`}
                         >
-                            {isActive && !collapsed && (
+                            {isActive && (
                                 <motion.div
                                     layoutId="activeTab"
-                                    className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-violet-500 rounded-r-full"
-                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                    className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-violet-500 rounded-r-full"
+                                    transition={{ type: "spring", stiffness: 400, damping: 35 }}
                                 />
                             )}
-                            <item.icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-                            {!collapsed && <span className="text-sm">{item.label}</span>}
-                            {!collapsed && item.label === "Pizarra Blanca" && (
-                                <span className="ml-auto text-[10px] bg-violet-500 text-white px-1.5 py-0.5 rounded-full font-medium">
+                            <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
+                            <span className="text-sm truncate">{item.label}</span>
+                            {item.label === "Pizarra Blanca" && (
+                                <span className="ml-auto text-[9px] bg-violet-500 text-white px-1.5 py-0.5 rounded-full font-medium shrink-0">
                                     NUEVO
                                 </span>
                             )}
@@ -106,38 +106,31 @@ export function AppSidebar() {
                 })}
             </nav>
 
-            {/* Quick Stats */}
-            {!collapsed && (
-                <div className="p-3 border-t border-gray-100">
-                    <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl p-4">
-                    <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-gray-500">VPS Activos</span>
-                        <span className="text-lg font-bold text-violet-600">{vpsCount}</span>
+            <div className="p-2 border-t border-gray-100/80">
+                <div className="rounded-xl bg-gradient-to-br from-violet-50/80 to-purple-50/50 p-3 mb-2">
+                    <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] font-medium text-gray-500">VPS Activos</span>
+                        <span className="text-base font-bold text-violet-600 tabular-nums">{vpsCount}</span>
                     </div>
-                    <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-violet-500 to-purple-500 rounded-full" style={{ width: vpsCount === "..." || vpsCount === 0 ? "0%" : "100%" }} />
+                    <div className="w-full h-1.5 bg-gray-200/80 rounded-full overflow-hidden">
+                        <div
+                            className="h-full bg-gradient-to-r from-violet-500 to-purple-500 rounded-full transition-all duration-500"
+                            style={{ width: vpsCount === "..." || vpsCount === 0 ? "0%" : "100%" }}
+                        />
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-1">{vpsCount === 0 ? "Sin servidores" : "Todos funcionales"}</p>
                 </div>
-            </div>
-            )}
-
-            <div className={`border-t border-gray-100 ${collapsed ? "p-2" : "p-3"}`}>
                 <Link
                     href="/users"
-                    onClick={() => setIsOpen(false)}
-                    className={`flex items-center gap-3 rounded-xl hover:bg-gray-50 transition-colors ${collapsed ? "justify-center p-2" : "px-3 py-2"}`}
-                    title={collapsed ? "Admin" : undefined}
+                    onClick={closeMobile}
+                    className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-gray-50 transition-colors"
                 >
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center text-white font-bold text-sm shadow-md shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center text-white font-bold text-xs shadow-md shrink-0">
                         A
                     </div>
-                    {!collapsed && (
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">Admin</p>
-                            <p className="text-xs text-gray-500 truncate">Super Admin</p>
-                        </div>
-                    )}
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">Admin</p>
+                        <p className="text-[11px] text-gray-500 truncate">Super Admin</p>
+                    </div>
                 </Link>
             </div>
         </>
@@ -145,44 +138,57 @@ export function AppSidebar() {
 
     return (
         <>
-            {/* Mobile Toggle */}
+            {/* Mobile FAB */}
             <button
-                onClick={toggleSidebar}
-                className="lg:hidden fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-violet-600 text-white shadow-xl flex items-center justify-center hover:scale-110 active:scale-95 transition-transform"
+                onClick={() => setIsOpen(!isOpen)}
+                className="lg:hidden fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-violet-600 text-white shadow-[0_8px_28px_rgba(124,58,237,0.45)] flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
+                aria-label="Menú"
             >
-                {isOpen ? <X size={24} /> : <Menu size={24} />}
+                {isOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
 
-            {/* Desktop Sidebar */}
-            <aside className={`hidden lg:flex h-screen bg-white border-r-2 border-gray-200 flex-col shadow-sm sticky top-0 transition-all duration-300 ${collapsed ? "w-[72px]" : "w-64"}`}>
-                <SidebarContent />
-            </aside>
+            {/* Desktop: floating dock when collapsed — zero layout width */}
+            {collapsed && (
+                <FloatingNavDock items={sidebarItems} onExpand={() => setCollapsed(false)} />
+            )}
 
-            {/* Mobile Sidebar Overlay */}
-            <AnimatePresence>
-                {isOpen && (
+            {/* Desktop: expanded panel */}
+            <AnimatePresence initial={false}>
+                {!collapsed && (
                     <motion.aside
-                        initial={{ x: "-100%" }}
-                        animate={{ x: 0 }}
-                        exit={{ x: "-100%" }}
-                        transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                        className="fixed inset-y-0 left-0 z-40 w-72 bg-white flex flex-col shadow-2xl lg:hidden"
+                        key="expanded-sidebar"
+                        initial={{ width: 0, opacity: 0 }}
+                        animate={{ width: 240, opacity: 1 }}
+                        exit={{ width: 0, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 38 }}
+                        className="hidden lg:flex h-screen flex-col sticky top-0 overflow-hidden shrink-0 bg-white/85 backdrop-blur-xl border-r border-gray-100/90"
                     >
-                        <SidebarContent />
+                        <ExpandedContent />
                     </motion.aside>
                 )}
             </AnimatePresence>
 
-            {/* Backdrop */}
+            {/* Mobile drawer */}
             <AnimatePresence>
                 {isOpen && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={() => setIsOpen(false)}
-                        className="fixed inset-0 bg-black/20 backdrop-blur-sm z-30 lg:hidden"
-                    />
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={closeMobile}
+                            className="fixed inset-0 bg-black/25 backdrop-blur-[2px] z-30 lg:hidden"
+                        />
+                        <motion.aside
+                            initial={{ x: "-100%" }}
+                            animate={{ x: 0 }}
+                            exit={{ x: "-100%" }}
+                            transition={{ type: "spring", damping: 28, stiffness: 320 }}
+                            className="fixed inset-y-0 left-0 z-40 w-[min(280px,88vw)] bg-white/95 backdrop-blur-xl flex flex-col shadow-[0_0_60px_rgba(0,0,0,0.12)] lg:hidden"
+                        >
+                            <ExpandedContent mobile />
+                        </motion.aside>
+                    </>
                 )}
             </AnimatePresence>
         </>

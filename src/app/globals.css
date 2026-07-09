@@ -237,6 +237,14 @@ body {
   background: #a0a0a0;
 }
 
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 /* Animation keyframes */
 @keyframes fadeIn {
   from {
