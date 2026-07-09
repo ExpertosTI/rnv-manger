@@ -71,12 +71,12 @@ export function suggestionsForPath(path: string): string[] {
     if (path.includes("/vps/")) return ["Estado de este VPS", "Listar servicios", "Ver gastos"];
     if (path.includes("/vps")) return ["Listar servidores", "VPS detenidos", "Resumen de costos"];
     if (path.includes("/services/")) return ["Detalle del servicio", "Asignar a cliente", "Ver costos"];
-    if (path.includes("/services")) return ["¿Hay servicios caídos?", "Comprobar salud de servicios", "Escanear VPS"];
-    if (path.includes("/billing")) return ["Pagos pendientes", "Resumen financiero", "Registrar un pago"];
-    if (path.includes("/map")) return ["Detecta ai.renace.tech", "¿Qué tareas pendientes?", "Mapa de infraestructura"];
-    if (path.includes("/workflow")) return ["Revisar mi cola de trabajo", "Tareas estancadas", "¿Qué completé hoy?"];
+    if (path.includes("/services")) return ["¿Hay servicios caídos?", "Envíamelos por WhatsApp", "Comprobar salud"];
+    if (path.includes("/billing")) return ["Pagos pendientes", "Resumen financiero por WhatsApp", "Registrar un pago"];
+    if (path.includes("/map")) return ["Mapa por WhatsApp", "¿Hay servicios caídos?", "¿Qué tareas pendientes?"];
+    if (path.includes("/workflow")) return ["Envíame mis tareas por WA", "Tareas estancadas", "¿Qué completé hoy?"];
     if (path.includes("/calendar")) return ["Próximos vencimientos", "Programar recordatorio", "Tareas pendientes"];
-    if (path.includes("/settings")) return ["Probar conexión Odoo", "Resumen RNV"];
-    if (path === "/") return ["Resumen general", "Clientes morosos", "Estado servidores"];
-    return ["Resumen general", "Buscar...", "¿Qué puedo hacer?"];
+    if (path.includes("/settings")) return ["Probar conexión Odoo", "Reporte resumen por WhatsApp"];
+    if (path === "/") return ["Resumen general", "Envíame por WhatsApp los morosos", "¿Hay servicios caídos?"];
+    return ["Resumen general", "Envíame reporte por WhatsApp", "¿Qué puedo hacer?"];
 }

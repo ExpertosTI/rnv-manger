@@ -537,11 +537,25 @@ func toolDeclarations() []functionDeclaration {
 		},
 		{
 			Name:        "rnv_send_whatsapp",
-			Description: "Envía mensaje WhatsApp vía Evolution API (Renace +1 809 348 7921). Para alertas y notificaciones a clientes/equipo.",
+			Description: "Envía texto libre por WhatsApp (Renace +1 809 348 7921). Si omites 'to', envía al admin configurado (WHATSAPP_NOTIFY_NUMBERS). Usa para mensajes personalizados tras consultar datos.",
 			Parameters: objectParams(map[string]interface{}{
-				"to":   map[string]interface{}{"type": "string", "description": "Número destino, ej. 18093487921"},
-				"text": map[string]interface{}{"type": "string"},
-			}, []string{"to", "text"}),
+				"to":   map[string]interface{}{"type": "string", "description": "Opcional. Número destino sin +. Vacío = admin"},
+				"text": map[string]interface{}{"type": "string", "description": "Mensaje (soporta *negrita* WhatsApp)"},
+			}, []string{"text"}),
+		},
+		{
+			Name:        "rnv_whatsapp_report",
+			Description: "Genera y envía por WhatsApp un reporte listo de la app. Tipos: dashboard (resumen), billing (finanzas/mora), offline (caídos), topology (infra), workflow (tareas), overdue (morosos), vps, client, services. Si omites 'to' envía al admin.",
+			Parameters: objectParams(map[string]interface{}{
+				"report":      map[string]interface{}{"type": "string", "description": "dashboard|billing|offline|topology|workflow|overdue|vps|client|services"},
+				"to":          map[string]interface{}{"type": "string", "description": "Opcional. Número destino"},
+				"clientId":    map[string]interface{}{"type": "string"},
+				"clientName":  map[string]interface{}{"type": "string"},
+				"vpsId":       map[string]interface{}{"type": "string"},
+				"vpsName":     map[string]interface{}{"type": "string"},
+				"serviceId":   map[string]interface{}{"type": "string"},
+				"serviceName": map[string]interface{}{"type": "string"},
+			}, []string{"report"}),
 		},
 		{
 			Name:        "rnv_billing_remind",
@@ -580,7 +594,7 @@ HERRAMIENTAS COMPLETAS:
 - Tareas Mi Flujo: rnv_workflow, rnv_schedule_task (type=work), rnv_complete_task, rnv_list_scheduled_tasks
 - Calendario: rnv_list_calendar
 - Email: rnv_send_email (SMTP), rnv_billing_remind (mora)
-- WhatsApp: rnv_send_whatsapp (Evolution API, instancia Renace +1 809 348 7921)
+- WhatsApp: rnv_whatsapp_report (reportes listos), rnv_send_whatsapp (texto libre). Remitente Renace +1 809 348 7921. Sin 'to' → admin (849 configurado).
 - Alertas: rnv_service_health, rnv_list_offline_services (servicios caídos; monitor automático cada 3 min)
 - Odoo: odoo_* (si configurado)
 
@@ -590,6 +604,9 @@ SUPERPODERES:
 - Escaneo Docker en VPS: rnv_scan_services
 - Servicios caídos → rnv_list_offline_services o rnv_service_health
 - Email proactivo: mora, servicios offline, alertas de tareas
+- WhatsApp bajo demanda: si piden "envíame por WhatsApp/WA" → rnv_whatsapp_report con el tipo adecuado, o consulta datos + rnv_send_whatsapp con texto formateado
+- Reportes WA: resumen→dashboard, morosos→overdue, caídos→offline, infra→topology, tareas→workflow, finanzas→billing, VPS→vps, cliente→client (+clientName)
+- Detalle custom: primero rnv_get_* / rnv_list_* y luego rnv_send_whatsapp (sin pedir número si es para el admin)
 - Al iniciar sesión o saludar → rnv_workflow (tareas pendientes/vencidas)
 
 FLUJO DE TRABAJO:
@@ -601,6 +618,7 @@ REGLAS:
 - Usa herramientas para datos reales; no inventes IDs ni montos.
 - Nunca digas que no puedes — tienes acceso casi total a la app.
 - Confirma antes de pagos, borrados, emails masivos o cambios sensibles.
+- WhatsApp a clientes externos: confirma número si no es el admin.
 - Clientes: billingCycle monthly|annual.
 
 FORMATO (solo cuando aporte valor):

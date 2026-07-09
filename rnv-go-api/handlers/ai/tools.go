@@ -111,6 +111,8 @@ func (te *toolExecutor) execute(name string, args map[string]interface{}) execut
 		result.Result = te.rnvSendEmail(args)
 	case "rnv_send_whatsapp":
 		result.Result = te.rnvSendWhatsApp(args)
+	case "rnv_whatsapp_report":
+		result.Result = te.rnvWhatsAppReport(args)
 	case "rnv_billing_remind":
 		result.Result = te.rnvBillingRemind(args)
 	case "rnv_service_health":
@@ -1327,13 +1329,48 @@ func (te *toolExecutor) rnvSendEmail(args map[string]interface{}) map[string]int
 func (te *toolExecutor) rnvSendWhatsApp(args map[string]interface{}) map[string]interface{} {
 	to := strArg(args, "to")
 	text := strArg(args, "text")
-	if to == "" || text == "" {
-		return map[string]interface{}{"success": false, "error": "to y text requeridos"}
+	if text == "" {
+		return map[string]interface{}{"success": false, "error": "text requerido"}
 	}
-	if err := serviceslayer.SendWhatsApp(te.db, te.cfg, to, text); err != nil {
+	sent, err := serviceslayer.SendWhatsAppTo(te.db, te.cfg, to, text)
+	if err != nil {
 		return map[string]interface{}{"success": false, "error": err.Error()}
 	}
-	return map[string]interface{}{"success": true, "message": "WhatsApp enviado a " + to}
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("WhatsApp enviado a %s", strings.Join(sent, ", ")),
+		"sentTo":  sent,
+	}
+}
+
+func (te *toolExecutor) rnvWhatsAppReport(args map[string]interface{}) map[string]interface{} {
+	report := strArg(args, "report")
+	if report == "" {
+		report = strArg(args, "type")
+	}
+	if report == "" {
+		return map[string]interface{}{"success": false, "error": "report requerido (dashboard, billing, offline, topology, workflow, overdue, vps, client, services)"}
+	}
+	opts := serviceslayer.ReportOptions{
+		ClientID:    strArg(args, "clientId"),
+		ClientName:  strArg(args, "clientName"),
+		VpsID:       strArg(args, "vpsId"),
+		VpsName:     strArg(args, "vpsName"),
+		ServiceID:   strArg(args, "serviceId"),
+		ServiceName: strArg(args, "serviceName"),
+	}
+	to := strArg(args, "to")
+	sent, preview, err := serviceslayer.SendWhatsAppReport(te.db, te.cfg, report, to, opts)
+	if err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Reporte '%s' enviado por WhatsApp a %s", report, strings.Join(sent, ", ")),
+		"report":  report,
+		"sentTo":  sent,
+		"preview": preview,
+	}
 }
 
 func (te *toolExecutor) rnvBillingRemind(args map[string]interface{}) map[string]interface{} {
