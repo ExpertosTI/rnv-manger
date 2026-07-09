@@ -35,18 +35,19 @@ func tryFastPath(db *gorm.DB, cfg *config.Config, message string) (string, []exe
 
 	exec := executor.execute("rnv_whatsapp_report", args)
 	executed := []executedFunction{exec}
+	res := asToolResultMap(exec.Result)
 
-	success, _ := exec.Result["success"].(bool)
+	success, _ := res["success"].(bool)
 	if !success {
-		errMsg, _ := exec.Result["error"].(string)
+		errMsg, _ := res["error"].(string)
 		if errMsg == "" {
 			errMsg = "no se pudo enviar el WhatsApp"
 		}
 		return "❌ " + errMsg, executed, true
 	}
 
-	preview, _ := exec.Result["preview"].(string)
-	sentMsg, _ := exec.Result["message"].(string)
+	preview, _ := res["preview"].(string)
+	sentMsg, _ := res["message"].(string)
 	label := reportLabel(report)
 
 	var b strings.Builder
