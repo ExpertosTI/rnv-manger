@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Database, Settings, Search, Play, Pause, RotateCw, Plus, Server, Globe, ExternalLink, Radar, Users, ListTodo } from "lucide-react";
+import { Database, Settings, Search, Play, Pause, RotateCw, Plus, Server, Globe, ExternalLink, Radar, Users, ListTodo, AlertTriangle, HeartPulse } from "lucide-react";
 import { motion } from "framer-motion";
 import { services as servicesApi, type ServiceOverviewGroup } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
@@ -27,6 +27,7 @@ export default function ServicesPage() {
     const [isProbing, setIsProbing] = useState(false);
     const [controllingId, setControllingId] = useState<string | null>(null);
     const [taskTarget, setTaskTarget] = useState<ServiceTaskTarget | null>(null);
+    const [offlineCount, setOfflineCount] = useState(0);
     const { addToast } = useToast();
 
     const handleServiceControl = async (serviceId: string, action: "start" | "stop" | "restart") => {
@@ -96,6 +97,7 @@ export default function ServicesPage() {
 
     useEffect(() => {
         fetchServices();
+        servicesApi.offline().then((r) => setOfflineCount(r.count || 0)).catch(() => {});
     }, []);
 
     const handleProbeUrl = async () => {
@@ -201,6 +203,20 @@ export default function ServicesPage() {
         }))
         .filter((g) => g.services.length > 0 || (searchTerm === "" && vpsFilter === "all"));
 
+    const handleHealthCheck = async () => {
+        try {
+            const res = await servicesApi.healthCheck();
+            setOfflineCount(res.summary?.offline ?? 0);
+            addToast(
+                `Monitor: ${res.summary?.online ?? 0} online, ${res.summary?.offline ?? 0} offline`,
+                (res.summary?.offline ?? 0) > 0 ? "error" : "success"
+            );
+            fetchServices();
+        } catch {
+            addToast("Error al comprobar servicios", "error");
+        }
+    };
+
     const totalVisible = filteredGroups.reduce((n, g) => n + g.services.length, 0);
 
     return (
@@ -210,7 +226,21 @@ export default function ServicesPage() {
                     <h2 className="text-3xl font-bold tracking-tight">Servicios</h2>
                     <p className="text-muted-foreground">Inventario por VPS, cliente y acciones de control</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap items-center">
+                    {offlineCount > 0 && (
+                        <Badge variant="destructive" className="gap-1 px-3 py-1.5 rounded-xl">
+                            <AlertTriangle size={14} />
+                            {offlineCount} offline
+                        </Badge>
+                    )}
+                    <Button
+                        variant="outline"
+                        className="gap-2 rounded-xl border-2"
+                        onClick={handleHealthCheck}
+                    >
+                        <HeartPulse size={16} />
+                        Comprobar
+                    </Button>
                     <Button
                         variant="outline"
                         className="gap-2 rounded-xl border-2"

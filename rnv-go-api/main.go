@@ -62,6 +62,7 @@ func main() {
 
 	// Background goroutines
 	go scheduler.StartMonitorScheduler(db, cfg)
+	go scheduler.StartServiceMonitorScheduler(db, cfg)
 	go scheduler.StartCleanupScheduler(db)
 	go scheduler.StartBillingScheduler(db, cfg)
 	go scheduler.StartTaskScheduler(db, cfg)
@@ -139,6 +140,9 @@ func main() {
 		auth.GET("/services/overview", servicesHandler.Overview(db))
 		auth.POST("/services/scan", middleware.RequireRole("superadmin", "admin"), servicesHandler.Scan(db, cfg))
 		auth.POST("/services/probe", servicesHandler.Probe(db))
+		auth.POST("/services/health-check", servicesHandler.HealthCheck(db, cfg))
+		auth.GET("/services/offline", servicesHandler.Offline(db))
+		auth.POST("/services/:id/health-check", servicesHandler.ProbeHealth(db, cfg))
 		auth.POST("/services", servicesHandler.Create(db))
 		auth.GET("/services/:id", servicesHandler.Get(db))
 		auth.GET("/services/:id/tasks", servicesHandler.ListTasks(db))

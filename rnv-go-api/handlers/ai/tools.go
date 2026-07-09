@@ -111,6 +111,10 @@ func (te *toolExecutor) execute(name string, args map[string]interface{}) execut
 		result.Result = te.rnvSendEmail(args)
 	case "rnv_billing_remind":
 		result.Result = te.rnvBillingRemind(args)
+	case "rnv_service_health":
+		result.Result = te.rnvServiceHealth(args)
+	case "rnv_list_offline_services":
+		result.Result = te.rnvListOfflineServices(args)
 	case "rnv_topology":
 		result.Result = te.rnvTopology(args)
 	default:
@@ -1356,6 +1360,56 @@ func (te *toolExecutor) rnvBillingRemind(args map[string]interface{}) map[string
 		"success": true,
 		"message": fmt.Sprintf("Recordatorios: %d enviados, %d fallidos", sent, failed),
 		"sent": sent, "failed": failed,
+	}
+}
+
+func (te *toolExecutor) rnvServiceHealth(args map[string]interface{}) map[string]interface{} {
+	serviceID := strArg(args, "serviceId")
+	serviceName := strArg(args, "serviceName")
+	if serviceID != "" || serviceName != "" {
+		if serviceID == "" {
+			var svc models.Service
+			if te.db.Where("name ILIKE ?", "%"+serviceName+"%").First(&svc).Error != nil {
+				return map[string]interface{}{"success": false, "error": "servicio no encontrado"}
+			}
+			serviceID = svc.ID
+		}
+		res, err := serviceslayer.ProbeServiceNow(te.db, te.cfg, serviceID)
+		if err != nil {
+			return map[string]interface{}{"success": false, "error": err.Error()}
+		}
+		return map[string]interface{}{"success": true, "data": res}
+	}
+	results := serviceslayer.RunServiceHealthChecks(te.db, te.cfg)
+	offline := make([]map[string]interface{}, 0)
+	changed := 0
+	for _, r := range results {
+		if r.Changed {
+			changed++
+		}
+		if !r.Online && r.Method != "skip" {
+			offline = append(offline, map[string]interface{}{
+				"serviceId": r.ServiceID, "name": r.ServiceName,
+				"status": r.NewStatus, "url": r.URL, "vps": r.VPSName,
+			})
+		}
+	}
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Revisados %d servicios — %d offline, %d cambios", len(results), len(offline), changed),
+		"offline": offline,
+		"offlineCount": len(offline),
+		"changed": changed,
+	}
+}
+
+func (te *toolExecutor) rnvListOfflineServices(args map[string]interface{}) map[string]interface{} {
+	list, count := serviceslayer.ListOfflineServices(te.db)
+	return map[string]interface{}{
+		"success": true,
+		"count": count,
+		"services": list,
+		"message": fmt.Sprintf("%d servicios offline", count),
 	}
 }
 

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Bell, X, CheckCheck } from "lucide-react";
+import Link from "next/link";
+import { Bell, X, CheckCheck, AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { notifications as notificationsApi, type Notification } from "@/lib/api";
 
@@ -124,21 +125,41 @@ export function NotificationBell() {
                   <p className="text-sm">Sin notificaciones</p>
                 </div>
               ) : (
-                notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`flex items-start gap-3 px-4 py-3 border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${!n.isRead ? "bg-violet-50/30" : ""}`}
-                  >
-                    <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${typeColors[n.type] || "bg-gray-400"}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm ${!n.isRead ? "font-semibold text-gray-900" : "text-gray-700"}`}>
-                        {n.title}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5 truncate">{n.message}</p>
+                notifications.map((n) => {
+                  const serviceId = n.metadata?.serviceId as string | undefined;
+                  const vpsId = n.metadata?.vpsId as string | undefined;
+                  const href = serviceId ? `/services/${serviceId}` : vpsId ? `/vps/${vpsId}` : null;
+                  const inner = (
+                    <>
+                      <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${typeColors[n.type] || "bg-gray-400"}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm flex items-center gap-1 ${!n.isRead ? "font-semibold text-gray-900" : "text-gray-700"}`}>
+                          {n.type === "alert" && <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
+                          {n.title}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
+                      </div>
+                      <span className="text-xs text-gray-400 flex-shrink-0">{formatTime(n.createdAt)}</span>
+                    </>
+                  );
+                  return href ? (
+                    <Link
+                      key={n.id}
+                      href={href}
+                      onClick={() => setIsOpen(false)}
+                      className={`flex items-start gap-3 px-4 py-3 border-b border-gray-50 hover:bg-violet-50/50 transition-colors ${!n.isRead ? "bg-red-50/20" : ""}`}
+                    >
+                      {inner}
+                    </Link>
+                  ) : (
+                    <div
+                      key={n.id}
+                      className={`flex items-start gap-3 px-4 py-3 border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${!n.isRead ? "bg-violet-50/30" : ""}`}
+                    >
+                      {inner}
                     </div>
-                    <span className="text-xs text-gray-400 flex-shrink-0">{formatTime(n.createdAt)}</span>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </motion.div>

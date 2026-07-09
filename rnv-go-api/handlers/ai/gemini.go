@@ -543,6 +543,19 @@ func toolDeclarations() []functionDeclaration {
 			}, []string{}),
 		},
 		{
+			Name:        "rnv_service_health",
+			Description: "Comprueba salud de servicios (HTTP URL o puerto TCP). Sin args revisa todos. Detecta caídas y genera alertas.",
+			Parameters: objectParams(map[string]interface{}{
+				"serviceId":   map[string]interface{}{"type": "string"},
+				"serviceName": map[string]interface{}{"type": "string"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_list_offline_services",
+			Description: "Lista servicios actualmente offline/caídos.",
+			Parameters:  emptyParams(),
+		},
+		{
 			Name:        "rnv_topology",
 			Description: "Mapa de infraestructura: VPS, servicios por servidor, clientes asignados, costos y estado.",
 			Parameters:  emptyParams(),
@@ -559,13 +572,15 @@ HERRAMIENTAS COMPLETAS:
 - Tareas Mi Flujo: rnv_workflow, rnv_schedule_task (type=work), rnv_complete_task, rnv_list_scheduled_tasks
 - Calendario: rnv_list_calendar
 - Email: rnv_send_email (SMTP), rnv_billing_remind (mora)
+- Alertas: rnv_service_health, rnv_list_offline_services (servicios caídos; monitor automático cada 3 min)
 - Odoo: odoo_* (si configurado)
 
 SUPERPODERES:
 - URL desconocida → rnv_probe_url luego rnv_create_service si piden registrar
 - DNS → IP → VPS: rnv_dns_lookup
 - Escaneo Docker en VPS: rnv_scan_services
-- Email proactivo: mora, alertas de tareas, notificaciones → rnv_send_email o rnv_billing_remind
+- Servicios caídos → rnv_list_offline_services o rnv_service_health
+- Email proactivo: mora, servicios offline, alertas de tareas
 - Al iniciar sesión o saludar → rnv_workflow (tareas pendientes/vencidas)
 
 FLUJO DE TRABAJO:

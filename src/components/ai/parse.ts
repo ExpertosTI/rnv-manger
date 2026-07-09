@@ -71,7 +71,7 @@ export function suggestionsForPath(path: string): string[] {
     if (path.includes("/vps/")) return ["Estado de este VPS", "Listar servicios", "Ver gastos"];
     if (path.includes("/vps")) return ["Listar servidores", "VPS detenidos", "Resumen de costos"];
     if (path.includes("/services/")) return ["Detalle del servicio", "Asignar a cliente", "Ver costos"];
-    if (path.includes("/services")) return ["Detectar URL y registrar", "Escanear VPS", "Listar servicios sin cliente"];
+    if (path.includes("/services")) return ["¿Hay servicios caídos?", "Comprobar salud de servicios", "Escanear VPS"];
     if (path.includes("/billing")) return ["Pagos pendientes", "Resumen financiero", "Registrar un pago"];
     if (path.includes("/map")) return ["Detecta ai.renace.tech", "¿Qué tareas pendientes?", "Mapa de infraestructura"];
     if (path.includes("/workflow")) return ["Revisar mi cola de trabajo", "Tareas estancadas", "¿Qué completé hoy?"];

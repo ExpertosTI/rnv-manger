@@ -163,6 +163,18 @@ export const services = {
         request<{ success: boolean; data: ScheduledTask[] }>(
             `/services/${id}/tasks${status ? "?status=" + status : ""}`
         ),
+    offline: () =>
+        request<{ success: boolean; data: Service[]; count: number }>("/services/offline"),
+    healthCheck: () =>
+        request<{ success: boolean; results: unknown[]; summary: { checked: number; online: number; offline: number; changed: number } }>(
+            "/services/health-check",
+            { method: "POST" }
+        ),
+    probeHealth: (id: string) =>
+        request<{ success: boolean; data: { serviceId: string; serviceName: string; online: boolean; newStatus: string } }>(
+            `/services/${id}/health-check`,
+            { method: "POST" }
+        ),
 };
 
 // ── SSH ─────────────────────────────────────────────────────────────────────
@@ -521,6 +533,7 @@ export interface Notification {
     title: string;
     message: string;
     isRead: boolean;
+    metadata?: { serviceId?: string; vpsId?: string; type?: string; [key: string]: unknown };
     createdAt: string;
 }
 
