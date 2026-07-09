@@ -34,7 +34,7 @@ func WAReportEnvelope(db *gorm.DB, cfg *config.Config, title, subtitle string, b
 	b.WriteString(waDivider)
 	b.WriteString("\n")
 	b.WriteString(wAFooter())
-	return strings.TrimSpace(b)
+	return strings.TrimSpace(b.String())
 }
 
 // WAAlertEnvelope formats automatic alerts (VPS, servicios).
@@ -53,7 +53,7 @@ func WAAlertEnvelope(db *gorm.DB, cfg *config.Config, icon, alertType, title, bo
 	b.WriteString(waDivider)
 	b.WriteString("\n")
 	b.WriteString(wAFooter())
-	return strings.TrimSpace(b)
+	return strings.TrimSpace(b.String())
 }
 
 func brandLabel(db *gorm.DB, cfg *config.Config) string {
