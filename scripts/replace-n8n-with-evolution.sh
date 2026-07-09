@@ -211,6 +211,21 @@ deploy_evolution() {
     warn "La API aún no responde por HTTPS — revisa: docker compose -f ${INSTALL_DIR}/docker-compose.yml logs -f api"
 }
 
+fix_host_nginx() {
+    local ngx="/etc/nginx/sites-available/${DOMAIN}"
+    [[ -f "$ngx" ]] || return 0
+    if grep -q '127.0.0.1:9095' "$ngx" 2>/dev/null; then
+        log "Actualizando nginx: proxy 9095 (n8n) → 127.0.0.1:8080"
+        sed -i 's|proxy_pass http://127.0.0.1:9095|proxy_pass http://127.0.0.1:8080|g' "$ngx"
+        if nginx -t >/dev/null 2>&1; then
+            systemctl reload nginx
+            log "nginx recargado"
+        else
+            warn "nginx -t falló — revisa $ngx manualmente"
+        fi
+    fi
+}
+
 print_summary() {
     local api_key
     api_key="$(cat "${INSTALL_DIR}/.api-key" 2>/dev/null || echo '?')"
@@ -273,6 +288,7 @@ main() {
         deploy_evolution
     fi
 
+    fix_host_nginx
     print_summary
 }
 

@@ -13,6 +13,8 @@ services:
         condition: service_started
     volumes:
       - evolution_instances:/evolution/instances
+    ports:
+      - "127.0.0.1:8080:8080"
     networks:
       - evolution-net
       - RenaceNet
