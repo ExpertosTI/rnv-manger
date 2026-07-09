@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -64,6 +65,11 @@ func Chat(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 }
 
 func runChat(db *gorm.DB, cfg *config.Config, req chatRequest) (string, []executedFunction, error) {
+	// Ruta rápida: WhatsApp/reportes sin depender de Gemini
+	if response, executed, ok := tryFastPath(db, cfg, req.Message); ok {
+		return response, executed, nil
+	}
+
 	gemini := newGeminiClient(cfg.GeminiAPIKey, cfg.GeminiModel)
 	executor := newToolExecutor(db, cfg)
 
@@ -89,7 +95,7 @@ func runChat(db *gorm.DB, cfg *config.Config, req chatRequest) (string, []execut
 
 		resp, err := gemini.generate(genReq)
 		if err != nil {
-			return "", allExecuted, err
+			return "", allExecuted, fmt.Errorf("%s", friendlyGeminiError(err))
 		}
 
 		candidate := resp.Candidates[0].Content

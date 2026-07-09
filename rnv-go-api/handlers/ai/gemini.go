@@ -96,6 +96,33 @@ func newGeminiClient(apiKey, model string) *geminiClient {
 }
 
 func (g *geminiClient) generate(req geminiRequest) (*geminiResponse, error) {
+	models := []string{g.model}
+	for _, fb := range []string{"gemini-2.0-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash-002"} {
+		if fb != g.model {
+			models = append(models, fb)
+		}
+	}
+	var lastErr error
+	for _, model := range models {
+		client := *g
+		client.model = model
+		resp, err := client.generateOnce(req)
+		if err == nil {
+			return resp, nil
+		}
+		if isRetryableGeminiErr(err) {
+			lastErr = err
+			continue
+		}
+		return nil, err
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("Gemini no disponible")
+}
+
+func (g *geminiClient) generateOnce(req geminiRequest) (*geminiResponse, error) {
 	if req.GenerationConfig == nil {
 		req.GenerationConfig = &generationConfig{
 			Temperature:     0.3,
@@ -142,8 +169,8 @@ func (g *geminiClient) generate(req geminiRequest) (*geminiResponse, error) {
 			if resp.StatusCode == 403 {
 				msg = "GEMINI_API_KEY inválida o sin permisos"
 			}
-			if resp.StatusCode == 429 {
-				lastErr = fmt.Errorf("Quota exceeded (429): %s", msg)
+			if resp.StatusCode == 429 || resp.StatusCode == 503 || strings.Contains(strings.ToLower(msg), "high demand") {
+				lastErr = fmt.Errorf("%s", msg)
 				continue
 			}
 			return nil, fmt.Errorf("%s", msg)
