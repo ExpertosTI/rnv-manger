@@ -19,16 +19,22 @@ import "@/components/map/map.css";
 import {
     Network, RefreshCw, Users, Server, Database, DollarSign,
     ExternalLink, Sparkles, Maximize2, ZoomIn, Radio, Cpu, ListTodo,
+    GitBranch, Globe, Orbit, Cloud,
 } from "lucide-react";
 import {
     topology as topologyApi,
+    dns as dnsApi,
     type TopologyCluster,
     type TopologyNode,
+    type TopologyEdge,
+    type DNSZoneAudit,
+    type DNSIPGroup,
 } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { mapNodeTypes } from "@/components/map/nodes";
-import { buildFlowGraph } from "@/components/map/layout";
+import { buildFlowGraph, type MapViewMode } from "@/components/map/layout";
+import { buildDNSCloudGraph, buildByIPGraph } from "@/components/map/layout-dns";
 import { ServiceTaskPanel, type ServiceTaskTarget } from "@/components/ServiceTaskPanel";
 import { SidebarToggle } from "@/components/SidebarToggle";
 
@@ -36,7 +42,16 @@ type Detail =
     | { kind: "client"; id: string; label: string; meta: Record<string, unknown> }
     | { kind: "vps"; id: string; label: string; cluster?: TopologyCluster; meta: Record<string, unknown> }
     | { kind: "service"; id: string; label: string; meta: Record<string, unknown> }
+    | { kind: "ip"; id: string; label: string; group?: DNSIPGroup }
+    | { kind: "dns"; id: string; label: string; audit?: DNSZoneAudit }
     | null;
+
+const VIEW_MODES: { id: MapViewMode; label: string; icon: React.ElementType; desc: string }[] = [
+    { id: "hierarchy", label: "Jerarquía", icon: GitBranch, desc: "Cliente → VPS → Servicio" },
+    { id: "by-ip", label: "Por IP", icon: Globe, desc: "DNS agrupado por servidor" },
+    { id: "dns-cloud", label: "DNS Cloud", icon: Cloud, desc: "renace.tech → IPs → apps" },
+    { id: "radial", label: "Radial", icon: Orbit, desc: "VPS centro, servicios en anillo" },
+];
 
 function isOnline(status?: string) {
     return ["running", "online", "active"].includes((status || "").toLowerCase());
@@ -47,6 +62,9 @@ export default function MapPage() {
     const [totals, setTotals] = useState({ clients: 0, vps: 0, services: 0, monthlyRevenue: 0 });
     const [clusters, setClusters] = useState<TopologyCluster[]>([]);
     const [topoNodes, setTopoNodes] = useState<TopologyNode[]>([]);
+    const [topoEdges, setTopoEdges] = useState<TopologyEdge[]>([]);
+    const [dnsAudit, setDnsAudit] = useState<DNSZoneAudit | null>(null);
+    const [viewMode, setViewMode] = useState<MapViewMode>("dns-cloud");
     const [detail, setDetail] = useState<Detail>(null);
     const [taskTarget, setTaskTarget] = useState<ServiceTaskTarget | null>(null);
     const [taskOpen, setTaskOpen] = useState(false);
@@ -55,17 +73,32 @@ export default function MapPage() {
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
+    const applyGraph = useCallback(
+        (mode: MapViewMode, nodes: TopologyNode[], edges: TopologyEdge[], cls: TopologyCluster[], audit: DNSZoneAudit | null) => {
+            if (mode === "dns-cloud" && audit) return buildDNSCloudGraph(audit);
+            if (mode === "by-ip" && audit) return buildByIPGraph(audit);
+            return buildFlowGraph(mode, nodes, edges, cls);
+        },
+        []
+    );
+
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await topologyApi.map();
-            const tNodes = res.nodes || [];
-            const tEdges = res.edges || [];
-            const tClusters = res.clusters || [];
+            const [topoRes, dnsRes] = await Promise.all([
+                topologyApi.map(),
+                dnsApi.audit().catch(() => null),
+            ]);
+            const tNodes = topoRes.nodes || [];
+            const tEdges = topoRes.edges || [];
+            const tClusters = topoRes.clusters || [];
+            const audit = dnsRes?.data ?? null;
             setTopoNodes(tNodes);
+            setTopoEdges(tEdges);
             setClusters(tClusters);
-            setTotals(res.totals || { clients: 0, vps: 0, services: 0, monthlyRevenue: 0 });
-            const graph = buildFlowGraph(tNodes, tEdges, tClusters);
+            setDnsAudit(audit);
+            setTotals(topoRes.totals || { clients: 0, vps: 0, services: 0, monthlyRevenue: 0 });
+            const graph = applyGraph(viewMode, tNodes, tEdges, tClusters, audit);
             setNodes(graph.nodes);
             setEdges(graph.edges);
             setDetail(null);
@@ -74,7 +107,15 @@ export default function MapPage() {
         } finally {
             setLoading(false);
         }
-    }, [addToast, setNodes, setEdges]);
+    }, [addToast, setNodes, setEdges, applyGraph, viewMode]);
+
+    useEffect(() => {
+        if (topoNodes.length === 0 && !dnsAudit) return;
+        const graph = applyGraph(viewMode, topoNodes, topoEdges, clusters, dnsAudit);
+        setNodes(graph.nodes);
+        setEdges(graph.edges);
+        setDetail(null);
+    }, [viewMode, topoNodes, topoEdges, clusters, dnsAudit, applyGraph, setNodes, setEdges]);
 
     useEffect(() => {
         load();
@@ -99,6 +140,22 @@ export default function MapPage() {
                     label: String(node.data.label || ""),
                     cluster,
                     meta: (raw?.meta as Record<string, unknown>) || {},
+                });
+            } else if (node.type === "ipHub") {
+                const ip = String(node.data.ip || "");
+                const group = dnsAudit?.byIp.find((g) => g.ip === ip);
+                setDetail({
+                    kind: "ip",
+                    id: node.id,
+                    label: String(node.data.label || ip),
+                    group,
+                });
+            } else if (node.type === "dnsRoot") {
+                setDetail({
+                    kind: "dns",
+                    id: "dns-root",
+                    label: String(node.data.label || "renace.tech"),
+                    audit: dnsAudit || undefined,
                 });
             } else if (node.type === "service") {
                 const raw = topoNodes.find((n) => n.id === node.id);
@@ -125,7 +182,7 @@ export default function MapPage() {
                 }
             }
         },
-        [topoNodes, clusters]
+        [topoNodes, clusters, dnsAudit]
     );
 
     const nodeTypes = useMemo(() => mapNodeTypes, []);
@@ -146,20 +203,43 @@ export default function MapPage() {
                     </div>
                     <div className="min-w-0">
                         <h1 className="text-lg font-semibold tracking-tight nm-shimmer-text sm:text-xl">
-                            Neural Topology
+                            Mapa de Infraestructura
                         </h1>
                         <p className="mt-0.5 flex items-center gap-2 text-[11px] text-zinc-500">
                             <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-emerald-300">
                                 <Radio className="h-3 w-3" />
-                                {liveEdges} live links
+                                {liveEdges} live
                             </span>
-                            <span className="hidden sm:inline truncate">Cliente → VPS → Servicios · canvas vivo</span>
+                            {dnsAudit && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-amber-200">
+                                    <Cloud className="h-3 w-3" />
+                                    {dnsAudit.totalRecords} DNS · {dnsAudit.uniqueIPs} IPs
+                                </span>
+                            )}
                         </p>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
                     <SidebarToggle variant="dark" />
+                    <div className="hidden lg:flex items-center gap-1 rounded-xl border border-white/10 bg-black/30 p-1">
+                        {VIEW_MODES.map((m) => (
+                            <button
+                                key={m.id}
+                                type="button"
+                                title={m.desc}
+                                onClick={() => setViewMode(m.id)}
+                                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all ${
+                                    viewMode === m.id
+                                        ? "bg-violet-600 text-white shadow-[0_0_12px_rgba(155,123,255,0.4)]"
+                                        : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                                }`}
+                            >
+                                <m.icon className="h-3.5 w-3.5" />
+                                {m.label}
+                            </button>
+                        ))}
+                    </div>
                     <StatChip icon={<Users className="w-3.5 h-3.5 text-cyan-300" />} label="Clients" value={totals.clients} tone="cyan" />
                     <StatChip icon={<Server className="w-3.5 h-3.5 text-violet-300" />} label="VPS" value={totals.vps} tone="violet" />
                     <StatChip icon={<Database className="w-3.5 h-3.5 text-fuchsia-300" />} label="Svcs" value={totals.services} tone="fuchsia" />
@@ -283,11 +363,21 @@ export default function MapPage() {
                         <Maximize2 className="ml-1 h-3.5 w-3.5 text-cyan-300" />
                     </div>
 
-                    <div className="absolute left-4 top-4 z-10 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-3 text-[11px] backdrop-blur-xl">
-                        <LegendDot color="bg-[#2ee6d6] shadow-[0_0_10px_#2ee6d6]" label="Cliente" />
-                        <LegendDot color="bg-[#9b7bff] shadow-[0_0_10px_#9b7bff]" label="VPS" />
-                        <LegendDot color="bg-[#ff5ec8] shadow-[0_0_10px_#ff5ec8]" label="Servicio" />
-                        <LegendDot color="bg-[#7dffb3] animate-pulse" label="Live signal" />
+                    <div className="absolute left-4 top-4 z-10 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-3 text-[11px] backdrop-blur-xl max-w-[140px]">
+                        {viewMode === "dns-cloud" || viewMode === "by-ip" ? (
+                            <>
+                                <LegendDot color="bg-amber-400 shadow-[0_0_10px_#f59e0b]" label="Cloudflare" />
+                                <LegendDot color="bg-teal-400 shadow-[0_0_10px_#2dd4bf]" label="IP origen" />
+                                <LegendDot color="bg-fuchsia-400" label="Subdominio" />
+                            </>
+                        ) : (
+                            <>
+                                <LegendDot color="bg-[#2ee6d6] shadow-[0_0_10px_#2ee6d6]" label="Cliente" />
+                                <LegendDot color="bg-[#9b7bff] shadow-[0_0_10px_#9b7bff]" label="VPS" />
+                                <LegendDot color="bg-[#ff5ec8] shadow-[0_0_10px_#ff5ec8]" label="Servicio" />
+                            </>
+                        )}
+                        <LegendDot color="bg-[#7dffb3] animate-pulse" label="Live" />
                     </div>
                 </div>
 
@@ -308,11 +398,74 @@ export default function MapPage() {
                         </p>
                     </div>
                     <div className="space-y-4 p-4 text-sm">
-                        {!detail && (
+                        {!detail && dnsAudit && (
+                            <div className="space-y-3">
+                                <Tag color="violet">AUDITORÍA DNS</Tag>
+                                <MetaRow label="Registros A" value={String(dnsAudit.totalRecords)} />
+                                <MetaRow label="IPs únicas" value={String(dnsAudit.uniqueIPs)} />
+                                <MetaRow label="En RNV" value={String(dnsAudit.matched)} />
+                                <MetaRow label="Solo DNS" value={String(dnsAudit.dnsOnly)} />
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 pt-2">
+                                    Por servidor (IP)
+                                </p>
+                                <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                                    {dnsAudit.byIp.map((g) => (
+                                        <button
+                                            key={g.ip}
+                                            type="button"
+                                            onClick={() => setViewMode("by-ip")}
+                                            className="w-full rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-left hover:border-teal-400/30 transition-colors"
+                                        >
+                                            <p className="text-xs font-semibold text-teal-200">{g.label}</p>
+                                            <p className="font-mono text-[10px] text-zinc-500">{g.ip}</p>
+                                            <p className="text-[10px] text-zinc-400 mt-1">
+                                                {g.recordCount} apps · {g.proxiedCount} CF proxy
+                                                {g.vpsName ? ` · ${g.vpsName}` : ""}
+                                            </p>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {!detail && !dnsAudit && (
                             <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-xs leading-relaxed text-zinc-500">
                                 Explora el canvas: bordes animados = señal en vivo. El asistente lee este grafo con{" "}
                                 <code className="rounded bg-violet-500/15 px-1.5 py-0.5 text-violet-300">rnv_topology</code>.
                             </div>
+                        )}
+
+                        {detail?.kind === "ip" && detail.group && (
+                            <>
+                                <Tag color="cyan">IP ORIGEN</Tag>
+                                <MetaRow label="IP" value={detail.group.ip} mono />
+                                <MetaRow label="Etiqueta" value={detail.group.label} />
+                                <MetaRow label="VPS" value={detail.group.vpsName || "—"} />
+                                <MetaRow label="Apps DNS" value={String(detail.group.recordCount)} />
+                                <MetaRow label="CF Proxy" value={String(detail.group.proxiedCount)} />
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 pt-2">
+                                    Subdominios
+                                </p>
+                                <div className="max-h-56 space-y-1 overflow-y-auto text-[11px]">
+                                    {detail.group.records.map((r) => (
+                                        <div key={r.fqdn} className="flex justify-between gap-2 rounded-lg border border-white/5 px-2 py-1.5">
+                                            <span className="truncate text-zinc-200">{r.host}</span>
+                                            <span className={r.inRnv ? "text-emerald-400" : "text-zinc-600"}>
+                                                {r.inRnv ? "RNV" : "DNS"}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+
+                        {detail?.kind === "dns" && detail.audit && (
+                            <>
+                                <Tag color="violet">ZONA DNS</Tag>
+                                <MetaRow label="Dominio" value={detail.audit.domain} />
+                                <MetaRow label="Total A" value={String(detail.audit.totalRecords)} />
+                                <MetaRow label="IPs" value={String(detail.audit.uniqueIPs)} />
+                            </>
                         )}
 
                         {detail?.kind === "client" && (

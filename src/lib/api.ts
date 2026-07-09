@@ -352,6 +352,42 @@ export const topology = {
         }>("/topology"),
 };
 
+export interface DNSZoneRecordAudit {
+    host: string;
+    fqdn: string;
+    ip: string;
+    proxied: boolean;
+    inRnv: boolean;
+    serviceId?: string;
+    serviceName?: string;
+    status?: string;
+}
+
+export interface DNSIPGroup {
+    ip: string;
+    label: string;
+    vpsId?: string;
+    vpsName?: string;
+    vpsStatus?: string;
+    recordCount: number;
+    proxiedCount: number;
+    records: DNSZoneRecordAudit[];
+}
+
+export interface DNSZoneAudit {
+    domain: string;
+    totalRecords: number;
+    uniqueIPs: number;
+    byIp: DNSIPGroup[];
+    inRnvOnly: string[];
+    dnsOnly: number;
+    matched: number;
+}
+
+export const dns = {
+    audit: () => request<{ success: boolean; data: DNSZoneAudit }>("/dns/audit"),
+};
+
 // ── History ───────────────────────────────────────────────────────────────────
 
 export const history = {

@@ -2,8 +2,23 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Users, Server, Activity } from "lucide-react";
+import { Users, Server, Activity, Cloud, Globe } from "lucide-react";
 import { ServiceIcon } from "@/components/ServiceIcon";
+
+export type DnsRootNodeData = {
+    label: string;
+    recordCount?: number;
+    ipCount?: number;
+};
+
+export type IpHubNodeData = {
+    ip: string;
+    label: string;
+    vpsName?: string;
+    vpsStatus?: string;
+    recordCount?: number;
+    proxiedCount?: number;
+};
 
 export type ClientNodeData = {
     label: string;
@@ -324,8 +339,72 @@ export const ServiceNode = memo(function ServiceNode({ data, selected }: NodePro
     );
 });
 
+export const DnsRootNode = memo(function DnsRootNode({ data, selected }: NodeProps) {
+    const d = data as DnsRootNodeData;
+    return (
+        <div className={`nm-float relative min-w-[220px] rounded-[20px] transition-all ${selected ? "scale-[1.03]" : ""}`}>
+            <div className="absolute -inset-[1px] rounded-[21px] bg-gradient-to-br from-amber-400/80 via-orange-500/60 to-amber-600/40 opacity-90" />
+            <div className="relative overflow-hidden rounded-[20px] border border-amber-300/30 bg-[linear-gradient(160deg,#1a1408_0%,#0f0c06_100%)] p-4 shadow-[0_20px_50px_rgba(0,0,0,0.55)]">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-amber-400/40 bg-amber-500/20 shadow-[0_0_20px_rgba(245,158,11,0.35)]">
+                        <Cloud className="h-5 w-5 text-amber-200" />
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-300/80">DNS · Cloudflare</p>
+                        <p className="text-[15px] font-semibold text-white">{d.label}</p>
+                        <p className="text-[10px] text-amber-200/60">{d.recordCount ?? 0} registros · {d.ipCount ?? 0} IPs</p>
+                    </div>
+                </div>
+            </div>
+            <Handle type="source" position={Position.Bottom} className="!bottom-0 !h-3 !w-3 !border-2 !border-[#05060b] !bg-amber-300" />
+        </div>
+    );
+});
+
+export const IpHubNode = memo(function IpHubNode({ data, selected }: NodeProps) {
+    const d = data as IpHubNodeData;
+    const online = ["online", "running"].includes((d.vpsStatus || "").toLowerCase());
+    return (
+        <div className={`nm-float nm-float-delay-1 relative min-w-[200px] rounded-[18px] transition-all ${selected ? "scale-[1.03]" : ""}`}>
+            <div className={`absolute -inset-[1px] rounded-[19px] ${online ? "bg-gradient-to-br from-emerald-400/60 to-teal-600/40" : "bg-gradient-to-br from-orange-400/50 to-amber-700/30"} opacity-80`} />
+            <div className="relative overflow-hidden rounded-[18px] border border-white/10 bg-[linear-gradient(165deg,#101820_0%,#0a0e14_100%)] p-3.5 shadow-[0_16px_40px_rgba(0,0,0,0.5)]">
+                <div className="flex items-start gap-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-teal-400/30 bg-teal-500/15">
+                        <Globe className="h-4 w-4 text-teal-200" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-teal-300/70">IP origen</p>
+                        <p className="truncate text-[13px] font-semibold text-white">{d.label}</p>
+                        <p className="font-mono text-[10px] text-zinc-400">{d.ip}</p>
+                    </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                    <span className="rounded-full border border-violet-400/25 bg-violet-500/10 px-2 py-0.5 text-[9px] text-violet-200">
+                        {d.recordCount ?? 0} apps
+                    </span>
+                    {(d.proxiedCount ?? 0) > 0 && (
+                        <span className="rounded-full border border-amber-400/25 bg-amber-500/10 px-2 py-0.5 text-[9px] text-amber-200">
+                            {d.proxiedCount} CF proxy
+                        </span>
+                    )}
+                    {d.vpsName && (
+                        <span className={`rounded-full border px-2 py-0.5 text-[9px] ${online ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : "border-zinc-600 text-zinc-400"}`}>
+                            {d.vpsName}
+                        </span>
+                    )}
+                </div>
+            </div>
+            <Handle type="target" position={Position.Top} className="!top-0 !h-2.5 !w-2.5 !border-2 !border-[#05060b] !bg-amber-300" />
+            <Handle type="source" position={Position.Bottom} className="!bottom-0 !h-2.5 !w-2.5 !border-2 !border-[#05060b] !bg-teal-300" />
+            <Handle type="source" position={Position.Right} className="!-right-1 !h-2.5 !w-2.5 !border-2 !border-[#05060b] !bg-teal-300" />
+        </div>
+    );
+});
+
 export const mapNodeTypes = {
     client: ClientNode,
     vps: VpsNode,
     service: ServiceNode,
+    dnsRoot: DnsRootNode,
+    ipHub: IpHubNode,
 };

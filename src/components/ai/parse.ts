@@ -73,7 +73,7 @@ export function suggestionsForPath(path: string): string[] {
     if (path.includes("/services/")) return ["Detalle del servicio", "Asignar a cliente", "Ver costos"];
     if (path.includes("/services")) return ["¿Hay servicios caídos?", "Envíamelos por WhatsApp", "Comprobar salud"];
     if (path.includes("/billing")) return ["Pagos pendientes", "Resumen financiero por WhatsApp", "Registrar un pago"];
-    if (path.includes("/map")) return ["Mapa por WhatsApp", "¿Hay servicios caídos?", "¿Qué tareas pendientes?"];
+    if (path.includes("/map")) return ["Vista DNS Cloud", "Servicios por IP", "¿Hay servicios caídos?"];
     if (path.includes("/workflow")) return ["Envíame mis tareas por WA", "Tareas estancadas", "¿Qué completé hoy?"];
     if (path.includes("/calendar")) return ["Próximos vencimientos", "Programar recordatorio", "Tareas pendientes"];
     if (path.includes("/settings")) return ["Probar conexión Odoo", "Reporte resumen por WhatsApp"];

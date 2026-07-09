@@ -1,6 +1,8 @@
 import type { Node, Edge } from "@xyflow/react";
 import type { TopologyNode, TopologyEdge, TopologyCluster } from "@/lib/api";
 
+export type MapViewMode = "hierarchy" | "by-ip" | "radial" | "dns-cloud";
+
 const CLIENT_X = 40;
 const VPS_X = 360;
 const SERVICE_X = 700;
@@ -16,11 +18,95 @@ function str(v: unknown, fallback = ""): string {
     return typeof v === "string" ? v : fallback;
 }
 
+/** Radial: VPS en anillo, servicios alrededor (sin clientes) */
+export function buildRadialGraph(
+    topoNodes: TopologyNode[],
+    clusters: TopologyCluster[]
+): { nodes: Node[]; edges: Edge[] } {
+    const vpsNodes = topoNodes.filter((n) => n.type === "vps");
+    const services = topoNodes.filter((n) => n.type === "service");
+    const servicesByParent = new Map<string, TopologyNode[]>();
+    for (const s of services) {
+        const pid = s.parentId || "orphan";
+        if (!servicesByParent.has(pid)) servicesByParent.set(pid, []);
+        servicesByParent.get(pid)!.push(s);
+    }
+
+    const flowNodes: Node[] = [];
+    const flowEdges: Edge[] = [];
+    const clusterByVps = new Map(clusters.map((c) => [c.vpsId, c]));
+
+    const centerX = 500;
+    let clusterY = 80;
+    const vpsList = [...vpsNodes].sort((a, b) => a.label.localeCompare(b.label));
+
+    for (const v of vpsList) {
+        const svcs = servicesByParent.get(v.id) || [];
+        const cluster = clusterByVps.get(v.id);
+        const radius = 140 + Math.min(svcs.length, 6) * 12;
+
+        flowNodes.push({
+            id: v.id,
+            type: "vps",
+            position: { x: centerX - 125, y: clusterY },
+            data: {
+                label: v.label,
+                status: v.status || cluster?.status,
+                ip: str(v.meta?.ip, cluster?.ip),
+                serviceCount: svcs.length,
+                totalClusterCost: cluster?.totalClusterCost,
+                clientName: str(v.meta?.clientName, cluster?.clientName),
+            },
+        });
+
+        const visible = svcs.slice(0, MAX_SERVICES_VISIBLE);
+        visible.forEach((s, i) => {
+            const angle = (i / Math.max(visible.length, 1)) * Math.PI * 1.6 - Math.PI * 0.3;
+            const sx = centerX + 200 + Math.cos(angle) * radius;
+            const sy = clusterY + 30 + Math.sin(angle) * (radius * 0.55);
+            flowNodes.push({
+                id: s.id,
+                type: "service",
+                position: { x: sx, y: sy },
+                data: {
+                    label: s.label,
+                    status: s.status,
+                    type: str(s.meta?.type),
+                    url: str(s.meta?.url),
+                    faviconUrl: str(s.meta?.faviconUrl),
+                    charge: num(s.meta?.charge),
+                },
+            });
+            flowEdges.push({
+                id: `radial-${v.id}-${s.id}`,
+                source: v.id,
+                target: s.id,
+                type: "default",
+                animated: isOnline(s.status),
+                className: isOnline(s.status) ? "nm-edge-hosts" : "nm-edge-dim",
+                style: { stroke: isOnline(s.status) ? "#9b7bff" : "#3f3f46", strokeWidth: 2 },
+            });
+        });
+
+        clusterY += radius * 1.2 + 120;
+    }
+
+    return { nodes: flowNodes, edges: flowEdges };
+}
+
 export function buildFlowGraph(
+    mode: MapViewMode,
     topoNodes: TopologyNode[],
     topoEdges: TopologyEdge[],
     clusters: TopologyCluster[]
 ): { nodes: Node[]; edges: Edge[] } {
+    if (mode === "radial") {
+        return buildRadialGraph(topoNodes, clusters);
+    }
+    return buildHierarchyGraph(topoNodes, topoEdges, clusters);
+}
+
+function buildHierarchyGraph(
     const clients = topoNodes.filter((n) => n.type === "client");
     const vpsNodes = topoNodes.filter((n) => n.type === "vps");
     const services = topoNodes.filter((n) => n.type === "service");

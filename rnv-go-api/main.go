@@ -17,6 +17,7 @@ import (
 	billingHandler "github.com/renace/rnv-go-api/handlers/billing"
 	calendarHandler "github.com/renace/rnv-go-api/handlers/calendar"
 	clientsHandler "github.com/renace/rnv-go-api/handlers/clients"
+	dnsHandler "github.com/renace/rnv-go-api/handlers/dns"
 	emailHandler "github.com/renace/rnv-go-api/handlers/email"
 	whatsappHandler "github.com/renace/rnv-go-api/handlers/whatsapp"
 	healthHandler "github.com/renace/rnv-go-api/handlers/health"
@@ -171,6 +172,8 @@ func main() {
 		// Stats
 		auth.GET("/stats", statsHandler.Dashboard(db))
 		auth.GET("/topology", topologyHandler.Map(db))
+		auth.GET("/dns/audit", dnsHandler.Audit(db))
+		auth.POST("/dns/audit", dnsHandler.Audit(db))
 
 		// Audit
 		auth.GET("/audit", auditHandler.List(db))
