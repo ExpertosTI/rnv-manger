@@ -107,6 +107,10 @@ export function buildFlowGraph(
 }
 
 function buildHierarchyGraph(
+    topoNodes: TopologyNode[],
+    topoEdges: TopologyEdge[],
+    clusters: TopologyCluster[]
+): { nodes: Node[]; edges: Edge[] } {
     const clients = topoNodes.filter((n) => n.type === "client");
     const vpsNodes = topoNodes.filter((n) => n.type === "vps");
     const services = topoNodes.filter((n) => n.type === "service");
