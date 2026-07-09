@@ -81,7 +81,7 @@ func Events(db *gorm.DB) gin.HandlerFunc {
 
 		// Scheduled tasks in range
 		var tasks []models.ScheduledTask
-		db.Preload("Client").
+		db.Preload("Client").Preload("Service").
 			Where("scheduled_at >= ? AND scheduled_at <= ?", from, to).
 			Order("scheduled_at asc").Find(&tasks)
 		for _, t := range tasks {
@@ -145,18 +145,49 @@ func ListTasks(db *gorm.DB) gin.HandlerFunc {
 
 func CreateTask(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var task models.ScheduledTask
-		if err := c.ShouldBindJSON(&task); err != nil {
+		var req struct {
+			Title       string  `json:"title"`
+			Description *string `json:"description"`
+			Type        string  `json:"type"`
+			ScheduledAt string  `json:"scheduledAt"`
+			ClientID    *string `json:"clientId"`
+			ServiceID   *string `json:"serviceId"`
+			Status      string  `json:"status"`
+			NotifyEmail bool    `json:"notifyEmail"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 			return
 		}
-		if task.Title == "" {
+		if req.Title == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "title requerido"})
 			return
 		}
-		if task.ScheduledAt.IsZero() {
+		if req.ScheduledAt == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "scheduledAt requerido"})
 			return
+		}
+		scheduledAt, err := time.Parse(time.RFC3339, req.ScheduledAt)
+		if err != nil {
+			scheduledAt, err = time.Parse("2006-01-02T15:04:05", req.ScheduledAt)
+		}
+		if err != nil {
+			scheduledAt, err = time.Parse("2006-01-02T15:04", req.ScheduledAt)
+		}
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "scheduledAt inválido: use ISO8601"})
+			return
+		}
+
+		task := models.ScheduledTask{
+			Title:       req.Title,
+			Description: req.Description,
+			Type:        req.Type,
+			ScheduledAt: scheduledAt,
+			ClientID:    req.ClientID,
+			ServiceID:   req.ServiceID,
+			Status:      req.Status,
+			NotifyEmail: req.NotifyEmail,
 		}
 		if task.Type == "" {
 			task.Type = "reminder"
@@ -164,7 +195,7 @@ func CreateTask(db *gorm.DB) gin.HandlerFunc {
 		if task.Status == "" {
 			task.Status = "pending"
 		}
-		if task.ServiceID != nil && task.ClientID == nil {
+		if task.ServiceID != nil && *task.ServiceID != "" && task.ClientID == nil {
 			var svc models.Service
 			if db.First(&svc, "id = ?", *task.ServiceID).Error == nil && svc.ClientID != nil {
 				task.ClientID = svc.ClientID
@@ -174,10 +205,11 @@ func CreateTask(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 			return
 		}
+		db.Preload("Client").Preload("Service").First(&task, "id = ?", task.ID)
 		userID := middleware.GetUserID(c)
 		ip := middleware.GetClientIP(c)
 		serviceslayer.LogAudit(db, "CREATE", "scheduled_task", "Tarea programada: "+task.Title,
-			models.JSON{"taskId": task.ID, "scheduledAt": task.ScheduledAt}, ip, userID)
+			models.JSON{"taskId": task.ID, "scheduledAt": task.ScheduledAt, "serviceId": task.ServiceID}, ip, userID)
 		c.JSON(http.StatusCreated, gin.H{"success": true, "data": task})
 	}
 }
@@ -190,13 +222,40 @@ func UpdateTask(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Tarea no encontrada"})
 			return
 		}
-		var updates map[string]interface{}
-		if err := c.ShouldBindJSON(&updates); err != nil {
+		var req struct {
+			Title       *string `json:"title"`
+			Description *string `json:"description"`
+			Status      *string `json:"status"`
+			ScheduledAt *string `json:"scheduledAt"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 			return
 		}
-		db.Model(&task).Updates(updates)
-		db.First(&task, "id = ?", id)
+		updates := map[string]interface{}{}
+		if req.Title != nil {
+			updates["title"] = *req.Title
+		}
+		if req.Description != nil {
+			updates["description"] = *req.Description
+		}
+		if req.Status != nil {
+			updates["status"] = *req.Status
+		}
+		if req.ScheduledAt != nil {
+			if t, err := time.Parse(time.RFC3339, *req.ScheduledAt); err == nil {
+				updates["scheduled_at"] = t
+			}
+		}
+		if len(updates) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "sin cambios"})
+			return
+		}
+		if err := db.Model(&task).Updates(updates).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		db.Preload("Client").Preload("Service").First(&task, "id = ?", id)
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": task})
 	}
 }

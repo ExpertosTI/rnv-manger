@@ -93,6 +93,10 @@ func (te *toolExecutor) execute(name string, args map[string]interface{}) execut
 		result.Result = te.rnvListCalendar(args)
 	case "rnv_list_scheduled_tasks":
 		result.Result = te.rnvListScheduledTasks(args)
+	case "rnv_workflow":
+		result.Result = te.rnvWorkflow(args)
+	case "rnv_complete_task":
+		result.Result = te.rnvCompleteTask(args)
 	case "rnv_topology":
 		result.Result = te.rnvTopology(args)
 	default:
@@ -867,6 +871,22 @@ func (te *toolExecutor) rnvScheduleTask(args map[string]interface{}) map[string]
 	if clientID != "" {
 		task.ClientID = &clientID
 	}
+	serviceID := strArg(args, "serviceId")
+	if serviceID == "" && strArg(args, "serviceName") != "" {
+		var svc models.Service
+		if te.db.Where("name ILIKE ?", "%"+strArg(args, "serviceName")+"%").First(&svc).Error == nil {
+			serviceID = svc.ID
+		}
+	}
+	if serviceID != "" {
+		task.ServiceID = &serviceID
+		if task.ClientID == nil {
+			var svc models.Service
+			if te.db.First(&svc, "id = ?", serviceID).Error == nil && svc.ClientID != nil {
+				task.ClientID = svc.ClientID
+			}
+		}
+	}
 
 	if err := te.db.Create(&task).Error; err != nil {
 		return map[string]interface{}{"success": false, "error": err.Error()}
@@ -935,25 +955,168 @@ func (te *toolExecutor) rnvListCalendar(args map[string]interface{}) map[string]
 }
 
 func (te *toolExecutor) rnvListScheduledTasks(args map[string]interface{}) map[string]interface{} {
-	q := te.db.Preload("Client").Where("status = ?", "pending").Order("scheduled_at asc")
-	if status := strArg(args, "status"); status != "" {
-		q = te.db.Preload("Client").Where("status = ?", status).Order("scheduled_at asc")
+	q := te.db.Preload("Client").Preload("Service").Order("scheduled_at asc")
+	status := strArg(args, "status")
+	if status == "" {
+		status = "pending"
 	}
-	limit := intArg(args, "limit", 20)
+	q = q.Where("status = ?", status)
+	if taskType := strArg(args, "type"); taskType != "" {
+		q = q.Where("type = ?", taskType)
+	}
+	if serviceID := strArg(args, "serviceId"); serviceID != "" {
+		q = q.Where("service_id = ?", serviceID)
+	}
+	limit := intArg(args, "limit", 30)
 	var tasks []models.ScheduledTask
 	q.Limit(limit).Find(&tasks)
+	now := time.Now()
 	out := make([]map[string]interface{}, 0, len(tasks))
+	overdueCount := 0
+	staleCount := 0
 	for _, t := range tasks {
+		daysPending := int(now.Sub(t.ScheduledAt).Hours() / 24)
+		overdue := t.ScheduledAt.Before(now) && t.Status == "pending"
+		stale := t.Status == "pending" && daysPending > 3
+		if overdue {
+			overdueCount++
+		}
+		if stale {
+			staleCount++
+		}
 		item := map[string]interface{}{
 			"id": t.ID, "title": t.Title, "type": t.Type, "status": t.Status,
 			"scheduledAt": t.ScheduledAt.Format("2006-01-02 15:04"),
+			"overdue": overdue, "daysPending": daysPending, "stale": stale,
+		}
+		if t.Description != nil {
+			item["description"] = *t.Description
 		}
 		if t.Client != nil {
 			item["clientName"] = t.Client.Name
 		}
+		if t.Service != nil {
+			item["serviceId"] = t.Service.ID
+			item["serviceName"] = t.Service.Name
+		}
 		out = append(out, item)
 	}
-	return map[string]interface{}{"success": true, "count": len(out), "tasks": out}
+	return map[string]interface{}{
+		"success": true, "count": len(out), "tasks": out,
+		"summary": map[string]interface{}{
+			"overdue": overdueCount, "stale": staleCount,
+			"hint": "stale = pendiente hace más de 3 días; overdue = fecha programada ya pasó",
+		},
+	}
+}
+
+func (te *toolExecutor) rnvWorkflow(args map[string]interface{}) map[string]interface{} {
+	q := te.db.Preload("Client").Preload("Service").
+		Where("status = ? AND type = ?", "pending", "work").
+		Order("scheduled_at asc")
+	if serviceID := strArg(args, "serviceId"); serviceID != "" {
+		q = q.Where("service_id = ?", serviceID)
+	}
+	limit := intArg(args, "limit", 50)
+	var tasks []models.ScheduledTask
+	q.Limit(limit).Find(&tasks)
+
+	now := time.Now()
+	byService := map[string]map[string]interface{}{}
+	alerts := []string{}
+	overdue := 0
+	stale := 0
+
+	for _, t := range tasks {
+		days := int(now.Sub(t.ScheduledAt).Hours() / 24)
+		isOverdue := t.ScheduledAt.Before(now)
+		isStale := days > 3
+		if isOverdue {
+			overdue++
+		}
+		if isStale {
+			stale++
+		}
+		item := map[string]interface{}{
+			"id": t.ID, "title": t.Title, "scheduledAt": t.ScheduledAt.Format("2006-01-02 15:04"),
+			"overdue": isOverdue, "daysPending": days, "stale": isStale,
+		}
+		if t.Description != nil {
+			item["description"] = *t.Description
+		}
+		svcKey := "sin-app"
+		svcName := "Sin app asignada"
+		if t.Service != nil {
+			svcKey = t.Service.ID
+			svcName = t.Service.Name
+		}
+		if _, ok := byService[svcKey]; !ok {
+			byService[svcKey] = map[string]interface{}{
+				"serviceId": svcKey, "serviceName": svcName, "tasks": []map[string]interface{}{},
+			}
+		}
+		taskList := byService[svcKey]["tasks"].([]map[string]interface{})
+		byService[svcKey]["tasks"] = append(taskList, item)
+		if isOverdue {
+			alerts = append(alerts, fmt.Sprintf("⚠️ VENCIDA: \"%s\" en %s (%d días)", t.Title, svcName, days))
+		} else if isStale {
+			alerts = append(alerts, fmt.Sprintf("⏳ Estancada: \"%s\" en %s (%d días pendiente)", t.Title, svcName, days))
+		}
+	}
+
+	groups := make([]map[string]interface{}, 0, len(byService))
+	for _, g := range byService {
+		tasks := g["tasks"].([]map[string]interface{})
+		g["count"] = len(tasks)
+		groups = append(groups, g)
+	}
+
+	msg := fmt.Sprintf("%d tareas de trabajo pendientes", len(tasks))
+	if overdue > 0 {
+		msg += fmt.Sprintf("; %d vencidas", overdue)
+	}
+	if stale > 0 {
+		msg += fmt.Sprintf("; %d estancadas (+3 días)", stale)
+	}
+
+	return map[string]interface{}{
+		"success": true,
+		"message": msg,
+		"total":   len(tasks),
+		"summary": map[string]interface{}{"overdue": overdue, "stale": stale, "pending": len(tasks)},
+		"alerts":  alerts,
+		"groups":  groups,
+	}
+}
+
+func (te *toolExecutor) rnvCompleteTask(args map[string]interface{}) map[string]interface{} {
+	id := strArg(args, "taskId")
+	if id == "" {
+		id = strArg(args, "id")
+	}
+	if id == "" {
+		title := strArg(args, "title")
+		if title == "" {
+			return map[string]interface{}{"success": false, "error": "taskId o title requerido"}
+		}
+		var task models.ScheduledTask
+		if te.db.Where("title ILIKE ? AND status = ?", "%"+title+"%", "pending").Order("scheduled_at desc").First(&task).Error != nil {
+			return map[string]interface{}{"success": false, "error": "tarea no encontrada"}
+		}
+		id = task.ID
+	}
+	var task models.ScheduledTask
+	if err := te.db.First(&task, "id = ?", id).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": "tarea no encontrada"}
+	}
+	if err := te.db.Model(&task).Update("status", "done").Error; err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Tarea completada: %s", task.Title),
+		"task":    map[string]interface{}{"id": task.ID, "title": task.Title, "status": "done"},
+	}
 }
 
 func (te *toolExecutor) rnvTopology(args map[string]interface{}) map[string]interface{} {

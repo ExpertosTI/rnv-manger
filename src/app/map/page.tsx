@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { mapNodeTypes } from "@/components/map/nodes";
 import { buildFlowGraph } from "@/components/map/layout";
 import { ServiceTaskPanel, type ServiceTaskTarget } from "@/components/ServiceTaskPanel";
+import { SidebarToggle } from "@/components/SidebarToggle";
 
 type Detail =
     | { kind: "client"; id: string; label: string; meta: Record<string, unknown> }
@@ -158,6 +159,7 @@ export default function MapPage() {
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                    <SidebarToggle variant="dark" />
                     <StatChip icon={<Users className="w-3.5 h-3.5 text-cyan-300" />} label="Clients" value={totals.clients} tone="cyan" />
                     <StatChip icon={<Server className="w-3.5 h-3.5 text-violet-300" />} label="VPS" value={totals.vps} tone="violet" />
                     <StatChip icon={<Database className="w-3.5 h-3.5 text-fuchsia-300" />} label="Svcs" value={totals.services} tone="fuchsia" />

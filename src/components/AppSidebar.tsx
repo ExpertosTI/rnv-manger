@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Server, Users, Settings, Database, FileCode, Zap, Palette, Menu, X, DollarSign, Shield, UsersRound, Calendar, Network, ListTodo } from "lucide-react";
+import { LayoutDashboard, Server, Users, Settings, Database, FileCode, Zap, Palette, Menu, X, DollarSign, Shield, UsersRound, Calendar, Network, ListTodo, ChevronLeft, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { stats } from "@/lib/api";
 import { useSidebar } from "@/contexts/SidebarContext";
@@ -26,7 +26,7 @@ const sidebarItems = [
 
 export function AppSidebar() {
     const pathname = usePathname();
-    const { collapsed } = useSidebar();
+    const { collapsed, toggle } = useSidebar();
     const [isOpen, setIsOpen] = useState(false);
     const [vpsCount, setVpsCount] = useState<number | string>("...");
 
@@ -45,18 +45,28 @@ export function AppSidebar() {
     const SidebarContent = () => (
         <>
             {/* Logo */}
-            <div className={`border-b border-gray-100 ${collapsed ? "p-3" : "p-5"}`}>
-                <Link href="/" className="flex items-center gap-3 group" onClick={() => setIsOpen(false)}>
-                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-200 group-hover:shadow-purple-300 transition-shadow shrink-0">
-                        <Zap className="w-6 h-6 text-white" />
-                    </div>
-                    {!collapsed && (
-                        <div>
-                            <h1 className="text-lg font-bold text-gray-900">RNV Manager</h1>
-                            <p className="text-xs text-gray-500">Panel de Control</p>
+            <div className={`border-b border-gray-100 ${collapsed ? "p-2" : "p-5"}`}>
+                <div className={`flex items-center ${collapsed ? "flex-col gap-2" : "justify-between gap-2"}`}>
+                    <Link href="/" className={`flex items-center gap-3 group min-w-0 ${collapsed ? "justify-center" : ""}`} onClick={() => setIsOpen(false)}>
+                        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-200 group-hover:shadow-purple-300 transition-shadow shrink-0">
+                            <Zap className="w-6 h-6 text-white" />
                         </div>
-                    )}
-                </Link>
+                        {!collapsed && (
+                            <div className="min-w-0">
+                                <h1 className="text-lg font-bold text-gray-900 truncate">RNV Manager</h1>
+                                <p className="text-xs text-gray-500">Panel de Control</p>
+                            </div>
+                        )}
+                    </Link>
+                    <button
+                        type="button"
+                        onClick={toggle}
+                        className="hidden lg:flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors shrink-0"
+                        title={collapsed ? "Expandir menú" : "Colapsar menú"}
+                    >
+                        {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                    </button>
+                </div>
             </div>
 
             {/* Navigation */}

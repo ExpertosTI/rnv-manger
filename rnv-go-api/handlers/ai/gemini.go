@@ -428,14 +428,16 @@ func toolDeclarations() []functionDeclaration {
 		},
 		{
 			Name:        "rnv_schedule_task",
-			Description: "Programa un recordatorio o tarea futura en el calendario (reactivar cliente, cobro, seguimiento). Usa esto cuando el usuario pida recordatorios para fechas futuras.",
+			Description: "Programa recordatorio o tarea de trabajo en el calendario. Para tareas de apps usa type=work y serviceId/serviceName.",
 			Parameters: objectParams(map[string]interface{}{
 				"title":       map[string]interface{}{"type": "string", "description": "Título del recordatorio"},
 				"description": map[string]interface{}{"type": "string"},
 				"date":        map[string]interface{}{"type": "string", "description": "Fecha YYYY-MM-DD o YYYY-MM-DDTHH:MM"},
-				"type":        map[string]interface{}{"type": "string", "description": "reminder|billing|reactivation|follow_up|custom"},
+				"type":        map[string]interface{}{"type": "string", "description": "reminder|work|billing|reactivation|follow_up|custom"},
 				"clientId":    map[string]interface{}{"type": "string"},
 				"clientName":  map[string]interface{}{"type": "string"},
+				"serviceId":   map[string]interface{}{"type": "string", "description": "ID del servicio/app"},
+				"serviceName": map[string]interface{}{"type": "string", "description": "Nombre del servicio/app"},
 				"notifyEmail": map[string]interface{}{"type": "boolean", "description": "Enviar email al ejecutarse"},
 			}, []string{"title", "date"}),
 		},
@@ -449,10 +451,28 @@ func toolDeclarations() []functionDeclaration {
 		},
 		{
 			Name:        "rnv_list_scheduled_tasks",
-			Description: "Lista recordatorios/tareas programadas pendientes.",
+			Description: "Lista tareas/recordatorios con filtros. Incluye overdue (vencidas) y stale (estancadas +3 días).",
 			Parameters: objectParams(map[string]interface{}{
-				"status": map[string]interface{}{"type": "string", "description": "pending|done|cancelled"},
-				"limit":  map[string]interface{}{"type": "integer"},
+				"status":    map[string]interface{}{"type": "string", "description": "pending|done|cancelled"},
+				"type":      map[string]interface{}{"type": "string", "description": "work|reminder|..."},
+				"serviceId": map[string]interface{}{"type": "string"},
+				"limit":     map[string]interface{}{"type": "integer"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_workflow",
+			Description: "Cola Mi Flujo: tareas de trabajo (type=work) agrupadas por app, con alertas de vencidas y estancadas. Úsala al iniciar sesión o cuando pregunten qué hay pendiente.",
+			Parameters: objectParams(map[string]interface{}{
+				"serviceId": map[string]interface{}{"type": "string", "description": "Filtrar por app/servicio"},
+				"limit":     map[string]interface{}{"type": "integer"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_complete_task",
+			Description: "Marca una tarea como completada (status=done).",
+			Parameters: objectParams(map[string]interface{}{
+				"taskId": map[string]interface{}{"type": "string"},
+				"title":  map[string]interface{}{"type": "string", "description": "Buscar por título si no hay ID"},
 			}, []string{}),
 		},
 		{
@@ -467,14 +487,21 @@ const systemPrompt = `Asistente RNV Manager (VPS, clientes, servicios, facturaci
 
 HERRAMIENTAS:
 - Datos: rnv_search, rnv_list_*, rnv_get_*, rnv_billing_summary, rnv_overdue_clients
-- Acciones: rnv_create/update_client, rnv_record_payment, rnv_service_control, rnv_schedule_task
-- Calendario: rnv_list_calendar, rnv_list_scheduled_tasks
+- Acciones: rnv_create/update_client, rnv_record_payment, rnv_service_control, rnv_schedule_task, rnv_complete_task
+- Calendario/tareas: rnv_list_calendar, rnv_list_scheduled_tasks, rnv_workflow
 - Mapa infra: rnv_topology (VPS, servicios, clientes, costos)
 - Odoo: odoo_* (si configurado)
 
+FLUJO DE TRABAJO (Mi Flujo):
+- Al saludar o si preguntan qué hay pendiente → rnv_workflow
+- Alerta proactivamente tareas vencidas (fecha pasada) y estancadas (+3 días sin completar)
+- Pregunta si ya completaron tareas viejas antes de asignar nuevas
+- Asignar tarea a app → rnv_schedule_task con type=work + serviceId o serviceName
+- Marcar hecha → rnv_complete_task
+
 REGLAS:
 - Usa herramientas para datos reales; no inventes IDs ni montos.
-- Recordatorios futuros → rnv_schedule_task (nunca digas que no puedes).
+- Recordatorios y tareas → rnv_schedule_task (nunca digas que no puedes).
 - Confirma antes de pagos, borrados o cambios sensibles.
 - Clientes: billingCycle monthly|annual.
 

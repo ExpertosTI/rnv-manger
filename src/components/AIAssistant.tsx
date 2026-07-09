@@ -18,7 +18,7 @@ const WELCOME: Message = {
     id: "welcome",
     role: "assistant",
     content:
-        "¡Hola! Soy tu asistente **RNV**. Puedo gestionar clientes, VPS, servicios, pagos y Odoo.\n\n:::quick-actions\nResumen general\nClientes morosos\nRegistrar un pago\nListar servidores VPS\nBuscar en Odoo\n:::",
+        "¡Hola! Soy tu asistente **RNV**. Gestiono clientes, VPS, servicios, pagos, Odoo y **tu cola de trabajo**.\n\nPuedo revisar tareas pendientes, alertarte si llevan mucho tiempo sin completarse y marcarlas como hechas.\n\n:::quick-actions\n¿Qué tengo pendiente hoy?\nTareas vencidas\nResumen general\nClientes morosos\n:::",
     timestamp: new Date(),
 };
 
