@@ -66,6 +66,13 @@ func tryFastPath(db *gorm.DB, cfg *config.Config, message string) (string, []exe
 	return b.String(), executed, true
 }
 
+func asToolResultMap(v interface{}) map[string]interface{} {
+	if m, ok := v.(map[string]interface{}); ok {
+		return m
+	}
+	return map[string]interface{}{}
+}
+
 type intentOpts struct {
 	ClientName  string
 	VpsName     string
