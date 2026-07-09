@@ -83,6 +83,7 @@ export function ServiceUrlWizard({ open, onOpenChange, vpsList, clients, onCreat
                 name: probe.suggestedName,
                 type: probe.suggestedType,
                 url: probe.url,
+                faviconUrl: probe.faviconUrl,
                 status: probe.status,
                 vpsId,
                 clientId: clientId || null,

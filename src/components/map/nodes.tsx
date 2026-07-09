@@ -2,7 +2,8 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Users, Server, Database, Zap, Globe, Activity } from "lucide-react";
+import { Users, Server, Activity } from "lucide-react";
+import { ServiceIcon } from "@/components/ServiceIcon";
 
 export type ClientNodeData = {
     label: string;
@@ -29,6 +30,7 @@ export type ServiceNodeData = {
     status?: string;
     type?: string;
     url?: string;
+    faviconUrl?: string;
     charge?: number;
     chargeCycle?: string;
     clientName?: string;
@@ -249,7 +251,6 @@ export const ServiceNode = memo(function ServiceNode({ data, selected }: NodePro
     const d = data as ServiceNodeData;
     const online = isOnline(d.status);
     const isMore = d.type === "more";
-    const Icon = d.type === "odoo" ? Zap : d.type === "web" ? Globe : Database;
 
     return (
         <div
@@ -278,24 +279,15 @@ export const ServiceNode = memo(function ServiceNode({ data, selected }: NodePro
 
                 <div className="relative p-3">
                     <div className="flex items-center gap-2.5">
-                        <div className="relative shrink-0">
-                            <div
-                                className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
-                                    online
-                                        ? "border-fuchsia-300/40 bg-gradient-to-br from-fuchsia-400/30 to-pink-600/20 shadow-[0_0_16px_rgba(255,94,200,0.35)]"
-                                        : "border-zinc-700 bg-zinc-900"
-                                }`}
-                            >
-                                <Icon className={`h-3.5 w-3.5 ${online ? "text-fuchsia-100" : "text-zinc-500"}`} />
-                            </div>
-                            <span
-                                className={`absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ${
-                                    online
-                                        ? "bg-emerald-300 shadow-[0_0_8px_#7dffb3]"
-                                        : "bg-zinc-600"
-                                }`}
-                            />
-                        </div>
+                        <ServiceIcon
+                            name={d.label}
+                            type={d.type}
+                            url={d.url}
+                            faviconUrl={d.faviconUrl}
+                            size="sm"
+                            online={online}
+                            dark
+                        />
                         <div className="min-w-0 flex-1">
                             <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-fuchsia-300/70">
                                 {isMore ? "cluster" : d.type || "svc"}

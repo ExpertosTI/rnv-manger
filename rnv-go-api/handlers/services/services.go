@@ -25,6 +25,7 @@ func Create(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 			return
 		}
+		serviceslayer.EnrichServiceIcon(&svc)
 		if err := db.Create(&svc).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 			return
@@ -66,6 +67,7 @@ func Update(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		svc.ID = id
+		serviceslayer.EnrichServiceIcon(&svc)
 		db.Save(&svc)
 		if svc.ClientID != nil {
 			serviceslayer.RecalculateClientCost(db, *svc.ClientID)

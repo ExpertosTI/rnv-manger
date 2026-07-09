@@ -133,6 +133,7 @@ export function buildFlowGraph(
                     status: s.status,
                     type: str(s.meta?.type),
                     url: str(s.meta?.url),
+                    faviconUrl: str(s.meta?.faviconUrl),
                     charge: num(s.meta?.charge),
                     chargeCycle: str(s.meta?.chargeCycle, "monthly"),
                     clientName: str(s.meta?.clientName),

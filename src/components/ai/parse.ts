@@ -71,9 +71,9 @@ export function suggestionsForPath(path: string): string[] {
     if (path.includes("/vps/")) return ["Estado de este VPS", "Listar servicios", "Ver gastos"];
     if (path.includes("/vps")) return ["Listar servidores", "VPS detenidos", "Resumen de costos"];
     if (path.includes("/services/")) return ["Detalle del servicio", "Asignar a cliente", "Ver costos"];
-    if (path.includes("/services")) return ["Listar servicios", "Servicios sin cliente"];
+    if (path.includes("/services")) return ["Detectar URL y registrar", "Escanear VPS", "Listar servicios sin cliente"];
     if (path.includes("/billing")) return ["Pagos pendientes", "Resumen financiero", "Registrar un pago"];
-    if (path.includes("/map")) return ["¿Qué tareas tengo pendientes?", "Tareas vencidas", "Mapa de infraestructura"];
+    if (path.includes("/map")) return ["Detecta ai.renace.tech", "¿Qué tareas pendientes?", "Mapa de infraestructura"];
     if (path.includes("/workflow")) return ["Revisar mi cola de trabajo", "Tareas estancadas", "¿Qué completé hoy?"];
     if (path.includes("/calendar")) return ["Próximos vencimientos", "Programar recordatorio", "Tareas pendientes"];
     if (path.includes("/settings")) return ["Probar conexión Odoo", "Resumen RNV"];

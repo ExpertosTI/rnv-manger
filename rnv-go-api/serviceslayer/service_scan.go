@@ -257,6 +257,7 @@ func SyncScannedServices(db *gorm.DB, vps models.VPS, discovered []DiscoveredSer
 				svc.URL = d.URL
 			}
 			svc.LastChecked = &now
+			serviceslayer.EnrichServiceIcon(&svc)
 			if db.Create(&svc).Error == nil {
 				created++
 			}
@@ -277,6 +278,19 @@ func SyncScannedServices(db *gorm.DB, vps models.VPS, discovered []DiscoveredSer
 		}
 		if existing.ClientID == nil && vps.ClientID != nil {
 			updates["client_id"] = *vps.ClientID
+		}
+		urlToEnrich := existing.URL
+		if u, ok := updates["url"].(string); ok && u != "" {
+			tmp := u
+			urlToEnrich = &tmp
+		}
+		if (existing.FaviconURL == nil || *existing.FaviconURL == "") && urlToEnrich != nil && *urlToEnrich != "" {
+			tmp := existing
+			tmp.URL = urlToEnrich
+			serviceslayer.EnrichServiceIcon(&tmp)
+			if tmp.FaviconURL != nil {
+				updates["favicon_url"] = *tmp.FaviconURL
+			}
 		}
 		if db.Model(&existing).Updates(updates).Error == nil {
 			updated++

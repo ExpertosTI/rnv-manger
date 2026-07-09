@@ -139,6 +139,7 @@ type Service struct {
 	Port          *int       `json:"port,omitempty"`
 	ConfigFile    *string    `json:"configFile,omitempty"`
 	URL           *string    `json:"url,omitempty"`
+	FaviconURL    *string    `json:"faviconUrl,omitempty"`
 	ResourceUsage JSON       `gorm:"type:jsonb" json:"resourceUsage,omitempty"`
 	BillingCycle  string     `gorm:"default:'monthly'" json:"billingCycle"` // monthly | annual
 	MonthlyCost   float64    `gorm:"default:0" json:"monthlyCost"`

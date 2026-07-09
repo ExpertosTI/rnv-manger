@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { calendar as calendarApi, type ScheduledTask } from "@/lib/api";
 import { ServiceTaskPanel, type ServiceTaskTarget } from "@/components/ServiceTaskPanel";
+import { ServiceIcon } from "@/components/ServiceIcon";
 import { useToast } from "@/components/ui/toast";
 
 export default function WorkflowPage() {
@@ -34,7 +35,7 @@ export default function WorkflowPage() {
     useEffect(() => { load(); }, [load]);
 
     const grouped = useMemo(() => {
-        const map = new Map<string, { serviceName: string; url?: string; tasks: ScheduledTask[] }>();
+        const map = new Map<string, { serviceName: string; url?: string; faviconUrl?: string; type?: string; tasks: ScheduledTask[] }>();
         const orphan: ScheduledTask[] = [];
         for (const t of tasks) {
             if (t.serviceId && t.service) {
@@ -43,6 +44,8 @@ export default function WorkflowPage() {
                     map.set(key, {
                         serviceName: t.service.name,
                         url: t.service.url,
+                        faviconUrl: (t.service as { faviconUrl?: string }).faviconUrl,
+                        type: t.service.type,
                         tasks: [],
                     });
                 }
@@ -138,7 +141,14 @@ export default function WorkflowPage() {
                             <CardHeader className="bg-gradient-to-r from-violet-50/80 to-transparent pb-3">
                                 <div className="flex items-center justify-between gap-2">
                                     <CardTitle className="text-base flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full bg-fuchsia-500" />
+                                        <ServiceIcon
+                                            name={group.serviceName}
+                                            type={group.type}
+                                            url={group.url}
+                                            faviconUrl={group.faviconUrl}
+                                            size="sm"
+                                            online
+                                        />
                                         {group.serviceName}
                                         <Badge variant="outline" className="text-xs">{group.tasks.length}</Badge>
                                     </CardTitle>

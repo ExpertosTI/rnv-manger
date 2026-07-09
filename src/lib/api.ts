@@ -415,6 +415,7 @@ export interface Service {
     type: string;
     port?: number;
     url?: string;
+    faviconUrl?: string;
     status: string;
     monthlyCost: number;
     vpsId?: string;

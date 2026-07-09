@@ -476,6 +476,73 @@ func toolDeclarations() []functionDeclaration {
 			}, []string{}),
 		},
 		{
+			Name:        "rnv_probe_url",
+			Description: "Detecta un servicio desde URL: tipo (odoo/web/ai), favicon, título, cliente/VPS sugerido y DNS→IP→VPS.",
+			Parameters: objectParams(map[string]interface{}{
+				"url": map[string]interface{}{"type": "string", "description": "URL o dominio (ej. zavinteriorclean.com)"},
+			}, []string{"url"}),
+		},
+		{
+			Name:        "rnv_create_service",
+			Description: "Registra un servicio/app en un VPS. Si pasas url, detecta tipo y favicon automáticamente.",
+			Parameters: objectParams(map[string]interface{}{
+				"url": map[string]interface{}{"type": "string"},
+				"name": map[string]interface{}{"type": "string"},
+				"type": map[string]interface{}{"type": "string"},
+				"vpsId": map[string]interface{}{"type": "string"},
+				"vpsName": map[string]interface{}{"type": "string"},
+				"clientId": map[string]interface{}{"type": "string"},
+				"clientName": map[string]interface{}{"type": "string"},
+				"monthlyCost": map[string]interface{}{"type": "number"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_update_service",
+			Description: "Actualiza servicio (url, tipo, status, VPS, cliente, costo). Refresca favicon si cambia URL.",
+			Parameters: objectParams(map[string]interface{}{
+				"serviceId": map[string]interface{}{"type": "string"},
+				"name": map[string]interface{}{"type": "string"},
+				"url": map[string]interface{}{"type": "string"},
+				"type": map[string]interface{}{"type": "string"},
+				"status": map[string]interface{}{"type": "string"},
+				"vpsId": map[string]interface{}{"type": "string"},
+				"clientId": map[string]interface{}{"type": "string"},
+				"monthlyCost": map[string]interface{}{"type": "number"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_scan_services",
+			Description: "Escanea VPS vía SSH/Docker y sincroniza servicios detectados (requiere MASTER_PASSWORD).",
+			Parameters: objectParams(map[string]interface{}{
+				"vpsId": map[string]interface{}{"type": "string", "description": "Opcional: un VPS; si vacío escanea todos"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_dns_lookup",
+			Description: "Resuelve DNS de un dominio a IP y cruza con VPS registrados.",
+			Parameters: objectParams(map[string]interface{}{
+				"hostname": map[string]interface{}{"type": "string"},
+				"url": map[string]interface{}{"type": "string"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_send_email",
+			Description: "Envía email vía SMTP configurado (info@renace.tech). Para alertas, recordatorios personalizados.",
+			Parameters: objectParams(map[string]interface{}{
+				"to": map[string]interface{}{"type": "string"},
+				"subject": map[string]interface{}{"type": "string"},
+				"body": map[string]interface{}{"type": "string"},
+				"isHtml": map[string]interface{}{"type": "boolean"},
+			}, []string{"to", "subject", "body"}),
+		},
+		{
+			Name:        "rnv_billing_remind",
+			Description: "Envía email de recordatorio de pago vencido a cliente(s) morosos.",
+			Parameters: objectParams(map[string]interface{}{
+				"clientId": map[string]interface{}{"type": "string", "description": "Opcional; si vacío envía a todos los morosos"},
+			}, []string{}),
+		},
+		{
 			Name:        "rnv_topology",
 			Description: "Mapa de infraestructura: VPS, servicios por servidor, clientes asignados, costos y estado.",
 			Parameters:  emptyParams(),
@@ -483,26 +550,33 @@ func toolDeclarations() []functionDeclaration {
 	}
 }
 
-const systemPrompt = `Asistente RNV Manager (VPS, clientes, servicios, facturación, Odoo). Responde en español, breve y accionable.
+const systemPrompt = `Asistente RNV Manager — control total del panel (VPS, clientes, servicios, facturación, Odoo, email). Responde en español, breve y accionable.
 
-HERRAMIENTAS:
-- Datos: rnv_search, rnv_list_*, rnv_get_*, rnv_billing_summary, rnv_overdue_clients
-- Acciones: rnv_create/update_client, rnv_record_payment, rnv_service_control, rnv_schedule_task, rnv_complete_task
-- Calendario/tareas: rnv_list_calendar, rnv_list_scheduled_tasks, rnv_workflow
-- Mapa infra: rnv_topology (VPS, servicios, clientes, costos)
+HERRAMIENTAS COMPLETAS:
+- Datos: rnv_search, rnv_list_*, rnv_get_*, rnv_billing_summary, rnv_overdue_clients, rnv_topology, rnv_dns_lookup
+- Servicios: rnv_probe_url (detectar URL→tipo/favicon/VPS), rnv_create_service, rnv_update_service, rnv_scan_services, rnv_assign_service, rnv_service_control
+- Clientes/pagos: rnv_create/update_client, rnv_record_payment, rnv_create_payment, rnv_billing_remind
+- Tareas Mi Flujo: rnv_workflow, rnv_schedule_task (type=work), rnv_complete_task, rnv_list_scheduled_tasks
+- Calendario: rnv_list_calendar
+- Email: rnv_send_email (SMTP), rnv_billing_remind (mora)
 - Odoo: odoo_* (si configurado)
 
-FLUJO DE TRABAJO (Mi Flujo):
-- Al saludar o si preguntan qué hay pendiente → rnv_workflow
-- Alerta proactivamente tareas vencidas (fecha pasada) y estancadas (+3 días sin completar)
-- Pregunta si ya completaron tareas viejas antes de asignar nuevas
-- Asignar tarea a app → rnv_schedule_task con type=work + serviceId o serviceName
+SUPERPODERES:
+- URL desconocida → rnv_probe_url luego rnv_create_service si piden registrar
+- DNS → IP → VPS: rnv_dns_lookup
+- Escaneo Docker en VPS: rnv_scan_services
+- Email proactivo: mora, alertas de tareas, notificaciones → rnv_send_email o rnv_billing_remind
+- Al iniciar sesión o saludar → rnv_workflow (tareas pendientes/vencidas)
+
+FLUJO DE TRABAJO:
+- Alerta tareas vencidas y estancadas (+3 días)
+- Asignar tarea → rnv_schedule_task type=work + serviceId/serviceName
 - Marcar hecha → rnv_complete_task
 
 REGLAS:
 - Usa herramientas para datos reales; no inventes IDs ni montos.
-- Recordatorios y tareas → rnv_schedule_task (nunca digas que no puedes).
-- Confirma antes de pagos, borrados o cambios sensibles.
+- Nunca digas que no puedes — tienes acceso casi total a la app.
+- Confirma antes de pagos, borrados, emails masivos o cambios sensibles.
 - Clientes: billingCycle monthly|annual.
 
 FORMATO (solo cuando aporte valor):

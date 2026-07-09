@@ -97,6 +97,20 @@ func (te *toolExecutor) execute(name string, args map[string]interface{}) execut
 		result.Result = te.rnvWorkflow(args)
 	case "rnv_complete_task":
 		result.Result = te.rnvCompleteTask(args)
+	case "rnv_probe_url":
+		result.Result = te.rnvProbeURL(args)
+	case "rnv_create_service":
+		result.Result = te.rnvCreateService(args)
+	case "rnv_update_service":
+		result.Result = te.rnvUpdateService(args)
+	case "rnv_scan_services":
+		result.Result = te.rnvScanServices(args)
+	case "rnv_dns_lookup":
+		result.Result = te.rnvDNSLookup(args)
+	case "rnv_send_email":
+		result.Result = te.rnvSendEmail(args)
+	case "rnv_billing_remind":
+		result.Result = te.rnvBillingRemind(args)
 	case "rnv_topology":
 		result.Result = te.rnvTopology(args)
 	default:
@@ -1089,6 +1103,262 @@ func (te *toolExecutor) rnvWorkflow(args map[string]interface{}) map[string]inte
 	}
 }
 
+func (te *toolExecutor) rnvProbeURL(args map[string]interface{}) map[string]interface{} {
+	raw := strArg(args, "url")
+	if raw == "" {
+		return map[string]interface{}{"success": false, "error": "url requerida"}
+	}
+	pr := serviceslayer.ProbeURLWithDB(te.db, raw)
+	return map[string]interface{}{"success": true, "data": pr}
+}
+
+func (te *toolExecutor) rnvCreateService(args map[string]interface{}) map[string]interface{} {
+	name := strArg(args, "name")
+	svcType := strArg(args, "type")
+	if svcType == "" {
+		svcType = "web"
+	}
+	vpsID := strArg(args, "vpsId")
+	vpsName := strArg(args, "vpsName")
+	if vpsID == "" && vpsName != "" {
+		var vps models.VPS
+		if te.db.Where("name ILIKE ?", "%"+vpsName+"%").First(&vps).Error == nil {
+			vpsID = vps.ID
+		}
+	}
+	if vpsID == "" {
+		return map[string]interface{}{"success": false, "error": "vpsId o vpsName requerido"}
+	}
+	rawURL := strArg(args, "url")
+	if name == "" && rawURL != "" {
+		pr := serviceslayer.ProbeURL(rawURL)
+		name = pr.SuggestedName
+		if svcType == "web" && pr.SuggestedType != "" {
+			svcType = pr.SuggestedType
+		}
+	}
+	if name == "" {
+		return map[string]interface{}{"success": false, "error": "name o url requerido"}
+	}
+	svc := models.Service{
+		Name: name, Type: svcType, Status: strArg(args, "status"),
+		VpsID: &vpsID,
+	}
+	if svc.Status == "" {
+		svc.Status = "running"
+	}
+	if rawURL != "" {
+		norm := serviceslayer.NormalizeURL(rawURL)
+		svc.URL = &norm
+		pr := serviceslayer.ProbeURLWithDB(te.db, norm)
+		if pr.SuggestedType != "" && svcType == "web" {
+			svc.Type = pr.SuggestedType
+		}
+		if pr.Status != "" {
+			svc.Status = pr.Status
+		}
+	}
+	clientID := strArg(args, "clientId")
+	if clientID == "" {
+		clientName := strArg(args, "clientName")
+		if clientName != "" {
+			var cl models.Client
+			if te.db.Where("name ILIKE ?", "%"+clientName+"%").First(&cl).Error == nil {
+				clientID = cl.ID
+			}
+		}
+	}
+	if clientID != "" {
+		svc.ClientID = &clientID
+	}
+	if mc := toFloat(args["monthlyCost"]); mc > 0 {
+		svc.MonthlyCost = mc
+	}
+	serviceslayer.EnrichServiceIcon(&svc)
+	if err := te.db.Create(&svc).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+	if svc.ClientID != nil {
+		serviceslayer.RecalculateClientCost(te.db, *svc.ClientID)
+	}
+	return map[string]interface{}{
+		"success": true,
+		"message": "Servicio creado: " + svc.Name,
+		"service": map[string]interface{}{
+			"id": svc.ID, "name": svc.Name, "type": svc.Type, "url": svc.URL,
+			"faviconUrl": svc.FaviconURL, "vpsId": svc.VpsID, "clientId": svc.ClientID,
+		},
+	}
+}
+
+func (te *toolExecutor) rnvUpdateService(args map[string]interface{}) map[string]interface{} {
+	id := strArg(args, "serviceId")
+	if id == "" {
+		id = strArg(args, "id")
+	}
+	name := strArg(args, "name")
+	var svc models.Service
+	q := te.db
+	if id != "" {
+		q = q.Where("id = ?", id)
+	} else if name != "" {
+		q = q.Where("name ILIKE ?", "%"+name+"%")
+	} else {
+		return map[string]interface{}{"success": false, "error": "serviceId o name requerido"}
+	}
+	if err := q.First(&svc).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": "servicio no encontrado"}
+	}
+	updates := map[string]interface{}{}
+	if v := strArg(args, "url"); v != "" {
+		norm := serviceslayer.NormalizeURL(v)
+		updates["url"] = norm
+		svc.URL = &norm
+	}
+	if v := strArg(args, "type"); v != "" {
+		updates["type"] = v
+		svc.Type = v
+	}
+	if v := strArg(args, "status"); v != "" {
+		updates["status"] = v
+	}
+	if v := strArg(args, "name"); v != "" && id != "" {
+		updates["name"] = v
+	}
+	if mc := toFloat(args["monthlyCost"]); mc > 0 {
+		updates["monthly_cost"] = mc
+	}
+	if vpsID := strArg(args, "vpsId"); vpsID != "" {
+		updates["vps_id"] = vpsID
+	}
+	if clientID := strArg(args, "clientId"); clientID != "" {
+		updates["client_id"] = clientID
+	}
+	if len(updates) == 0 {
+		return map[string]interface{}{"success": false, "error": "sin cambios"}
+	}
+	if svc.URL != nil {
+		serviceslayer.EnrichServiceIcon(&svc)
+		if svc.FaviconURL != nil {
+			updates["favicon_url"] = *svc.FaviconURL
+		}
+	}
+	if err := te.db.Model(&svc).Updates(updates).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+	te.db.First(&svc, "id = ?", svc.ID)
+	return map[string]interface{}{"success": true, "message": "Servicio actualizado", "service": simplifyServiceOne(svc)}
+}
+
+func simplifyServiceOne(s models.Service) map[string]interface{} {
+	return map[string]interface{}{
+		"id": s.ID, "name": s.Name, "type": s.Type, "status": s.Status,
+		"url": s.URL, "faviconUrl": s.FaviconURL, "vpsId": s.VpsID, "clientId": s.ClientID,
+	}
+}
+
+func (te *toolExecutor) rnvScanServices(args map[string]interface{}) map[string]interface{} {
+	if te.cfg.MasterPassword == "" {
+		return map[string]interface{}{"success": false, "error": "MASTER_PASSWORD no configurado para escaneo SSH"}
+	}
+	vpsID := strArg(args, "vpsId")
+	results, err := serviceslayer.ScanAllVPS(te.db, te.cfg, vpsID)
+	if err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+	totalFound, totalCreated, totalUpdated := 0, 0, 0
+	out := make([]map[string]interface{}, 0, len(results))
+	for _, r := range results {
+		totalFound += len(r.Found)
+		totalCreated += r.Created
+		totalUpdated += r.Updated
+		item := map[string]interface{}{
+			"vpsId": r.VpsID, "vpsName": r.VpsName, "ip": r.IP,
+			"success": r.Success, "created": r.Created, "updated": r.Updated,
+			"found": len(r.Found),
+		}
+		if r.Error != "" {
+			item["error"] = r.Error
+		}
+		out = append(out, item)
+	}
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Escaneo: %d encontrados, %d creados, %d actualizados", totalFound, totalCreated, totalUpdated),
+		"results": out,
+		"totals": map[string]interface{}{"found": totalFound, "created": totalCreated, "updated": totalUpdated},
+	}
+}
+
+func (te *toolExecutor) rnvDNSLookup(args map[string]interface{}) map[string]interface{} {
+	host := strArg(args, "hostname")
+	if host == "" {
+		host = strArg(args, "url")
+	}
+	if host == "" {
+		return map[string]interface{}{"success": false, "error": "hostname o url requerido"}
+	}
+	return serviceslayer.DNSLookupWithVPS(te.db, host)
+}
+
+func (te *toolExecutor) rnvSendEmail(args map[string]interface{}) map[string]interface{} {
+	to := strArg(args, "to")
+	subject := strArg(args, "subject")
+	body := strArg(args, "body")
+	if to == "" || subject == "" || body == "" {
+		return map[string]interface{}{"success": false, "error": "to, subject y body requeridos"}
+	}
+	htmlBody := body
+	if !boolArg(args, "isHtml", false) {
+		htmlBody = fmt.Sprintf("<pre>%s</pre>", body)
+	}
+	if err := serviceslayer.SendEmail(te.db, te.cfg, to, subject, htmlBody); err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "message": "Email enviado a " + to}
+}
+
+func (te *toolExecutor) rnvBillingRemind(args map[string]interface{}) map[string]interface{} {
+	clientID := strArg(args, "clientId")
+	now := time.Now()
+	if clientID != "" {
+		var cl models.Client
+		if te.db.First(&cl, "id = ?", clientID).Error != nil {
+			return map[string]interface{}{"success": false, "error": "cliente no encontrado"}
+		}
+		overdue, daysLate, amount := serviceslayer.ClientOverdueInfo(te.db, cl, now)
+		if !overdue || amount <= 0 {
+			return map[string]interface{}{"success": false, "error": "cliente no está en mora"}
+		}
+		if cl.Email == nil || *cl.Email == "" {
+			return map[string]interface{}{"success": false, "error": "cliente sin email"}
+		}
+		if err := serviceslayer.SendOverdueInvoiceEmail(te.db, te.cfg, cl, amount, daysLate); err != nil {
+			return map[string]interface{}{"success": false, "error": err.Error()}
+		}
+		return map[string]interface{}{"success": true, "message": "Recordatorio enviado a " + cl.Name}
+	}
+	var clients []models.Client
+	te.db.Where("is_active = true").Find(&clients)
+	sent, failed := 0, 0
+	for _, cl := range clients {
+		overdue, daysLate, amount := serviceslayer.ClientOverdueInfo(te.db, cl, now)
+		if !overdue || amount <= 0 || cl.Email == nil || *cl.Email == "" {
+			continue
+		}
+		if err := serviceslayer.SendOverdueInvoiceEmail(te.db, te.cfg, cl, amount, daysLate); err != nil {
+			failed++
+		} else {
+			sent++
+		}
+	}
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Recordatorios: %d enviados, %d fallidos", sent, failed),
+		"sent": sent, "failed": failed,
+	}
+}
+
 func (te *toolExecutor) rnvCompleteTask(args map[string]interface{}) map[string]interface{} {
 	id := strArg(args, "taskId")
 	if id == "" {
@@ -1210,7 +1480,7 @@ func simplifyServices(list []models.Service) []map[string]interface{} {
 		out = append(out, map[string]interface{}{
 			"id": s.ID, "name": s.Name, "type": s.Type, "status": s.Status,
 			"monthlyCost": s.MonthlyCost, "vpsId": s.VpsID, "clientId": s.ClientID,
-			"url": s.URL,
+			"url": s.URL, "faviconUrl": s.FaviconURL,
 		})
 	}
 	return out

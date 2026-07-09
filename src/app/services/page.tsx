@@ -12,6 +12,7 @@ import { motion } from "framer-motion";
 import { services as servicesApi, type ServiceOverviewGroup } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { ServiceTaskPanel, type ServiceTaskTarget } from "@/components/ServiceTaskPanel";
+import { ServiceIcon } from "@/components/ServiceIcon";
 
 export default function ServicesPage() {
     const [services, setServices] = useState<any[]>([]);
@@ -202,15 +203,6 @@ export default function ServicesPage() {
 
     const totalVisible = filteredGroups.reduce((n, g) => n + g.services.length, 0);
 
-    const serviceIcons: Record<string, any> = {
-        odoo: "🟣",
-        postgres: "🐘",
-        nginx: "🟢",
-        redis: "🔴",
-        mysql: "🐬",
-        docker: "🐳",
-    };
-
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -330,7 +322,14 @@ export default function ServicesPage() {
                                             className="flex items-center justify-between p-4 hover:bg-violet-50/50 group"
                                         >
                                             <div className="flex items-center gap-4 min-w-0">
-                                                <span className="text-2xl shrink-0">{serviceIcons[service.type] || "⚙️"}</span>
+                                                <ServiceIcon
+                                                    name={service.name}
+                                                    type={service.type}
+                                                    url={service.url}
+                                                    faviconUrl={service.faviconUrl}
+                                                    size="md"
+                                                    online={service.status === "running"}
+                                                />
                                                 <div className="min-w-0">
                                                     <div className="flex items-center gap-2 flex-wrap">
                                                         <span className="font-semibold text-gray-900">

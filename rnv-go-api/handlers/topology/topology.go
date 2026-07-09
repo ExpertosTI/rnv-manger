@@ -115,7 +115,7 @@ func Map(db *gorm.DB) gin.HandlerFunc {
 					ID: s.ID, Type: "service", Label: s.Name, Status: uptimeLabel(s),
 					ParentID: &v.ID,
 					Meta: map[string]interface{}{
-						"type": s.Type, "port": s.Port, "url": s.URL,
+						"type": s.Type, "port": s.Port, "url": s.URL, "faviconUrl": s.FaviconURL,
 						"monthlyCost": s.MonthlyCost, "annualCost": s.AnnualCost,
 						"billingCycle": s.BillingCycle, "charge": charge, "chargeCycle": cycle,
 						"clientId": clientID, "clientName": clientName,
@@ -128,7 +128,7 @@ func Map(db *gorm.DB) gin.HandlerFunc {
 				}
 				svcNodes = append(svcNodes, map[string]interface{}{
 					"id": s.ID, "name": s.Name, "type": s.Type, "status": uptimeLabel(s),
-					"charge": charge, "chargeCycle": cycle, "url": s.URL,
+					"charge": charge, "chargeCycle": cycle, "url": s.URL, "faviconUrl": s.FaviconURL,
 					"clientName": clientName, "lastChecked": s.LastChecked,
 				})
 			}
