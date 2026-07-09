@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -17,11 +18,11 @@ func StartMonitorScheduler(db *gorm.DB, cfg *config.Config) {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		go checkAllVPS(db)
+		go checkAllVPS(db, cfg)
 	}
 }
 
-func checkAllVPS(db *gorm.DB) {
+func checkAllVPS(db *gorm.DB, cfg *config.Config) {
 	var vpsList []models.VPS
 	db.Find(&vpsList)
 
@@ -47,6 +48,15 @@ func checkAllVPS(db *gorm.DB) {
 					"vpsIP":  v.IPAddress,
 					"status": status,
 				})
+				if cfg != nil {
+					if status == "offline" {
+						_ = serviceslayer.SendWhatsAppAlert(db, cfg,
+							fmt.Sprintf("🔴 VPS *%s* OFFLINE\nIP: %s", v.Name, v.IPAddress))
+					} else {
+						_ = serviceslayer.SendWhatsAppAlert(db, cfg,
+							fmt.Sprintf("🟢 VPS *%s* online\nIP: %s", v.Name, v.IPAddress))
+					}
+				}
 				log.Printf("[Monitor] VPS %s (%s) status changed to %s", v.Name, v.IPAddress, status)
 			}
 		}(vps)

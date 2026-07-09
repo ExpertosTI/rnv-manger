@@ -29,6 +29,11 @@ type Config struct {
 	NotificationEmail string
 	GeminiAPIKey      string
 	GeminiModel       string
+	EvolutionAPIURL   string
+	EvolutionAPIKey   string
+	EvolutionInstance string
+	WhatsAppNotifyNumbers string
+	WhatsAppSenderLabel   string
 }
 
 func Load() *Config {
@@ -60,6 +65,11 @@ func Load() *Config {
 		NotificationEmail: getEnv("NOTIFICATION_EMAIL", ""),
 		GeminiAPIKey:      getEnv("GEMINI_API_KEY", ""),
 		GeminiModel:       getEnv("GEMINI_MODEL", "gemini-2.5-flash"),
+		EvolutionAPIURL:   getEnv("EVOLUTION_API_URL", ""),
+		EvolutionAPIKey:   getEnv("EVOLUTION_API_KEY", ""),
+		EvolutionInstance: getEnv("EVOLUTION_INSTANCE", "renace"),
+		WhatsAppNotifyNumbers: getEnv("WHATSAPP_NOTIFY_NUMBERS", ""),
+		WhatsAppSenderLabel:   getEnv("WHATSAPP_SENDER_LABEL", "Renace"),
 	}
 
 	if cfg.JWTSecret == "change-me-in-production-use-32-chars-min" {

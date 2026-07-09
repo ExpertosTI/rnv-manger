@@ -109,6 +109,8 @@ func (te *toolExecutor) execute(name string, args map[string]interface{}) execut
 		result.Result = te.rnvDNSLookup(args)
 	case "rnv_send_email":
 		result.Result = te.rnvSendEmail(args)
+	case "rnv_send_whatsapp":
+		result.Result = te.rnvSendWhatsApp(args)
 	case "rnv_billing_remind":
 		result.Result = te.rnvBillingRemind(args)
 	case "rnv_service_health":
@@ -1320,6 +1322,18 @@ func (te *toolExecutor) rnvSendEmail(args map[string]interface{}) map[string]int
 		return map[string]interface{}{"success": false, "error": err.Error()}
 	}
 	return map[string]interface{}{"success": true, "message": "Email enviado a " + to}
+}
+
+func (te *toolExecutor) rnvSendWhatsApp(args map[string]interface{}) map[string]interface{} {
+	to := strArg(args, "to")
+	text := strArg(args, "text")
+	if to == "" || text == "" {
+		return map[string]interface{}{"success": false, "error": "to y text requeridos"}
+	}
+	if err := serviceslayer.SendWhatsApp(te.db, te.cfg, to, text); err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "message": "WhatsApp enviado a " + to}
 }
 
 func (te *toolExecutor) rnvBillingRemind(args map[string]interface{}) map[string]interface{} {

@@ -1,0 +1,3 @@
+# Copia a scripts/seed.local.sh (chmod 600) — no subir a git
+# Número admin que recibe alertas (sin +)
+SEED_NOTIFY_WHATSAPP_TO="18494577463"

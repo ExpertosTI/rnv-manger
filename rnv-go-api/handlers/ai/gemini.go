@@ -536,6 +536,14 @@ func toolDeclarations() []functionDeclaration {
 			}, []string{"to", "subject", "body"}),
 		},
 		{
+			Name:        "rnv_send_whatsapp",
+			Description: "Envía mensaje WhatsApp vía Evolution API (Renace +1 809 348 7921). Para alertas y notificaciones a clientes/equipo.",
+			Parameters: objectParams(map[string]interface{}{
+				"to":   map[string]interface{}{"type": "string", "description": "Número destino, ej. 18093487921"},
+				"text": map[string]interface{}{"type": "string"},
+			}, []string{"to", "text"}),
+		},
+		{
 			Name:        "rnv_billing_remind",
 			Description: "Envía email de recordatorio de pago vencido a cliente(s) morosos.",
 			Parameters: objectParams(map[string]interface{}{
@@ -572,6 +580,7 @@ HERRAMIENTAS COMPLETAS:
 - Tareas Mi Flujo: rnv_workflow, rnv_schedule_task (type=work), rnv_complete_task, rnv_list_scheduled_tasks
 - Calendario: rnv_list_calendar
 - Email: rnv_send_email (SMTP), rnv_billing_remind (mora)
+- WhatsApp: rnv_send_whatsapp (Evolution API, instancia Renace +1 809 348 7921)
 - Alertas: rnv_service_health, rnv_list_offline_services (servicios caídos; monitor automático cada 3 min)
 - Odoo: odoo_* (si configurado)
 

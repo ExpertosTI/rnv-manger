@@ -28,6 +28,8 @@ rnv_manager_backup_*.json
 
 # env files
 .env*
+.evolution.local
+scripts/seed.local.sh
 
 # vercel
 .vercel

@@ -130,6 +130,16 @@ func notifyServiceStatusChange(db *gorm.DB, cfg *config.Config, svc models.Servi
 			</div>`, svc.Name, method, vpsName, oldStatus)
 			_ = SendEmail(db, cfg, cfg.NotificationEmail, "RNV Alert — "+svc.Name+" OFFLINE", body)
 		}
+		if cfg != nil {
+			waMsg := fmt.Sprintf("🔴 *%s* OFFLINE", svc.Name)
+			if vpsName != "" {
+				waMsg += "\nVPS: " + vpsName
+			}
+			if svc.URL != nil && *svc.URL != "" {
+				waMsg += "\n" + *svc.URL
+			}
+			_ = SendWhatsAppAlert(db, cfg, waMsg)
+		}
 		return
 	}
 
@@ -143,6 +153,9 @@ func notifyServiceStatusChange(db *gorm.DB, cfg *config.Config, svc models.Servi
 		if cfg != nil && cfg.NotificationEmail != "" && oldStatus == "stopped" {
 			body := fmt.Sprintf(`<p><b>%s</b> está online de nuevo (%s).</p>`, svc.Name, method)
 			_ = SendEmail(db, cfg, cfg.NotificationEmail, "RNV — "+svc.Name+" recuperado", body)
+		}
+		if cfg != nil && oldStatus == "stopped" {
+			_ = SendWhatsAppAlert(db, cfg, fmt.Sprintf("🟢 *%s* volvió ONLINE\nVPS: %s", svc.Name, vpsName))
 		}
 	}
 }

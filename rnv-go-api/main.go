@@ -18,6 +18,7 @@ import (
 	calendarHandler "github.com/renace/rnv-go-api/handlers/calendar"
 	clientsHandler "github.com/renace/rnv-go-api/handlers/clients"
 	emailHandler "github.com/renace/rnv-go-api/handlers/email"
+	whatsappHandler "github.com/renace/rnv-go-api/handlers/whatsapp"
 	healthHandler "github.com/renace/rnv-go-api/handlers/health"
 	historyHandler "github.com/renace/rnv-go-api/handlers/history"
 	hostingerHandler "github.com/renace/rnv-go-api/handlers/hostinger"
@@ -227,6 +228,11 @@ func main() {
 		// Email
 		auth.GET("/email", emailHandler.Config(db, cfg))
 		auth.POST("/email", emailHandler.Send(db, cfg))
+
+		// WhatsApp (Evolution API — canal central Renace)
+		auth.GET("/whatsapp", whatsappHandler.Config(db, cfg))
+		auth.POST("/whatsapp", whatsappHandler.Send(db, cfg))
+		auth.POST("/whatsapp/test", whatsappHandler.Test(db, cfg))
 
 		// AI Assistant
 		auth.POST("/ai/chat", aiHandler.Chat(db, cfg))

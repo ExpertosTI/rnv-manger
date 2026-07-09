@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import {
     Save, Mail, Key, Bell, Server, RefreshCw,
-    CheckCircle, AlertTriangle, Eye, EyeOff, Shield, Sparkles
+    CheckCircle, AlertTriangle, Eye, EyeOff, Shield, Sparkles, MessageCircle
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,19 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
             { key: "smtp_user", label: "Usuario", type: "email", placeholder: "info@renace.tech" },
             { key: "smtp_pass", label: "Contraseña", type: "password", placeholder: "••••••••" },
             { key: "alert_email", label: "Email de alertas", type: "email", placeholder: "admin@tuempresa.com", description: "Recibe alertas de pagos y recursos" },
+        ],
+    },
+    {
+        id: "whatsapp",
+        title: "WhatsApp (Evolution API)",
+        icon: MessageCircle,
+        description: "Canal central de notificaciones — Renace +1 809 348 7921 (instancia RENACE.TECH)",
+        fields: [
+            { key: "evolution_api_url", label: "URL Evolution API", type: "text", placeholder: "https://evoapi.renace.tech" },
+            { key: "evolution_api_key", label: "API Key", type: "password", placeholder: "apikey de Evolution" },
+            { key: "evolution_instance", label: "Instancia", type: "text", placeholder: "RENACE.TECH", description: "Nombre exacto en el manager de Evolution" },
+            { key: "whatsapp_notify_numbers", label: "Números de alerta", type: "text", placeholder: "18093487921,1809...", description: "Quién recibe alertas de VPS/servicios (sin +)" },
+            { key: "whatsapp_sender_label", label: "Etiqueta remitente", type: "text", placeholder: "Renace" },
         ],
     },
     {
@@ -94,12 +107,15 @@ export default function SettingsPage() {
     const [restoring, setRestoring] = useState(false);
     const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
     const [smtpStatus, setSmtpStatus] = useState<"unknown" | "ok" | "error">("unknown");
+    const [waStatus, setWaStatus] = useState<"unknown" | "ok" | "error">("unknown");
+    const [testingWa, setTestingWa] = useState(false);
     const [odooStatus, setOdooStatus] = useState<"unknown" | "ok" | "error">("unknown");
     const [testingOdoo, setTestingOdoo] = useState(false);
 
     useEffect(() => {
         fetchSettings();
         checkSmtpStatus();
+        checkWhatsAppStatus();
     }, []);
 
     const fetchSettings = async () => {
@@ -138,6 +154,56 @@ export default function SettingsPage() {
             }
         } catch {
             setSmtpStatus("error");
+        }
+    };
+
+    const checkWhatsAppStatus = async () => {
+        try {
+            const res = await fetch("/api/whatsapp");
+            const data = await res.json();
+            if (data.success && data.data?.configured) {
+                setWaStatus("ok");
+                setSettings((prev) => ({
+                    ...prev,
+                    evolution_api_url: data.data.apiUrl || prev.evolution_api_url || "https://evoapi.renace.tech",
+                    evolution_instance: data.data.instance || prev.evolution_instance || "RENACE.TECH",
+                    whatsapp_sender_label: data.data.senderLabel || prev.whatsapp_sender_label || "Renace",
+                }));
+            } else {
+                setWaStatus("error");
+            }
+        } catch {
+            setWaStatus("error");
+        }
+    };
+
+    const testWhatsApp = async () => {
+        setTestingWa(true);
+        try {
+            const resSave = await fetch("/api/settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ settings }),
+            });
+            const saveData = await resSave.json();
+            if (!saveData.success) {
+                addToast(saveData.error || "Error al guardar credenciales", "error");
+                return;
+            }
+            const res = await fetch("/api/whatsapp/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+            const data = await res.json();
+            if (data.success) {
+                setWaStatus("ok");
+                addToast(`WhatsApp de prueba enviado a ${data.to}`, "success");
+            } else {
+                setWaStatus("error");
+                addToast(data.error || "No se pudo enviar WhatsApp", "error");
+            }
+        } catch {
+            setWaStatus("error");
+            addToast("Error al probar WhatsApp", "error");
+        } finally {
+            setTestingWa(false);
         }
     };
 
@@ -183,6 +249,7 @@ export default function SettingsPage() {
             if (data.success) {
                 addToast("Configuración guardada", "success");
                 checkSmtpStatus();
+                checkWhatsAppStatus();
             } else {
                 addToast(data.error || "Error al guardar", "error");
             }
@@ -209,6 +276,13 @@ export default function SettingsPage() {
         smtpStatus === "ok"
             ? "bg-emerald-50 border-emerald-200 text-emerald-900"
             : smtpStatus === "error"
+                ? "bg-red-50 border-red-200 text-red-900"
+                : "bg-gray-50 border-gray-200 text-gray-700";
+
+    const waBannerClass =
+        waStatus === "ok"
+            ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+            : waStatus === "error"
                 ? "bg-red-50 border-red-200 text-red-900"
                 : "bg-gray-50 border-gray-200 text-gray-700";
 
@@ -247,6 +321,28 @@ export default function SettingsPage() {
                             <p className="text-sm opacity-80 mt-0.5">Configura SMTP para recibir alertas por email</p>
                         )}
                     </div>
+                </div>
+            </div>
+
+            <div className={`p-4 rounded-2xl border-2 ${waBannerClass}`}>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3">
+                        {waStatus === "ok" ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> :
+                            waStatus === "error" ? <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" /> :
+                                <MessageCircle className="w-5 h-5 shrink-0" />}
+                        <div>
+                            <p className="font-semibold">
+                                {waStatus === "ok" ? "WhatsApp Renace conectado — listo para notificar" :
+                                    waStatus === "error" ? "WhatsApp no configurado" :
+                                        "WhatsApp — guarda credenciales y envía prueba"}
+                            </p>
+                            <p className="text-sm opacity-80 mt-0.5">Remitente: +1 809 348 7921 · API en evoapi.renace.tech</p>
+                        </div>
+                    </div>
+                    <Button variant="outline" onClick={testWhatsApp} disabled={testingWa} className="gap-2 rounded-xl border-2 border-emerald-300 text-emerald-800">
+                        {testingWa ? <RefreshCw className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
+                        Probar WhatsApp
+                    </Button>
                 </div>
             </div>
 

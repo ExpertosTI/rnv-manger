@@ -50,7 +50,16 @@ if [ -n "${1:-}" ] && [ -f "$1" ]; then
     load_file "$1"
 fi
 
-# 2) secrets.local en el servidor (no va a git)
+# 2) Evolution API (repo local, no va a git)
+load_file "$ROOT/.evolution.local"
+
+# 3) seed.local.sh — destinatario admin WhatsApp, etc.
+load_file "$ROOT/scripts/seed.local.sh"
+if [ -n "${SEED_NOTIFY_WHATSAPP_TO:-}" ] && [ -z "${WHATSAPP_NOTIFY_NUMBERS:-}" ]; then
+    export WHATSAPP_NOTIFY_NUMBERS="$SEED_NOTIFY_WHATSAPP_TO"
+fi
+
+# 4) secrets.local en el servidor (no va a git)
 # shellcheck disable=SC1091
 source "$ROOT/scripts/lib-secrets.sh"
 secrets_quarantine_if_corrupt "$SECRETS_LOCAL"
@@ -66,7 +75,7 @@ if [ -z "${SMTP_PASS:-}" ] && [ -n "${MASTER_PASSWORD:-}" ]; then
     warn "SMTP_PASS ← MASTER_PASSWORD (rnv.env)"
 fi
 
-# 3) Variables ya exportadas en el shell (GEMINI_API_KEY=... ./scripts/seed-env.sh)
+# 5) Variables ya exportadas en el shell (GEMINI_API_KEY=... ./scripts/seed-env.sh)
 KEYS=(
     DB_USER DB_PASSWORD DB_NAME DATABASE_URL
     JWT_SECRET SESSION_SECRET APP_URL GIN_MODE
@@ -75,6 +84,8 @@ KEYS=(
     HOSTINGER_API_TOKEN
     ODOO_URL ODOO_DB ODOO_USERNAME ODOO_API_KEY
     GEMINI_API_KEY GEMINI_MODEL
+    EVOLUTION_API_URL EVOLUTION_API_KEY EVOLUTION_INSTANCE
+    WHATSAPP_NOTIFY_NUMBERS WHATSAPP_SENDER_LABEL
     VAULT_MASTER_KEY VAULT_MASTER_KEY_OLD
 )
 
@@ -106,6 +117,9 @@ upsert_env "SMTP_PORT" "${SMTP_PORT:-465}" "$ENV_FILE"
 upsert_env "SMTP_USER" "info@renace.tech" "$ENV_FILE"
 upsert_env "SMTP_FROM" "info@renace.tech" "$ENV_FILE"
 upsert_env "NOTIFICATION_EMAIL" "${NOTIFICATION_EMAIL:-expertostird@gmail.com}" "$ENV_FILE"
+upsert_env "EVOLUTION_API_URL" "${EVOLUTION_API_URL:-https://evoapi.renace.tech}" "$ENV_FILE"
+upsert_env "EVOLUTION_INSTANCE" "${EVOLUTION_INSTANCE:-RENACE.TECH}" "$ENV_FILE"
+upsert_env "WHATSAPP_SENDER_LABEL" "${WHATSAPP_SENDER_LABEL:-Renace}" "$ENV_FILE"
 
 # Copiar a .env del repo (deploy.sh lo usa)
 cp "$ENV_FILE" "$REPO_ENV"
@@ -116,3 +130,5 @@ log "✅ Secretos sincronizados: $ENV_FILE → $REPO_ENV"
 load_file "$ENV_FILE"
 [ -n "${GEMINI_API_KEY:-}" ] && log "   GEMINI_API_KEY: configurada" || warn "   GEMINI_API_KEY: vacía"
 [ -n "${SMTP_PASS:-}" ] && log "   SMTP_PASS: configurada" || warn "   SMTP_PASS: vacía — OTP no enviará correo"
+[ -n "${EVOLUTION_API_KEY:-}" ] && log "   EVOLUTION_API_KEY: configurada (${EVOLUTION_INSTANCE:-RENACE.TECH})" || warn "   EVOLUTION_API_KEY: vacía — WhatsApp desactivado"
+[ -n "${WHATSAPP_NOTIFY_NUMBERS:-}" ] && log "   WHATSAPP_NOTIFY_NUMBERS: ${WHATSAPP_NOTIFY_NUMBERS}" || warn "   WHATSAPP_NOTIFY_NUMBERS: vacío — sin destinatario de alertas"
