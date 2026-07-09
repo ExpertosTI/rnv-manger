@@ -1,0 +1,50 @@
+/* Renace — overrides Evolution Manager (verde #26a681) */
+:root {
+  --primary: 158 64% 42%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 158 64% 42%;
+  --accent: 158 45% 18%;
+  --accent-foreground: 158 70% 75%;
+}
+
+html.dark {
+  --primary: 158 64% 42%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 158 64% 42%;
+}
+
+/* Botón login y acentos */
+button.bg-primary,
+button[type="submit"],
+.bg-primary {
+  background-color: #26a681 !important;
+  border-color: #26a681 !important;
+}
+
+button.bg-primary:hover,
+button[type="submit"]:hover {
+  background-color: #1f8f6d !important;
+}
+
+.text-primary,
+a.text-primary,
+.border-primary {
+  color: #26a681 !important;
+  border-color: #26a681 !important;
+}
+
+.ring-primary,
+.focus-visible\:ring-primary:focus-visible {
+  --tw-ring-color: #26a681 !important;
+}
+
+input:focus,
+input:focus-visible {
+  border-color: #26a681 !important;
+  box-shadow: 0 0 0 1px #26a681 !important;
+}
+
+/* Título login */
+h1, h2, .font-bold {
+  letter-spacing: -0.02em;
+}
