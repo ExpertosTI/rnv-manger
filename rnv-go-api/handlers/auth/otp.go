@@ -85,10 +85,21 @@ func RequestOTP(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 		// Send code via chosen channel
 		if channel == "whatsapp" {
-			if err := serviceslayer.SendOTPWhatsApp(db, cfg, email, code); err != nil {
-				c.JSON(http.StatusServiceUnavailable, gin.H{
-					"success": false,
-					"error":   "No se pudo enviar por WhatsApp. Verifica Evolution API y WHATSAPP_NOTIFY_NUMBERS.",
+			waErr := serviceslayer.SendOTPWhatsApp(db, cfg, email, code)
+			if waErr != nil {
+				// Fallback: enviar por correo para no bloquear el login
+				if mailErr := serviceslayer.SendOTPEmail(db, cfg, email, code); mailErr != nil {
+					c.JSON(http.StatusServiceUnavailable, gin.H{
+						"success": false,
+						"error":   "WhatsApp falló: " + waErr.Error(),
+					})
+					return
+				}
+				c.JSON(http.StatusOK, gin.H{
+					"success": true,
+					"message": "WhatsApp no disponible — código enviado a " + email + ". Motivo: " + waErr.Error(),
+					"channel": "email",
+					"warning": waErr.Error(),
 				})
 				return
 			}

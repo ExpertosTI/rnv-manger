@@ -38,13 +38,15 @@ function LoginForm() {
         try {
             const res = await auth.requestOTP(trimmed, channel);
             setEmail(trimmed);
-            setSentChannel((res.channel as OTPChannel) || channel);
-            addToast(
-                channel === "whatsapp"
-                    ? "Código enviado por WhatsApp a 849 y 809 (copia al correo admin)"
-                    : "Código enviado a tu correo",
-                "success"
-            );
+            const usedChannel = (res.channel as OTPChannel) || channel;
+            setSentChannel(usedChannel);
+            if (res.warning) {
+                addToast("WhatsApp falló — código enviado al correo. " + res.warning, "warning");
+            } else if (usedChannel === "whatsapp") {
+                addToast("Código enviado por WhatsApp a 849 y 809 (copia al correo admin)", "success");
+            } else {
+                addToast("Código enviado a tu correo", "success");
+            }
             setMode("otp");
         } catch (err) {
             const msg = err instanceof Error ? err.message : "";

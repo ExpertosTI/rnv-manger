@@ -44,7 +44,7 @@ export const listFetcher = <T>(path: string): Promise<T[]> =>
 
 export const auth = {
     requestOTP: (email: string, channel: "email" | "whatsapp" = "email") =>
-        request<{ success: boolean; error?: string; channel?: string }>("/auth/request-otp", {
+        request<{ success: boolean; error?: string; channel?: string; warning?: string; message?: string }>("/auth/request-otp", {
             method: "POST",
             body: JSON.stringify({ email, channel }),
         }),

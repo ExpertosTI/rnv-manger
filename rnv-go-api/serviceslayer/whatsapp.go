@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -116,12 +117,12 @@ func (wc WhatsAppConfig) IsConfigured() bool {
 	return wc.APIURL != "" && wc.APIKey != "" && wc.Instance != ""
 }
 
-func evolutionHTTP(method, url, apiKey string, body []byte) ([]byte, int, error) {
+func evolutionHTTP(method, urlStr, apiKey string, body []byte) ([]byte, int, error) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequest(method, url, reader)
+	req, err := http.NewRequest(method, urlStr, reader)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -140,13 +141,17 @@ func evolutionHTTP(method, url, apiKey string, body []byte) ([]byte, int, error)
 	return raw, resp.StatusCode, nil
 }
 
+func instancePath(instance string) string {
+	return strings.ReplaceAll(url.PathEscape(instance), "+", "%20")
+}
+
 // CheckEvolutionConnection returns WhatsApp session state from Evolution API.
 func CheckEvolutionConnection(db *gorm.DB, cfg *config.Config) (state string, connected bool) {
 	wc := ResolveWhatsAppConfig(db, cfg)
 	if !wc.IsConfigured() {
 		return "not_configured", false
 	}
-	url := fmt.Sprintf("%s/instance/connectionState/%s", wc.APIURL, wc.Instance)
+	url := fmt.Sprintf("%s/instance/connectionState/%s", wc.APIURL, instancePath(wc.Instance))
 	raw, code, err := evolutionHTTP(http.MethodGet, url, wc.APIKey, nil)
 	if err != nil {
 		return "unreachable", false
@@ -198,7 +203,7 @@ func humanizeEvolutionError(statusCode int, raw string) string {
 }
 
 func postSendText(wc WhatsAppConfig, number, text string) error {
-	url := fmt.Sprintf("%s/message/sendText/%s", wc.APIURL, wc.Instance)
+	url := fmt.Sprintf("%s/message/sendText/%s", wc.APIURL, instancePath(wc.Instance))
 
 	// Formato v2 estándar
 	bodyV2, _ := json.Marshal(map[string]string{
