@@ -17,11 +17,11 @@ import (
 
 // WhatsAppConfig holds Evolution API settings (env + app_settings).
 type WhatsAppConfig struct {
-	APIURL       string
-	APIKey       string
-	Instance     string
-	NotifyNums   []string
-	SenderLabel  string
+	APIURL      string
+	APIKey      string
+	Instance    string
+	NotifyNums  []string
+	SenderLabel string
 }
 
 var digitsOnly = regexp.MustCompile(`\D`)
@@ -36,6 +36,21 @@ func NormalizeWhatsAppNumber(raw string) string {
 	return digitsOnly.ReplaceAllString(raw, "")
 }
 
+// FormatWhatsAppRecipient ensures country code (DR → 1 + 809/829/849).
+func FormatWhatsAppRecipient(raw string) string {
+	num := NormalizeWhatsAppNumber(raw)
+	if num == "" {
+		return ""
+	}
+	if len(num) == 10 && (strings.HasPrefix(num, "809") || strings.HasPrefix(num, "829") || strings.HasPrefix(num, "849")) {
+		return "1" + num
+	}
+	if len(num) == 11 && strings.HasPrefix(num, "1") {
+		return num
+	}
+	return num
+}
+
 // ResolveWhatsAppConfig loads Evolution API config from env and DB settings.
 func ResolveWhatsAppConfig(db *gorm.DB, cfg *config.Config) WhatsAppConfig {
 	wc := WhatsAppConfig{
@@ -48,7 +63,7 @@ func ResolveWhatsAppConfig(db *gorm.DB, cfg *config.Config) WhatsAppConfig {
 		wc.SenderLabel = "Renace"
 	}
 	for _, n := range strings.Split(cfg.WhatsAppNotifyNumbers, ",") {
-		if num := NormalizeWhatsAppNumber(n); num != "" {
+		if num := FormatWhatsAppRecipient(n); num != "" {
 			wc.NotifyNums = append(wc.NotifyNums, num)
 		}
 	}
@@ -83,7 +98,7 @@ func ResolveWhatsAppConfig(db *gorm.DB, cfg *config.Config) WhatsAppConfig {
 		case "whatsapp_notify_numbers":
 			if len(wc.NotifyNums) == 0 {
 				for _, n := range strings.Split(s.Value, ",") {
-					if num := NormalizeWhatsAppNumber(n); num != "" {
+					if num := FormatWhatsAppRecipient(n); num != "" {
 						wc.NotifyNums = append(wc.NotifyNums, num)
 					}
 				}
@@ -101,13 +116,127 @@ func (wc WhatsAppConfig) IsConfigured() bool {
 	return wc.APIURL != "" && wc.APIKey != "" && wc.Instance != ""
 }
 
+func evolutionHTTP(method, url, apiKey string, body []byte) ([]byte, int, error) {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequest(method, url, reader)
+	if err != nil {
+		return nil, 0, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("apikey", apiKey)
+
+	client := &http.Client{Timeout: 25 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("evolution api: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	return raw, resp.StatusCode, nil
+}
+
+// CheckEvolutionConnection returns WhatsApp session state from Evolution API.
+func CheckEvolutionConnection(db *gorm.DB, cfg *config.Config) (state string, connected bool) {
+	wc := ResolveWhatsAppConfig(db, cfg)
+	if !wc.IsConfigured() {
+		return "not_configured", false
+	}
+	url := fmt.Sprintf("%s/instance/connectionState/%s", wc.APIURL, wc.Instance)
+	raw, code, err := evolutionHTTP(http.MethodGet, url, wc.APIKey, nil)
+	if err != nil {
+		return "unreachable", false
+	}
+	if code < 200 || code >= 300 {
+		return "error", false
+	}
+	var parsed map[string]interface{}
+	if json.Unmarshal(raw, &parsed) != nil {
+		return "unknown", false
+	}
+	// v2: { "instance": { "state": "open" } }  or  { "state": "open" }
+	state = strings.ToLower(extractConnectionState(parsed))
+	connected = state == "open" || state == "connected"
+	return state, connected
+}
+
+func extractConnectionState(m map[string]interface{}) string {
+	if inst, ok := m["instance"].(map[string]interface{}); ok {
+		if s, ok := inst["state"].(string); ok {
+			return s
+		}
+	}
+	if s, ok := m["state"].(string); ok {
+		return s
+	}
+	return ""
+}
+
+func humanizeEvolutionError(statusCode int, raw string) string {
+	low := strings.ToLower(raw)
+	if strings.Contains(low, "connection closed") {
+		return fmt.Sprintf(
+			"La sesión de WhatsApp en Evolution está cerrada (HTTP %d). Entra a evoapi.renace.tech → Manager → instancia RENACE.TECH → escanea el QR o reinicia la instancia.",
+			statusCode,
+		)
+	}
+	if strings.Contains(low, "unauthorized") || statusCode == 401 {
+		return "API Key de Evolution incorrecta. Revisa EVOLUTION_API_KEY en el servidor."
+	}
+	if strings.Contains(low, "not found") || statusCode == 404 {
+		return "Instancia no encontrada en Evolution. Verifica que el nombre sea exactamente RENACE.TECH."
+	}
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) > 200 {
+		trimmed = trimmed[:200] + "…"
+	}
+	return fmt.Sprintf("evolution api HTTP %d: %s", statusCode, trimmed)
+}
+
+func postSendText(wc WhatsAppConfig, number, text string) error {
+	url := fmt.Sprintf("%s/message/sendText/%s", wc.APIURL, wc.Instance)
+
+	// Formato v2 estándar
+	bodyV2, _ := json.Marshal(map[string]string{
+		"number": number,
+		"text":   text,
+	})
+	raw, code, err := evolutionHTTP(http.MethodPost, url, wc.APIKey, bodyV2)
+	if err != nil {
+		return err
+	}
+	if code >= 200 && code < 300 {
+		return nil
+	}
+
+	// Fallback formato v1 (textMessage)
+	bodyV1, _ := json.Marshal(map[string]interface{}{
+		"number": number,
+		"textMessage": map[string]string{
+			"text": text,
+		},
+	})
+	raw, code, err = evolutionHTTP(http.MethodPost, url, wc.APIKey, bodyV1)
+	if err != nil {
+		return err
+	}
+	if code >= 200 && code < 300 {
+		return nil
+	}
+	return fmt.Errorf("%s", humanizeEvolutionError(code, string(raw)))
+}
+
 // SendWhatsApp sends a text message via Evolution API from the connected instance.
 func SendWhatsApp(db *gorm.DB, cfg *config.Config, to, text string) error {
 	wc := ResolveWhatsAppConfig(db, cfg)
 	if !wc.IsConfigured() {
 		return fmt.Errorf("WhatsApp/Evolution API no configurado (EVOLUTION_* en servidor)")
 	}
-	num := NormalizeWhatsAppNumber(to)
+	num := FormatWhatsAppRecipient(to)
 	if num == "" {
 		return fmt.Errorf("número WhatsApp inválido")
 	}
@@ -116,38 +245,22 @@ func SendWhatsApp(db *gorm.DB, cfg *config.Config, to, text string) error {
 		return fmt.Errorf("mensaje vacío")
 	}
 
-	url := fmt.Sprintf("%s/message/sendText/%s", wc.APIURL, wc.Instance)
-	body, _ := json.Marshal(map[string]string{
-		"number": num,
-		"text":   text,
-	})
-
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return err
+	state, connected := CheckEvolutionConnection(db, cfg)
+	if !connected && state != "unreachable" && state != "unknown" && state != "error" && state != "not_configured" {
+		return fmt.Errorf(
+			"instancia '%s' no conectada a WhatsApp (estado: %s). Reconecta en Evolution Manager antes de enviar",
+			wc.Instance, state,
+		)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("apikey", wc.APIKey)
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("evolution api: %w", err)
-	}
-	defer resp.Body.Close()
-
-	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("evolution api HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
-	}
-	return nil
+	return postSendText(wc, num, text)
 }
 
 // SendWhatsAppAlert sends to all configured notification numbers.
 func SendWhatsAppAlert(db *gorm.DB, cfg *config.Config, text string) error {
 	wc := ResolveWhatsAppConfig(db, cfg)
 	if !wc.IsConfigured() || len(wc.NotifyNums) == 0 {
-		return nil
+		return fmt.Errorf("WhatsApp no configurado o sin WHATSAPP_NOTIFY_NUMBERS")
 	}
 	msg := strings.TrimSpace(text)
 	var lastErr error
@@ -168,12 +281,16 @@ func SendWhatsAppAlert(db *gorm.DB, cfg *config.Config, text string) error {
 // WhatsAppStatus returns config health for API/UI.
 func WhatsAppStatus(db *gorm.DB, cfg *config.Config) map[string]interface{} {
 	wc := ResolveWhatsAppConfig(db, cfg)
+	state, connected := CheckEvolutionConnection(db, cfg)
 	return map[string]interface{}{
-		"configured":    wc.IsConfigured(),
-		"apiUrl":        wc.APIURL,
-		"instance":      wc.Instance,
-		"notifyCount":   len(wc.NotifyNums),
-		"senderLabel":   wc.SenderLabel,
-		"hasApiKey":     wc.APIKey != "",
+		"configured":  wc.IsConfigured(),
+		"connected":   connected,
+		"state":       state,
+		"apiUrl":      wc.APIURL,
+		"instance":    wc.Instance,
+		"notifyCount": len(wc.NotifyNums),
+		"senderLabel": wc.SenderLabel,
+		"hasApiKey":   wc.APIKey != "",
+		"ready":       wc.IsConfigured() && connected,
 	}
 }

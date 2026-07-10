@@ -1375,30 +1375,78 @@ func (te *toolExecutor) rnvWhatsAppReport(args map[string]interface{}) map[strin
 
 func (te *toolExecutor) rnvBillingRemind(args map[string]interface{}) map[string]interface{} {
 	clientID := strArg(args, "clientId")
+	clientName := strArg(args, "clientName")
+	channel := strings.ToLower(strArg(args, "channel"))
+	if channel == "" {
+		channel = "email"
+	}
 	now := time.Now()
+
+	sendOne := func(cl models.Client) (string, error) {
+		overdue, daysLate, amount := serviceslayer.ClientOverdueInfo(te.db, cl, now)
+		if !overdue || amount <= 0 {
+			return "", fmt.Errorf("cliente no está en mora")
+		}
+		switch channel {
+		case "whatsapp", "wa":
+			if err := serviceslayer.SendOverdueInvoiceWhatsApp(te.db, te.cfg, cl, amount, daysLate); err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("WhatsApp enviado a %s (%s)", cl.Name, serviceslayer.FormatWhatsAppRecipient(ptrStr(cl.Phone))), nil
+		default:
+			if cl.Email == nil || *cl.Email == "" {
+				return "", fmt.Errorf("cliente sin email")
+			}
+			if err := serviceslayer.SendOverdueInvoiceEmail(te.db, te.cfg, cl, amount, daysLate); err != nil {
+				return "", err
+			}
+			return "Email enviado a " + cl.Name, nil
+		}
+	}
+
 	if clientID != "" {
 		var cl models.Client
 		if te.db.First(&cl, "id = ?", clientID).Error != nil {
 			return map[string]interface{}{"success": false, "error": "cliente no encontrado"}
 		}
-		overdue, daysLate, amount := serviceslayer.ClientOverdueInfo(te.db, cl, now)
-		if !overdue || amount <= 0 {
-			return map[string]interface{}{"success": false, "error": "cliente no está en mora"}
-		}
-		if cl.Email == nil || *cl.Email == "" {
-			return map[string]interface{}{"success": false, "error": "cliente sin email"}
-		}
-		if err := serviceslayer.SendOverdueInvoiceEmail(te.db, te.cfg, cl, amount, daysLate); err != nil {
+		msg, err := sendOne(cl)
+		if err != nil {
 			return map[string]interface{}{"success": false, "error": err.Error()}
 		}
-		return map[string]interface{}{"success": true, "message": "Recordatorio enviado a " + cl.Name}
+		return map[string]interface{}{"success": true, "message": msg}
+	}
+	if clientName != "" {
+		var cl models.Client
+		if te.db.Where("name ILIKE ?", "%"+clientName+"%").First(&cl).Error != nil {
+			return map[string]interface{}{"success": false, "error": "cliente no encontrado: " + clientName}
+		}
+		msg, err := sendOne(cl)
+		if err != nil {
+			return map[string]interface{}{"success": false, "error": err.Error()}
+		}
+		return map[string]interface{}{"success": true, "message": msg}
 	}
 	var clients []models.Client
 	te.db.Where("is_active = true").Find(&clients)
 	sent, failed := 0, 0
 	for _, cl := range clients {
 		overdue, daysLate, amount := serviceslayer.ClientOverdueInfo(te.db, cl, now)
-		if !overdue || amount <= 0 || cl.Email == nil || *cl.Email == "" {
+		if !overdue || amount <= 0 {
+			continue
+		}
+		if channel == "whatsapp" || channel == "wa" {
+			if cl.Phone == nil || strings.TrimSpace(*cl.Phone) == "" {
+				failed++
+				continue
+			}
+			if err := serviceslayer.SendOverdueInvoiceWhatsApp(te.db, te.cfg, cl, amount, daysLate); err != nil {
+				failed++
+			} else {
+				sent++
+			}
+			continue
+		}
+		if cl.Email == nil || *cl.Email == "" {
 			continue
 		}
 		if err := serviceslayer.SendOverdueInvoiceEmail(te.db, te.cfg, cl, amount, daysLate); err != nil {
@@ -1665,6 +1713,13 @@ func strArg(args map[string]interface{}, key string) string {
 	default:
 		return fmt.Sprintf("%v", t)
 	}
+}
+
+func ptrStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func intArg(args map[string]interface{}, key string, def int) int {

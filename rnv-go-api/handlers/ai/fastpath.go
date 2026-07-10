@@ -18,6 +18,25 @@ func tryFastPath(db *gorm.DB, cfg *config.Config, message string) (string, []exe
 
 	report, opts := detectWhatsAppIntent(msg)
 	if report == "" {
+		// Recordatorio de pago a cliente por WhatsApp
+		if paymentRemind, name := detectPaymentRemindIntent(msg); paymentRemind {
+			executor := newToolExecutor(db, cfg)
+			args := map[string]interface{}{"channel": "whatsapp"}
+			if name != "" {
+				args["clientName"] = name
+			}
+			exec := executor.execute("rnv_billing_remind", args)
+			res := asToolResultMap(exec.Result)
+			if success, _ := res["success"].(bool); success {
+				msg, _ := res["message"].(string)
+				return "✅ " + msg, []executedFunction{exec}, true
+			}
+			errMsg, _ := res["error"].(string)
+			if errMsg == "" {
+				errMsg = "no se pudo enviar el recordatorio"
+			}
+			return "❌ " + errMsg, []executedFunction{exec}, true
+		}
 		return "", nil, false
 	}
 
@@ -133,6 +152,7 @@ func wantsDelivery(msg string) bool {
 		"mandame", "enviame", "envia", "manda",
 		"reporte por", "por whatsapp", "por wa", "por watsapp",
 		"un mensaje", "mensaje con", "mensaje de", "notificame", "avisame",
+		"notificale", "notifica", "avise", "avisale",
 		"whatsappeame", "escribeme por",
 	}
 	for _, t := range triggers {
@@ -175,6 +195,20 @@ func detectWhatsAppIntent(msg string) (report string, opts intentOpts) {
 		}
 	}
 	return "", opts
+}
+
+func detectPaymentRemindIntent(msg string) (bool, string) {
+	if !wantsDelivery(msg) && !containsAny(msg, "notifica", "avis", "mand", "envi") {
+		return false, ""
+	}
+	if !containsAny(msg, "pagar", "pago", "mora", "debe", "factura", "cobro") {
+		return false, ""
+	}
+	name := extractAfter(msg, "a ")
+	if name == "" {
+		name = extractAfter(msg, "cliente")
+	}
+	return true, name
 }
 
 func containsAny(msg string, needles ...string) bool {

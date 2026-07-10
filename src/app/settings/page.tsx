@@ -107,7 +107,8 @@ export default function SettingsPage() {
     const [restoring, setRestoring] = useState(false);
     const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
     const [smtpStatus, setSmtpStatus] = useState<"unknown" | "ok" | "error">("unknown");
-    const [waStatus, setWaStatus] = useState<"unknown" | "ok" | "error">("unknown");
+    const [waStatus, setWaStatus] = useState<"unknown" | "ok" | "warning" | "error">("unknown");
+    const [waDetail, setWaDetail] = useState("");
     const [testingWa, setTestingWa] = useState(false);
     const [odooStatus, setOdooStatus] = useState<"unknown" | "ok" | "error">("unknown");
     const [testingOdoo, setTestingOdoo] = useState(false);
@@ -159,21 +160,32 @@ export default function SettingsPage() {
 
     const checkWhatsAppStatus = async () => {
         try {
-            const res = await fetch("/api/whatsapp");
+            const res = await fetch("/api/whatsapp", { credentials: "include" });
             const data = await res.json();
-            if (data.success && data.data?.configured) {
-                setWaStatus("ok");
+            const d = data.data || {};
+            if (data.success && d.configured) {
                 setSettings((prev) => ({
                     ...prev,
-                    evolution_api_url: data.data.apiUrl || prev.evolution_api_url || "https://evoapi.renace.tech",
-                    evolution_instance: data.data.instance || prev.evolution_instance || "RENACE.TECH",
-                    whatsapp_sender_label: data.data.senderLabel || prev.whatsapp_sender_label || "Renace",
+                    evolution_api_url: d.apiUrl || prev.evolution_api_url || "https://evoapi.renace.tech",
+                    evolution_instance: d.instance || prev.evolution_instance || "RENACE.TECH",
+                    whatsapp_sender_label: d.senderLabel || prev.whatsapp_sender_label || "Renace",
                 }));
+                if (d.connected || d.ready) {
+                    setWaStatus("ok");
+                    setWaDetail(`Instancia ${d.instance} conectada (${d.state || "open"})`);
+                } else {
+                    setWaStatus("warning");
+                    setWaDetail(
+                        `Credenciales OK pero instancia desconectada (estado: ${d.state || "close"}). Reconecta el QR en Evolution Manager.`
+                    );
+                }
             } else {
                 setWaStatus("error");
+                setWaDetail("Faltan EVOLUTION_API_URL, EVOLUTION_API_KEY o EVOLUTION_INSTANCE en el servidor.");
             }
         } catch {
             setWaStatus("error");
+            setWaDetail("No se pudo verificar WhatsApp");
         }
     };
 
@@ -282,6 +294,8 @@ export default function SettingsPage() {
     const waBannerClass =
         waStatus === "ok"
             ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+            : waStatus === "warning"
+                ? "bg-amber-50 border-amber-200 text-amber-900"
             : waStatus === "error"
                 ? "bg-red-50 border-red-200 text-red-900"
                 : "bg-gray-50 border-gray-200 text-gray-700";
@@ -328,15 +342,19 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div className="flex items-center gap-3">
                         {waStatus === "ok" ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> :
+                            waStatus === "warning" ? <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" /> :
                             waStatus === "error" ? <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" /> :
                                 <MessageCircle className="w-5 h-5 shrink-0" />}
                         <div>
                             <p className="font-semibold">
                                 {waStatus === "ok" ? "WhatsApp Renace conectado — listo para notificar" :
-                                    waStatus === "error" ? "WhatsApp no configurado" :
+                                    waStatus === "warning" ? "WhatsApp configurado pero instancia desconectada" :
+                                    waStatus === "error" ? "WhatsApp no configurado en el servidor" :
                                         "WhatsApp — guarda credenciales y envía prueba"}
                             </p>
-                            <p className="text-sm opacity-80 mt-0.5">Remitente: +1 809 348 7921 · API en evoapi.renace.tech</p>
+                            <p className="text-sm opacity-80 mt-0.5">
+                                {waDetail || "Remitente: +1 809 348 7921 · API en evoapi.renace.tech"}
+                            </p>
                         </div>
                     </div>
                     <Button variant="outline" onClick={testWhatsApp} disabled={testingWa} className="gap-2 rounded-xl border-2 border-emerald-300 text-emerald-800">

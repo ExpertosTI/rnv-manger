@@ -2,6 +2,7 @@ package serviceslayer
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/renace/rnv-go-api/config"
@@ -39,6 +40,24 @@ func SendOverdueInvoiceEmail(db *gorm.DB, cfg *config.Config, cl models.Client, 
 	subject := fmt.Sprintf("Recordatorio de pago vencido — %s", cl.Name)
 	body := overdueEmailBody(cl.Name, amount, daysLate, FormatDueDescription(cl), BillingCycleLabel(cl), cl.Currency)
 	return SendEmail(db, cfg, *cl.Email, subject, body)
+}
+
+func overdueWhatsAppText(cl models.Client, amount float64, daysLate int) string {
+	cycle := BillingCycleLabel(cl)
+	due := FormatDueDescription(cl)
+	return fmt.Sprintf(
+		"🔔 *Renace Tech — Recordatorio de pago*\n\nHola *%s*,\n\nTu factura (%s) está *vencida*.\n\n💰 Monto: *$%.2f %s*\n📅 Vencimiento: %s\n⏱ Días de mora: *%d*\n\nPor favor regulariza tu pago. Si ya pagaste, ignora este mensaje.\n\n_Renace Tech_",
+		cl.Name, cycle, amount, cl.Currency, due, daysLate,
+	)
+}
+
+// SendOverdueInvoiceWhatsApp notifies a client by WhatsApp about overdue payment.
+func SendOverdueInvoiceWhatsApp(db *gorm.DB, cfg *config.Config, cl models.Client, amount float64, daysLate int) error {
+	if cl.Phone == nil || strings.TrimSpace(*cl.Phone) == "" {
+		return fmt.Errorf("cliente %s sin teléfono WhatsApp — agrégalo en Clientes", cl.Name)
+	}
+	text := overdueWhatsAppText(cl, amount, daysLate)
+	return SendWhatsApp(db, cfg, *cl.Phone, text)
 }
 
 // OverdueEmailSentToday checks if we already emailed this client today about overdue.
