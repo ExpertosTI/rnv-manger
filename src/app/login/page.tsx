@@ -26,13 +26,22 @@ function LoginForm() {
 
     const requestOTP = async (e: React.FormEvent) => {
         e.preventDefault();
+        const trimmed = email.trim().toLowerCase();
+        if (!trimmed.includes("@")) {
+            addToast(
+                "Usa tu email autorizado (ej. expertostird@gmail.com). WhatsApp solo es el canal del código, no el usuario.",
+                "error"
+            );
+            return;
+        }
         setIsLoading(true);
         try {
-            const res = await auth.requestOTP(email, channel);
+            const res = await auth.requestOTP(trimmed, channel);
+            setEmail(trimmed);
             setSentChannel((res.channel as OTPChannel) || channel);
             addToast(
                 channel === "whatsapp"
-                    ? "Código enviado por WhatsApp (copia al correo del admin)"
+                    ? "Código enviado por WhatsApp a 849 y 809 (copia al correo admin)"
                     : "Código enviado a tu correo",
                 "success"
             );
@@ -71,22 +80,6 @@ function LoginForm() {
         return (
             <form onSubmit={requestOTP} className="space-y-6">
                 <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700 ml-1">Email de acceso</label>
-                    <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                        <Input
-                            type="email"
-                            placeholder="tu@email.com"
-                            className="pl-10 h-14 border-gray-200 focus:border-violet-500 focus:ring-violet-500 text-lg transition-all"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            required
-                            autoFocus
-                        />
-                    </div>
-                </div>
-
-                <div className="space-y-2">
                     <label className="text-sm font-medium text-gray-700 ml-1">
                         ¿Cómo quieres recibir el código?
                     </label>
@@ -116,11 +109,31 @@ function LoginForm() {
                             WhatsApp
                         </button>
                     </div>
-                    {channel === "whatsapp" && (
-                        <p className="text-xs text-gray-500 px-1">
-                            Se envía al WhatsApp del admin y una copia al correo configurado.
-                        </p>
-                    )}
+                </div>
+
+                <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700 ml-1">
+                        Email autorizado
+                    </label>
+                    <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        <Input
+                            type="email"
+                            inputMode="email"
+                            autoComplete="email"
+                            placeholder="expertostird@gmail.com"
+                            className="pl-10 h-14 border-gray-200 focus:border-violet-500 focus:ring-violet-500 text-lg transition-all"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            required
+                            autoFocus
+                        />
+                    </div>
+                    <p className="text-xs text-gray-500 px-1">
+                        {channel === "whatsapp"
+                            ? "Siempre escribes tu email. El código llega por WhatsApp a 849 y 809 (+ copia al correo admin)."
+                            : "El código se envía a este correo."}
+                    </p>
                 </div>
 
                 <Button
@@ -132,7 +145,7 @@ function LoginForm() {
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                     ) : (
                         <>
-                            Enviar Código de Acceso
+                            {channel === "whatsapp" ? "Enviar código por WhatsApp" : "Enviar código al correo"}
                             <ArrowRight className="ml-2 h-5 w-5" />
                         </>
                     )}
@@ -147,7 +160,7 @@ function LoginForm() {
                 <div className="text-center mb-2">
                     <p className="text-sm text-gray-500">
                         {sentChannel === "whatsapp"
-                            ? "Código enviado por WhatsApp (y copia al admin):"
+                            ? "Revisa WhatsApp (849 / 809). Acceso vinculado a:"
                             : "Hemos enviado un código a:"}
                     </p>
                     <p className="text-sm font-bold text-violet-600">{email}</p>
