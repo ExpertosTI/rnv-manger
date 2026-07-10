@@ -195,8 +195,9 @@ func detectWhatsAppIntent(msg string) (report string, opts intentOpts) {
 		opts.ClientName = extractAfter(msg, "cliente")
 		return "client", opts
 	default:
-		if containsAny(msg, "reporte") && containsAny(msg, "whatsapp", "wa", "mensaje"):
+		if containsAny(msg, "reporte") && containsAny(msg, "whatsapp", "wa", "mensaje") {
 			return "dashboard", opts
+		}
 	}
 	return "", opts
 }
