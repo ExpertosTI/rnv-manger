@@ -16,27 +16,29 @@ func tryFastPath(db *gorm.DB, cfg *config.Config, message string) (string, []exe
 		return "", nil, false
 	}
 
+	// 1) Cobro a cliente por WhatsApp (849 → teléfono del cliente) — antes que reportes al admin
+	if paymentRemind, name := detectPaymentRemindIntent(msg); paymentRemind {
+		if strings.TrimSpace(name) == "" {
+			return "¿A qué cliente le aviso la falta de pago? Ejemplo: *notifícale a Coca que tiene que pagar*", nil, true
+		}
+		executor := newToolExecutor(db, cfg)
+		args := map[string]interface{}{"channel": "whatsapp", "clientName": name}
+		exec := executor.execute("rnv_billing_remind", args)
+		res := asToolResultMap(exec.Result)
+		if success, _ := res["success"].(bool); success {
+			out, _ := res["message"].(string)
+			return "✅ " + out + "\n_Enviado desde WhatsApp 849 al teléfono del cliente._", []executedFunction{exec}, true
+		}
+		errMsg, _ := res["error"].(string)
+		if errMsg == "" {
+			errMsg = "no se pudo enviar el recordatorio"
+		}
+		return "❌ " + errMsg, []executedFunction{exec}, true
+	}
+
+	// 2) Reportes internos al admin (WHATSAPP_NOTIFY_NUMBERS)
 	report, opts := detectWhatsAppIntent(msg)
 	if report == "" {
-		// Recordatorio de pago a cliente por WhatsApp
-		if paymentRemind, name := detectPaymentRemindIntent(msg); paymentRemind {
-			executor := newToolExecutor(db, cfg)
-			args := map[string]interface{}{"channel": "whatsapp"}
-			if name != "" {
-				args["clientName"] = name
-			}
-			exec := executor.execute("rnv_billing_remind", args)
-			res := asToolResultMap(exec.Result)
-			if success, _ := res["success"].(bool); success {
-				msg, _ := res["message"].(string)
-				return "✅ " + msg, []executedFunction{exec}, true
-			}
-			errMsg, _ := res["error"].(string)
-			if errMsg == "" {
-				errMsg = "no se pudo enviar el recordatorio"
-			}
-			return "❌ " + errMsg, []executedFunction{exec}, true
-		}
 		return "", nil, false
 	}
 
@@ -164,12 +166,16 @@ func wantsDelivery(msg string) bool {
 }
 
 func detectWhatsAppIntent(msg string) (report string, opts intentOpts) {
+	// Cobros al cliente los maneja detectPaymentRemindIntent — no son reportes al admin
+	if isClientPaymentNotify(msg) {
+		return "", opts
+	}
 	if !wantsDelivery(msg) {
 		return "", opts
 	}
 
 	switch {
-	case containsAny(msg, "moroso", "mora", "vencido", "debe", "deuda"):
+	case containsAny(msg, "moroso", "mora", "vencido", "deuda") && containsAny(msg, "reporte", "lista", "mandame", "enviame", "dame"):
 		return "overdue", opts
 	case containsAny(msg, "caido", "caida", "offline", "down", "fuera de linea"):
 		return "offline", opts
@@ -177,7 +183,7 @@ func detectWhatsAppIntent(msg string) (report string, opts intentOpts) {
 		return "workflow", opts
 	case containsAny(msg, "mapa", "infra", "topologia", "topology", "arquitectura"):
 		return "topology", opts
-	case containsAny(msg, "pago pendient", "cobro", "factur", "finanza", "billing", "cobros proximo"):
+	case containsAny(msg, "pago pendient", "factur", "finanza", "billing", "cobros proximo") && containsAny(msg, "reporte", "mandame", "enviame", "dame"):
 		return "billing", opts
 	case containsAny(msg, "resumen", "dashboard", "estado general", "como estamos", "reporte general"):
 		return "dashboard", opts
@@ -185,30 +191,66 @@ func detectWhatsAppIntent(msg string) (report string, opts intentOpts) {
 		return "vps", opts
 	case strings.Contains(msg, "servicio"):
 		return "services", opts
-	case strings.Contains(msg, "cliente"):
+	case strings.Contains(msg, "cliente") && containsAny(msg, "reporte", "detalle", "info", "mandame", "enviame"):
 		opts.ClientName = extractAfter(msg, "cliente")
 		return "client", opts
 	default:
-		// "mandame un mensaje con X" sin tipo claro → resumen
-		if containsAny(msg, "mensaje", "whatsapp", "wa", "reporte") {
+		if containsAny(msg, "reporte") && containsAny(msg, "whatsapp", "wa", "mensaje"):
 			return "dashboard", opts
-		}
 	}
 	return "", opts
 }
 
+// isClientPaymentNotify: "notifícale falta de pago", "dile que pague", etc. → WhatsApp al cliente (línea 849).
+func isClientPaymentNotify(msg string) bool {
+	if !containsAny(msg, "pagar", "pago", "mora", "debe", "factura", "cobro", "falta de pago", "vencid") {
+		return false
+	}
+	return containsAny(msg, "notifica", "avisale", "avise", "avisale", "dile", "digale", "escribile", "escribele", "mandale", "enviale", "cobrale", "recuerdale")
+}
+
 func detectPaymentRemindIntent(msg string) (bool, string) {
-	if !wantsDelivery(msg) && !containsAny(msg, "notifica", "avis", "mand", "envi") {
-		return false, ""
+	if !isClientPaymentNotify(msg) {
+		// Variante: "notifica falta de pago a Coca" / "whatsapp a Yeury que pague"
+		if !containsAny(msg, "pagar", "pago", "mora", "debe", "factura", "cobro", "falta de pago") {
+			return false, ""
+		}
+		if !containsAny(msg, "notifica", "avis", "mand", "envi", "whatsapp", "wa", "dile", "digale") {
+			return false, ""
+		}
+		// Evitar "envíame el reporte de mora" (eso es al admin)
+		if containsAny(msg, "mandame", "enviame", "dame") && containsAny(msg, "reporte", "lista") {
+			return false, ""
+		}
 	}
-	if !containsAny(msg, "pagar", "pago", "mora", "debe", "factura", "cobro") {
-		return false, ""
-	}
-	name := extractAfter(msg, "a ")
-	if name == "" {
-		name = extractAfter(msg, "cliente")
-	}
+	name := extractClientNameForPayment(msg)
 	return true, name
+}
+
+func extractClientNameForPayment(msg string) string {
+	for _, key := range []string{"a ", "cliente ", "a cliente "} {
+		if name := extractAfter(msg, key); name != "" {
+			// Filtrar basura tipo "que pague"
+			low := strings.ToLower(name)
+			if containsAny(low, "que", "pagar", "pago", "falta", "whatsapp", "por") {
+				parts := strings.Fields(name)
+				var clean []string
+				for _, p := range parts {
+					pl := strings.ToLower(strings.Trim(p, ".,!?"))
+					if pl == "que" || pl == "pague" || pl == "pagar" || pl == "por" || pl == "whatsapp" || pl == "wa" {
+						break
+					}
+					clean = append(clean, p)
+				}
+				if len(clean) > 0 {
+					return strings.Join(clean, " ")
+				}
+				continue
+			}
+			return name
+		}
+	}
+	return ""
 }
 
 func containsAny(msg string, needles ...string) bool {

@@ -46,7 +46,7 @@ func overdueWhatsAppText(cl models.Client, amount float64, daysLate int) string 
 	cycle := BillingCycleLabel(cl)
 	due := FormatDueDescription(cl)
 	return fmt.Sprintf(
-		"🔔 *Renace Tech — Recordatorio de pago*\n\nHola *%s*,\n\nTu factura (%s) está *vencida*.\n\n💰 Monto: *$%.2f %s*\n📅 Vencimiento: %s\n⏱ Días de mora: *%d*\n\nPor favor regulariza tu pago. Si ya pagaste, ignora este mensaje.\n\n_Renace Tech_",
+		"🔔 *Renace Tech — Recordatorio de pago*\n\nHola *%s*,\n\nTu factura (%s) está *vencida*.\n\n💰 Monto: *$%.2f %s*\n📅 Vencimiento: %s\n⏱ Días de mora: *%d*\n\nPor favor regulariza tu pago. Si ya pagaste, ignora este mensaje.\n\n_Renace Tech · WhatsApp +1 849_",
 		cl.Name, cycle, amount, cl.Currency, due, daysLate,
 	)
 }

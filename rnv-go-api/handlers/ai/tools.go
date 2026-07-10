@@ -1392,7 +1392,7 @@ func (te *toolExecutor) rnvBillingRemind(args map[string]interface{}) map[string
 			if err := serviceslayer.SendOverdueInvoiceWhatsApp(te.db, te.cfg, cl, amount, daysLate); err != nil {
 				return "", err
 			}
-			return fmt.Sprintf("WhatsApp enviado a %s (%s)", cl.Name, serviceslayer.FormatWhatsAppRecipient(derefStr(cl.Phone))), nil
+			return fmt.Sprintf("WhatsApp (849) → cliente %s (%s)", cl.Name, serviceslayer.FormatWhatsAppRecipient(derefStr(cl.Phone))), nil
 		default:
 			if cl.Email == nil || *cl.Email == "" {
 				return "", fmt.Errorf("cliente sin email")

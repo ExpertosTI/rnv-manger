@@ -586,9 +586,11 @@ func toolDeclarations() []functionDeclaration {
 		},
 		{
 			Name:        "rnv_billing_remind",
-			Description: "Envía email de recordatorio de pago vencido a cliente(s) morosos.",
+			Description: "Recordatorio de falta de pago a un cliente. channel=whatsapp envía SOLO al teléfono del cliente desde la línea 849 (Evolution). channel=email usa SMTP. No usa la lista de admin WHATSAPP_NOTIFY_NUMBERS.",
 			Parameters: objectParams(map[string]interface{}{
-				"clientId": map[string]interface{}{"type": "string", "description": "Opcional; si vacío envía a todos los morosos"},
+				"clientId":   map[string]interface{}{"type": "string", "description": "ID del cliente"},
+				"clientName": map[string]interface{}{"type": "string", "description": "Nombre del cliente (ej. Coca, Yeury)"},
+				"channel":    map[string]interface{}{"type": "string", "description": "whatsapp|email — para cobros a clientes usa whatsapp"},
 			}, []string{}),
 		},
 		{
@@ -620,8 +622,9 @@ HERRAMIENTAS COMPLETAS:
 - Clientes/pagos: rnv_create/update_client, rnv_record_payment, rnv_create_payment, rnv_billing_remind
 - Tareas Mi Flujo: rnv_workflow, rnv_schedule_task (type=work), rnv_complete_task, rnv_list_scheduled_tasks
 - Calendario: rnv_list_calendar
-- Email: rnv_send_email (SMTP), rnv_billing_remind (mora)
-- WhatsApp: rnv_whatsapp_report (reportes listos), rnv_send_whatsapp (texto libre). Remitente Renace +1 809 348 7921. Sin 'to' → admin (849 configurado).
+- Email: rnv_send_email (SMTP)
+- Cobro a cliente: rnv_billing_remind channel=whatsapp → mensaje al teléfono del cliente desde la línea 849. channel=email → SMTP. Nunca uses WHATSAPP_NOTIFY_NUMBERS para cobrarle a un cliente.
+- WhatsApp admin (reportes): rnv_whatsapp_report / rnv_send_whatsapp sin 'to' → solo números admin. Remitente = instancia Evolution (849).
 - Alertas: rnv_service_health, rnv_list_offline_services (servicios caídos; monitor automático cada 3 min)
 - Odoo: odoo_* (si configurado)
 
@@ -631,9 +634,9 @@ SUPERPODERES:
 - Escaneo Docker en VPS: rnv_scan_services
 - Servicios caídos → rnv_list_offline_services o rnv_service_health
 - Email proactivo: mora, servicios offline, alertas de tareas
-- WhatsApp bajo demanda: si piden "envíame por WhatsApp/WA" → rnv_whatsapp_report con el tipo adecuado, o consulta datos + rnv_send_whatsapp con texto formateado
-- Reportes WA: resumen→dashboard, morosos→overdue, caídos→offline, infra→topology, tareas→workflow, finanzas→billing, VPS→vps, cliente→client (+clientName)
-- Detalle custom: primero rnv_get_* / rnv_list_* y luego rnv_send_whatsapp (sin pedir número si es para el admin)
+- "Notifícale falta de pago / dile que pague a X" → rnv_billing_remind channel=whatsapp + clientName (WhatsApp 849 → teléfono del cliente)
+- Reportes WA al admin: "envíame morosos por WA" → rnv_whatsapp_report overdue
+- Detalle custom al admin: rnv_get_* luego rnv_send_whatsapp
 - Al iniciar sesión o saludar → rnv_workflow (tareas pendientes/vencidas)
 
 FLUJO DE TRABAJO:
