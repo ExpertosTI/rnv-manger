@@ -1,3 +1,4 @@
 # Copia a scripts/seed.local.sh (chmod 600) — no subir a git
-# Número admin que recibe alertas (sin +)
-SEED_NOTIFY_WHATSAPP_TO="18494577463"
+# Destinatarios de alertas OTP/VPS (sin +). Si uno falla, el otro recibe.
+# 18494577463 = Adderly (849) · 18093487921 = Renace (809)
+SEED_NOTIFY_WHATSAPP_TO="18494577463,18093487921"

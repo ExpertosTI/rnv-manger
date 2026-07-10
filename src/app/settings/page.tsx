@@ -49,7 +49,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
             { key: "evolution_api_url", label: "URL Evolution API", type: "text", placeholder: "https://evoapi.renace.tech" },
             { key: "evolution_api_key", label: "API Key", type: "password", placeholder: "apikey de Evolution" },
             { key: "evolution_instance", label: "Instancia", type: "text", placeholder: "RENACE.TECH", description: "Nombre exacto en el manager de Evolution" },
-            { key: "whatsapp_notify_numbers", label: "Números de alerta", type: "text", placeholder: "18093487921,1809...", description: "Quién recibe alertas de VPS/servicios (sin +)" },
+            { key: "whatsapp_notify_numbers", label: "Números de alerta", type: "text", placeholder: "18494577463,18093487921", description: "Varios números separados por coma (sin +). Se notifica a todos." },
             { key: "whatsapp_sender_label", label: "Etiqueta remitente", type: "text", placeholder: "Renace" },
         ],
     },

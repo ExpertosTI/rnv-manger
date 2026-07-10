@@ -53,9 +53,9 @@ fi
 # 2) Evolution API (repo local, no va a git)
 load_file "$ROOT/.evolution.local"
 
-# 3) seed.local.sh — destinatario admin WhatsApp, etc.
+# 3) seed.local.sh — destinatarios admin WhatsApp (siempre gana si está definido)
 load_file "$ROOT/scripts/seed.local.sh"
-if [ -n "${SEED_NOTIFY_WHATSAPP_TO:-}" ] && [ -z "${WHATSAPP_NOTIFY_NUMBERS:-}" ]; then
+if [ -n "${SEED_NOTIFY_WHATSAPP_TO:-}" ]; then
     export WHATSAPP_NOTIFY_NUMBERS="$SEED_NOTIFY_WHATSAPP_TO"
 fi
 
