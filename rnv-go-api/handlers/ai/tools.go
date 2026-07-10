@@ -1715,7 +1715,7 @@ func strArg(args map[string]interface{}, key string) string {
 	}
 }
 
-func ptrStr(s *string) string {
+func derefStr(s *string) string {
 	if s == nil {
 		return ""
 	}
