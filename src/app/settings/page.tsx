@@ -44,12 +44,12 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
         id: "whatsapp",
         title: "WhatsApp (Evolution API)",
         icon: MessageCircle,
-        description: "Canal central de notificaciones — Renace +1 809 348 7921 (instancia RENACE.TECH)",
+        description: "Canal central — línea 849 (instancia renace en Evolution)",
         fields: [
             { key: "evolution_api_url", label: "URL Evolution API", type: "text", placeholder: "https://evoapi.renace.tech" },
             { key: "evolution_api_key", label: "API Key", type: "password", placeholder: "apikey de Evolution" },
-            { key: "evolution_instance", label: "Instancia", type: "text", placeholder: "RENACE.TECH", description: "Nombre exacto en el manager de Evolution" },
-            { key: "whatsapp_notify_numbers", label: "Números de alerta", type: "text", placeholder: "18494577463,18093487921", description: "Varios números separados por coma (sin +). Se notifica a todos." },
+            { key: "evolution_instance", label: "Instancia", type: "text", placeholder: "renace", description: "Nombre exacto en evoapi (ahora: renace)" },
+            { key: "whatsapp_notify_numbers", label: "Números de alerta", type: "text", placeholder: "18494577463", description: "OTP/login. Cobros van al teléfono del cliente." },
             { key: "whatsapp_sender_label", label: "Etiqueta remitente", type: "text", placeholder: "Renace" },
         ],
     },
@@ -167,7 +167,7 @@ export default function SettingsPage() {
                 setSettings((prev) => ({
                     ...prev,
                     evolution_api_url: d.apiUrl || prev.evolution_api_url || "https://evoapi.renace.tech",
-                    evolution_instance: d.instance || prev.evolution_instance || "RENACE.TECH",
+                    evolution_instance: d.instance || prev.evolution_instance || "renace",
                     whatsapp_sender_label: d.senderLabel || prev.whatsapp_sender_label || "Renace",
                 }));
                 if (d.connected || d.ready) {

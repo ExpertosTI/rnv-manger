@@ -185,7 +185,7 @@ func humanizeEvolutionError(statusCode int, raw string) string {
 	low := strings.ToLower(raw)
 	if strings.Contains(low, "connection closed") {
 		return fmt.Sprintf(
-			"La sesión de WhatsApp en Evolution está cerrada (HTTP %d). Entra a evoapi.renace.tech → Manager → instancia RENACE.TECH → escanea el QR o reinicia la instancia.",
+			"La sesión de WhatsApp en Evolution está cerrada (HTTP %d). Entra a evoapi.renace.tech → Manager → instancia renace → escanea el QR o reinicia la instancia.",
 			statusCode,
 		)
 	}
@@ -193,7 +193,7 @@ func humanizeEvolutionError(statusCode int, raw string) string {
 		return "API Key de Evolution incorrecta. Revisa EVOLUTION_API_KEY en el servidor."
 	}
 	if strings.Contains(low, "not found") || statusCode == 404 {
-		return "Instancia no encontrada en Evolution. Verifica que el nombre sea exactamente RENACE.TECH."
+		return "Instancia no encontrada en Evolution. El nombre debe coincidir exactamente con evoapi (ahora: renace). Revisa EVOLUTION_INSTANCE."
 	}
 	trimmed := strings.TrimSpace(raw)
 	if len(trimmed) > 200 {

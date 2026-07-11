@@ -1,6 +1,6 @@
 # Copia a .evolution.local (chmod 600) — no subir a git
 EVOLUTION_API_URL=https://evoapi.renace.tech
 EVOLUTION_API_KEY=
-EVOLUTION_INSTANCE=RENACE.TECH
+EVOLUTION_INSTANCE=renace
 # Destinatarios de alertas (coma, sin +). Dos números = redundancia.
 WHATSAPP_NOTIFY_NUMBERS=18494577463,18093487921

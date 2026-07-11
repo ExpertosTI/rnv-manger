@@ -109,6 +109,10 @@ done
 
 # Defaults de producción si faltan
 load_file "$ENV_FILE"
+# evoapi usa instancia "renace" (no RENACE.TECH)
+case "${EVOLUTION_INSTANCE:-}" in
+    RENACE.TECH|RENACE.tech|Renace.Tech) EVOLUTION_INSTANCE=renace ;;
+esac
 upsert_env "APP_URL" "${APP_URL:-https://rnv.renace.tech}" "$ENV_FILE"
 upsert_env "GIN_MODE" "${GIN_MODE:-release}" "$ENV_FILE"
 upsert_env "GEMINI_MODEL" "${GEMINI_MODEL:-gemini-2.5-flash}" "$ENV_FILE"
@@ -118,7 +122,7 @@ upsert_env "SMTP_USER" "info@renace.tech" "$ENV_FILE"
 upsert_env "SMTP_FROM" "info@renace.tech" "$ENV_FILE"
 upsert_env "NOTIFICATION_EMAIL" "${NOTIFICATION_EMAIL:-expertostird@gmail.com}" "$ENV_FILE"
 upsert_env "EVOLUTION_API_URL" "${EVOLUTION_API_URL:-https://evoapi.renace.tech}" "$ENV_FILE"
-upsert_env "EVOLUTION_INSTANCE" "${EVOLUTION_INSTANCE:-RENACE.TECH}" "$ENV_FILE"
+upsert_env "EVOLUTION_INSTANCE" "${EVOLUTION_INSTANCE:-renace}" "$ENV_FILE"
 upsert_env "WHATSAPP_SENDER_LABEL" "${WHATSAPP_SENDER_LABEL:-Renace}" "$ENV_FILE"
 
 # Copiar a .env del repo (deploy.sh lo usa)
@@ -130,5 +134,5 @@ log "✅ Secretos sincronizados: $ENV_FILE → $REPO_ENV"
 load_file "$ENV_FILE"
 [ -n "${GEMINI_API_KEY:-}" ] && log "   GEMINI_API_KEY: configurada" || warn "   GEMINI_API_KEY: vacía"
 [ -n "${SMTP_PASS:-}" ] && log "   SMTP_PASS: configurada" || warn "   SMTP_PASS: vacía — OTP no enviará correo"
-[ -n "${EVOLUTION_API_KEY:-}" ] && log "   EVOLUTION_API_KEY: configurada (${EVOLUTION_INSTANCE:-RENACE.TECH})" || warn "   EVOLUTION_API_KEY: vacía — WhatsApp desactivado"
+[ -n "${EVOLUTION_API_KEY:-}" ] && log "   EVOLUTION_API_KEY: configurada (${EVOLUTION_INSTANCE:-renace})" || warn "   EVOLUTION_API_KEY: vacía — WhatsApp desactivado"
 [ -n "${WHATSAPP_NOTIFY_NUMBERS:-}" ] && log "   WHATSAPP_NOTIFY_NUMBERS: ${WHATSAPP_NOTIFY_NUMBERS}" || warn "   WHATSAPP_NOTIFY_NUMBERS: vacío — sin destinatario de alertas"
