@@ -261,8 +261,8 @@ func SendWhatsApp(db *gorm.DB, cfg *config.Config, to, text string) error {
 	return postSendText(wc, num, text)
 }
 
-// SendWhatsAppAlert sends to all configured notification numbers.
-func SendWhatsAppAlert(db *gorm.DB, cfg *config.Config, text string) error {
+// SendWhatsAppToNotifyNumbers sends to WHATSAPP_NOTIFY_NUMBERS (OTP / login only).
+func SendWhatsAppToNotifyNumbers(db *gorm.DB, cfg *config.Config, text string) error {
 	wc := ResolveWhatsAppConfig(db, cfg)
 	if !wc.IsConfigured() || len(wc.NotifyNums) == 0 {
 		return fmt.Errorf("WhatsApp no configurado o sin WHATSAPP_NOTIFY_NUMBERS")
@@ -281,6 +281,16 @@ func SendWhatsAppAlert(db *gorm.DB, cfg *config.Config, text string) error {
 		return lastErr
 	}
 	return nil
+}
+
+// SendWhatsAppAlert — alertas operativas van por correo (no WhatsApp).
+// Política RNV: WhatsApp solo OTP/login + mensajes a clientes.
+func SendWhatsAppAlert(db *gorm.DB, cfg *config.Config, text string) error {
+	if cfg == nil || cfg.NotificationEmail == "" {
+		return nil
+	}
+	html := fmt.Sprintf(`<pre style="font-family:sans-serif;white-space:pre-wrap">%s</pre>`, text)
+	return SendEmail(db, cfg, cfg.NotificationEmail, "RNV Alert", html)
 }
 
 // WhatsAppStatus returns config health for API/UI.

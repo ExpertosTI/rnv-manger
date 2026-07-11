@@ -16,7 +16,7 @@ func tryFastPath(db *gorm.DB, cfg *config.Config, message string) (string, []exe
 		return "", nil, false
 	}
 
-	// 1) Cobro a cliente por WhatsApp (849 → teléfono del cliente) — antes que reportes al admin
+	// Solo cobros a clientes por WhatsApp. Alertas/reportes admin → correo (no WA).
 	if paymentRemind, name := detectPaymentRemindIntent(msg); paymentRemind {
 		if strings.TrimSpace(name) == "" {
 			return "¿A qué cliente le aviso la falta de pago? Ejemplo: *notifícale a Coca que tiene que pagar*", nil, true
@@ -27,7 +27,7 @@ func tryFastPath(db *gorm.DB, cfg *config.Config, message string) (string, []exe
 		res := asToolResultMap(exec.Result)
 		if success, _ := res["success"].(bool); success {
 			out, _ := res["message"].(string)
-			return "✅ " + out + "\n_Enviado desde WhatsApp 849 al teléfono del cliente._", []executedFunction{exec}, true
+			return "✅ " + out + "\n_WhatsApp 849 → teléfono del cliente._", []executedFunction{exec}, true
 		}
 		errMsg, _ := res["error"].(string)
 		if errMsg == "" {
@@ -36,55 +36,7 @@ func tryFastPath(db *gorm.DB, cfg *config.Config, message string) (string, []exe
 		return "❌ " + errMsg, []executedFunction{exec}, true
 	}
 
-	// 2) Reportes internos al admin (WHATSAPP_NOTIFY_NUMBERS)
-	report, opts := detectWhatsAppIntent(msg)
-	if report == "" {
-		return "", nil, false
-	}
-
-	executor := newToolExecutor(db, cfg)
-	args := map[string]interface{}{"report": report}
-	if opts.ClientName != "" {
-		args["clientName"] = opts.ClientName
-	}
-	if opts.VpsName != "" {
-		args["vpsName"] = opts.VpsName
-	}
-	if opts.ServiceName != "" {
-		args["serviceName"] = opts.ServiceName
-	}
-
-	exec := executor.execute("rnv_whatsapp_report", args)
-	executed := []executedFunction{exec}
-	res := asToolResultMap(exec.Result)
-
-	success, _ := res["success"].(bool)
-	if !success {
-		errMsg, _ := res["error"].(string)
-		if errMsg == "" {
-			errMsg = "no se pudo enviar el WhatsApp"
-		}
-		return "❌ " + errMsg, executed, true
-	}
-
-	preview, _ := res["preview"].(string)
-	sentMsg, _ := res["message"].(string)
-	label := reportLabel(report)
-
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("✅ *%s* enviado por WhatsApp (+1 809 Renace).\n", label))
-	if sentMsg != "" {
-		b.WriteString(sentMsg)
-		b.WriteString("\n")
-	}
-	if preview != "" {
-		if len(preview) > 900 {
-			preview = preview[:900] + "…"
-		}
-		b.WriteString("\n_Vista previa:_\n")
-		b.WriteString(preview)
-	}
-	return b.String(), executed, true
+	return "", nil, false
 }
 
 func asToolResultMap(v interface{}) map[string]interface{} {
@@ -317,7 +269,7 @@ func friendlyGeminiError(err error) string {
 	s := err.Error()
 	low := strings.ToLower(s)
 	if strings.Contains(low, "high demand") || strings.Contains(low, "unavailable") || strings.Contains(low, "503") {
-		return "Gemini está saturado en este momento. Reintenta en unos segundos — o pide reportes por WhatsApp con frases como «envíame los pagos pendientes por WA» (funciona sin IA)."
+		return "Gemini está saturado en este momento. Reintenta en unos segundos. Para cobros: «notifícale a Coca que pague». Reportes al admin van por correo."
 	}
 	if strings.Contains(low, "429") || strings.Contains(low, "quota") {
 		return "Cuota de Gemini agotada temporalmente. Espera un momento e intenta de nuevo."

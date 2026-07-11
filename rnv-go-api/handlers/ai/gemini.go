@@ -564,18 +564,17 @@ func toolDeclarations() []functionDeclaration {
 		},
 		{
 			Name:        "rnv_send_whatsapp",
-			Description: "Envía texto libre por WhatsApp (Renace +1 809 348 7921). Si omites 'to', envía al admin configurado (WHATSAPP_NOTIFY_NUMBERS). Usa para mensajes personalizados tras consultar datos.",
+			Description: "WhatsApp SOLO a un cliente: requiere 'to' = teléfono del cliente. Sin 'to' el mensaje va por correo al admin (NOTIFICATION_EMAIL). No uses esto para reportes al admin.",
 			Parameters: objectParams(map[string]interface{}{
-				"to":   map[string]interface{}{"type": "string", "description": "Opcional. Número destino sin +. Vacío = admin"},
+				"to":   map[string]interface{}{"type": "string", "description": "Teléfono del cliente (obligatorio para WhatsApp). Vacío = correo admin"},
 				"text": map[string]interface{}{"type": "string", "description": "Mensaje (soporta *negrita* WhatsApp)"},
 			}, []string{"text"}),
 		},
 		{
 			Name:        "rnv_whatsapp_report",
-			Description: "Genera y envía por WhatsApp un reporte listo de la app. Tipos: dashboard (resumen), billing (finanzas/mora), offline (caídos), topology (infra), workflow (tareas), overdue (morosos), vps, client, services. Si omites 'to' envía al admin.",
+			Description: "Genera un reporte y lo envía por CORREO al admin (NOTIFICATION_EMAIL). WhatsApp no se usa para reportes. Tipos: dashboard, billing, offline, topology, workflow, overdue, vps, client, services.",
 			Parameters: objectParams(map[string]interface{}{
 				"report":      map[string]interface{}{"type": "string", "description": "dashboard|billing|offline|topology|workflow|overdue|vps|client|services"},
-				"to":          map[string]interface{}{"type": "string", "description": "Opcional. Número destino"},
 				"clientId":    map[string]interface{}{"type": "string"},
 				"clientName":  map[string]interface{}{"type": "string"},
 				"vpsId":       map[string]interface{}{"type": "string"},
@@ -622,10 +621,11 @@ HERRAMIENTAS COMPLETAS:
 - Clientes/pagos: rnv_create/update_client, rnv_record_payment, rnv_create_payment, rnv_billing_remind
 - Tareas Mi Flujo: rnv_workflow, rnv_schedule_task (type=work), rnv_complete_task, rnv_list_scheduled_tasks
 - Calendario: rnv_list_calendar
-- Email: rnv_send_email (SMTP)
-- Cobro a cliente: rnv_billing_remind channel=whatsapp → mensaje al teléfono del cliente desde la línea 849. channel=email → SMTP. Nunca uses WHATSAPP_NOTIFY_NUMBERS para cobrarle a un cliente.
-- WhatsApp admin (reportes): rnv_whatsapp_report / rnv_send_whatsapp sin 'to' → solo números admin. Remitente = instancia Evolution (849).
-- Alertas: rnv_service_health, rnv_list_offline_services (servicios caídos; monitor automático cada 3 min)
+- Email: rnv_send_email (SMTP) — canal por defecto para admin (reportes, alertas, resúmenes)
+- Cobro a cliente: rnv_billing_remind channel=whatsapp → teléfono del cliente desde línea 849. channel=email → SMTP.
+- WhatsApp SOLO: (1) OTP/login (sistema) (2) mensajes a clientes (cobro / rnv_send_whatsapp con 'to'). Nunca reportes ni alertas al admin por WA.
+- Reportes al admin: rnv_whatsapp_report → correo NOTIFICATION_EMAIL (aunque el usuario diga "por WhatsApp")
+- Alertas: rnv_service_health, rnv_list_offline_services (monitor → correo, no WA)
 - Odoo: odoo_* (si configurado)
 
 SUPERPODERES:
@@ -633,10 +633,9 @@ SUPERPODERES:
 - DNS → IP → VPS: rnv_dns_lookup
 - Escaneo Docker en VPS: rnv_scan_services
 - Servicios caídos → rnv_list_offline_services o rnv_service_health
-- Email proactivo: mora, servicios offline, alertas de tareas
-- "Notifícale falta de pago / dile que pague a X" → rnv_billing_remind channel=whatsapp + clientName (WhatsApp 849 → teléfono del cliente)
-- Reportes WA al admin: "envíame morosos por WA" → rnv_whatsapp_report overdue
-- Detalle custom al admin: rnv_get_* luego rnv_send_whatsapp
+- Email proactivo: mora, servicios offline, alertas de tareas, reportes
+- "Notifícale falta de pago / dile que pague a X" → rnv_billing_remind channel=whatsapp + clientName
+- "Envíame morosos / reporte" → rnv_whatsapp_report (llega por correo)
 - Al iniciar sesión o saludar → rnv_workflow (tareas pendientes/vencidas)
 
 FLUJO DE TRABAJO:
@@ -648,7 +647,7 @@ REGLAS:
 - Usa herramientas para datos reales; no inventes IDs ni montos.
 - Nunca digas que no puedes — tienes acceso casi total a la app.
 - Confirma antes de pagos, borrados, emails masivos o cambios sensibles.
-- WhatsApp a clientes externos: confirma número si no es el admin.
+- WhatsApp solo a clientes (con teléfono en ficha) o OTP; admin = correo.
 - Clientes: billingCycle monthly|annual.
 
 FORMATO (solo cuando aporte valor):

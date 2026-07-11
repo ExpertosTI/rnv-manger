@@ -71,12 +71,12 @@ export function suggestionsForPath(path: string): string[] {
     if (path.includes("/vps/")) return ["Estado de este VPS", "Listar servicios", "Ver gastos"];
     if (path.includes("/vps")) return ["Listar servidores", "VPS detenidos", "Resumen de costos"];
     if (path.includes("/services/")) return ["Detalle del servicio", "Asignar a cliente", "Ver costos"];
-    if (path.includes("/services")) return ["¿Hay servicios caídos?", "Envíamelos por WhatsApp", "Comprobar salud"];
-    if (path.includes("/billing")) return ["Pagos pendientes", "Resumen financiero por WhatsApp", "Registrar un pago"];
+    if (path.includes("/services")) return ["¿Hay servicios caídos?", "Enviar resumen por correo", "Comprobar salud"];
+    if (path.includes("/billing")) return ["Pagos pendientes", "Resumen financiero por correo", "Registrar un pago"];
     if (path.includes("/map")) return ["Vista DNS Cloud", "Servicios por IP", "¿Hay servicios caídos?"];
-    if (path.includes("/workflow")) return ["Envíame mis tareas por WA", "Tareas estancadas", "¿Qué completé hoy?"];
+    if (path.includes("/workflow")) return ["Mis tareas pendientes", "Tareas estancadas", "¿Qué completé hoy?"];
     if (path.includes("/calendar")) return ["Próximos vencimientos", "Programar recordatorio", "Tareas pendientes"];
-    if (path.includes("/settings")) return ["Probar conexión Odoo", "Reporte resumen por WhatsApp"];
-    if (path === "/") return ["Resumen general", "Envíame por WhatsApp los morosos", "¿Hay servicios caídos?"];
-    return ["Resumen general", "Envíame reporte por WhatsApp", "¿Qué puedo hacer?"];
+    if (path.includes("/settings")) return ["Probar conexión Odoo", "Resumen por correo"];
+    if (path === "/") return ["Resumen general", "Clientes morosos", "¿Hay servicios caídos?"];
+    return ["Resumen general", "¿Qué puedo hacer?", "Clientes morosos"];
 }

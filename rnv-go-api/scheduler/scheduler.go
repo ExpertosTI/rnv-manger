@@ -1,7 +1,9 @@
 package scheduler
 
 import (
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/renace/rnv-go-api/config"
@@ -47,9 +49,16 @@ func checkAllVPS(db *gorm.DB, cfg *config.Config) {
 					"vpsIP":  v.IPAddress,
 					"status": status,
 				})
-				if cfg != nil {
-					_ = serviceslayer.SendWhatsAppAlert(db, cfg,
-						serviceslayer.FormatVPSAlert(db, cfg, v.Name, v.IPAddress, status))
+				if cfg != nil && cfg.NotificationEmail != "" {
+					body := fmt.Sprintf(`<div style="font-family:sans-serif;max-width:520px;padding:20px">
+						<h2 style="color:%s">Estado VPS</h2>
+						<p><b>%s</b> (%s) → <b>%s</b></p>
+						<p style="color:#6b7280;font-size:13px">RNV Manager — monitor automático</p>
+					</div>`,
+						map[bool]string{true: "#dc2626", false: "#16a34a"}[status == "offline"],
+						v.Name, v.IPAddress, status)
+					subj := "RNV — VPS " + v.Name + " " + strings.ToUpper(status)
+					_ = serviceslayer.SendEmail(db, cfg, cfg.NotificationEmail, subj, body)
 				}
 				log.Printf("[Monitor] VPS %s (%s) status changed to %s", v.Name, v.IPAddress, status)
 			}

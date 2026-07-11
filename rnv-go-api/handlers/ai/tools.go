@@ -1332,6 +1332,17 @@ func (te *toolExecutor) rnvSendWhatsApp(args map[string]interface{}) map[string]
 	if text == "" {
 		return map[string]interface{}{"success": false, "error": "text requerido"}
 	}
+	// Solo mensajes a un número concreto (cliente). Sin 'to' = admin → correo.
+	if to == "" {
+		if te.cfg.NotificationEmail == "" {
+			return map[string]interface{}{"success": false, "error": "WhatsApp al admin desactivado. Usa email (NOTIFICATION_EMAIL) o indica 'to' = teléfono del cliente"}
+		}
+		html := fmt.Sprintf(`<pre style="font-family:sans-serif;white-space:pre-wrap">%s</pre>`, text)
+		if err := serviceslayer.SendEmail(te.db, te.cfg, te.cfg.NotificationEmail, "RNV — mensaje", html); err != nil {
+			return map[string]interface{}{"success": false, "error": err.Error()}
+		}
+		return map[string]interface{}{"success": true, "message": "Enviado por correo al admin (WhatsApp solo para clientes/OTP)", "channel": "email"}
+	}
 	sent, err := serviceslayer.SendWhatsAppTo(te.db, te.cfg, to, text)
 	if err != nil {
 		return map[string]interface{}{"success": false, "error": err.Error()}
@@ -1359,16 +1370,28 @@ func (te *toolExecutor) rnvWhatsAppReport(args map[string]interface{}) map[strin
 		ServiceID:   strArg(args, "serviceId"),
 		ServiceName: strArg(args, "serviceName"),
 	}
-	to := strArg(args, "to")
-	sent, preview, err := serviceslayer.SendWhatsAppReport(te.db, te.cfg, report, to, opts)
+	// Reportes al admin van por correo, no WhatsApp
+	text, err := serviceslayer.BuildWhatsAppReport(te.db, te.cfg, report, opts)
 	if err != nil {
 		return map[string]interface{}{"success": false, "error": err.Error()}
 	}
+	if te.cfg.NotificationEmail == "" {
+		return map[string]interface{}{"success": false, "error": "NOTIFICATION_EMAIL no configurado — reportes van por correo"}
+	}
+	html := fmt.Sprintf(`<pre style="font-family:sans-serif;white-space:pre-wrap">%s</pre>`, text)
+	subj := fmt.Sprintf("RNV — reporte %s", report)
+	if err := serviceslayer.SendEmail(te.db, te.cfg, te.cfg.NotificationEmail, subj, html); err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+	preview := text
+	if len(preview) > 400 {
+		preview = preview[:400] + "…"
+	}
 	return map[string]interface{}{
 		"success": true,
-		"message": fmt.Sprintf("Reporte '%s' enviado por WhatsApp a %s", report, strings.Join(sent, ", ")),
+		"message": fmt.Sprintf("Reporte '%s' enviado por correo a %s (WhatsApp reservado a clientes/OTP)", report, te.cfg.NotificationEmail),
 		"report":  report,
-		"sentTo":  sent,
+		"channel": "email",
 		"preview": preview,
 	}
 }
