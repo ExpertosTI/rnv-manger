@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -205,10 +207,18 @@ func humanizeEvolutionError(statusCode int, raw string) string {
 func postSendText(wc WhatsAppConfig, number, text string) error {
 	url := fmt.Sprintf("%s/message/sendText/%s", wc.APIURL, instancePath(wc.Instance))
 
+	delayMs := 1200
+	if v := strings.TrimSpace(os.Getenv("WA_SEND_DELAY_MS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > delayMs {
+			delayMs = n
+		}
+	}
+
 	// Formato v2 estándar
-	bodyV2, _ := json.Marshal(map[string]string{
+	bodyV2, _ := json.Marshal(map[string]interface{}{
 		"number": number,
 		"text":   text,
+		"delay":  delayMs,
 	})
 	raw, code, err := evolutionHTTP(http.MethodPost, url, wc.APIKey, bodyV2)
 	if err != nil {
@@ -224,6 +234,7 @@ func postSendText(wc WhatsAppConfig, number, text string) error {
 		"textMessage": map[string]string{
 			"text": text,
 		},
+		"delay": delayMs,
 	})
 	raw, code, err = evolutionHTTP(http.MethodPost, url, wc.APIKey, bodyV1)
 	if err != nil {
@@ -270,7 +281,16 @@ func SendWhatsAppToNotifyNumbers(db *gorm.DB, cfg *config.Config, text string) e
 	msg := strings.TrimSpace(text)
 	var lastErr error
 	sent := 0
-	for _, num := range wc.NotifyNums {
+	gapMs := 2000
+	if v := strings.TrimSpace(os.Getenv("WA_SEND_GAP_MS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > gapMs {
+			gapMs = n
+		}
+	}
+	for i, num := range wc.NotifyNums {
+		if i > 0 {
+			time.Sleep(time.Duration(gapMs) * time.Millisecond)
+		}
 		if err := SendWhatsApp(db, cfg, num, msg); err != nil {
 			lastErr = err
 		} else {
