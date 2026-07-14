@@ -1,3 +1,7 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 const DEFAULT_URL = "https://rnv.renace.tech";
 
 export type RnvClient = {
@@ -5,12 +9,43 @@ export type RnvClient = {
   token: string;
 };
 
+/** Carga mcp/rnv-manager/.env — archivo fácil, sin export en la shell. */
+function loadDotEnvFile(): void {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const envPath = path.join(here, "..", ".env");
+    if (!fs.existsSync(envPath)) return;
+    const raw = fs.readFileSync(envPath, "utf8");
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq <= 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let val = trimmed.slice(eq + 1).trim();
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
+        val = val.slice(1, -1);
+      }
+      if (process.env[key] === undefined || process.env[key] === "") {
+        process.env[key] = val;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+loadDotEnvFile();
+
 export function createClient(): RnvClient {
   const baseUrl = (process.env.RNV_API_URL || DEFAULT_URL).replace(/\/+$/, "");
   const token = (process.env.RNV_API_TOKEN || "").trim();
-  if (!token) {
+  if (!token || token.includes("PEGA_AQUI") || token === "rnv_...") {
     throw new Error(
-      "Falta RNV_API_TOKEN. Crea un service token admin en RNV (Ajustes / API) y exporta RNV_API_TOKEN=rnv_…"
+      "Falta el token en mcp/rnv-manager/.env — abre ese archivo, pega RNV_API_TOKEN=rnv_… (genera el token en Ajustes → Cursor MCP) y reinicia el MCP."
     );
   }
   if (!token.startsWith("rnv_")) {
@@ -21,12 +56,12 @@ export function createClient(): RnvClient {
 
 export async function rnvFetch(
   client: RnvClient,
-  path: string,
+  pathName: string,
   init: RequestInit = {}
 ): Promise<unknown> {
-  const url = path.startsWith("http")
-    ? path
-    : `${client.baseUrl}/api${path.startsWith("/") ? path : `/${path}`}`;
+  const url = pathName.startsWith("http")
+    ? pathName
+    : `${client.baseUrl}/api${pathName.startsWith("/") ? pathName : `/${pathName}`}`;
 
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${client.token}`);
@@ -52,7 +87,7 @@ export async function rnvFetch(
       typeof (body as { error: unknown }).error === "string"
         ? (body as { error: string }).error
         : text.slice(0, 400) || res.statusText;
-    throw new Error(`RNV API ${res.status} ${path}: ${errMsg}`);
+    throw new Error(`RNV API ${res.status} ${pathName}: ${errMsg}`);
   }
   return body;
 }

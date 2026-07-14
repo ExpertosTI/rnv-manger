@@ -3,64 +3,31 @@
 Servidor MCP (stdio) para que Cursor liste/asigne/complete tareas y consulte
 clientes, VPS, servicios, billing y topología vía la API de RNV Manager.
 
-## Requisitos
+## Archivo fácil (recomendado)
 
-- Node 18+
-- Service token `admin` con prefijo `rnv_` (superadmin en la app)
+Todo vive en un solo archivo:
 
-## Crear token
-
-1. Entra a https://rnv.renace.tech como superadmin.
-2. Crea un **service token** (API / Ajustes) con rol `admin`.
-3. Copia el valor `rnv_…` (solo se muestra una vez).
-
-O vía API (sesión cookie/JWT de superadmin):
-
-```bash
-curl -X POST https://rnv.renace.tech/api/auth/service-tokens \
-  -H "Authorization: Bearer <tu-jwt-o-cookie>" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"cursor-mcp","role":"admin"}'
+```
+mcp/rnv-manager/.env
 ```
 
-## Instalar
+Plantilla: [`env.example`](./env.example). En este repo ya existe `.env` listo para pegar el token.
 
-```bash
-cd mcp/rnv-manager
-npm install
+### Pasos
+
+1. Instala deps: `cd mcp/rnv-manager && npm install`
+2. En https://rnv.renace.tech/settings → sección **Cursor MCP** → **Crear token admin**
+3. Copia el `rnv_…` y pégalo en `.env`:
+
+```env
+RNV_API_URL=https://rnv.renace.tech
+RNV_API_TOKEN=rnv_pegá_el_token_aquí
 ```
 
-## Variables de entorno
+4. Cursor → Settings → MCP → reinicia `rnv-manager`
+5. Pregunta en el chat: «dime qué tareas tengo»
 
-| Variable | Default | Descripción |
-|----------|---------|-------------|
-| `RNV_API_URL` | `https://rnv.renace.tech` | Base de la app (sin `/api`) |
-| `RNV_API_TOKEN` | — | Service token `rnv_…` (**obligatorio**) |
-
-```bash
-export RNV_API_TOKEN='rnv_....'
-export RNV_API_URL='https://rnv.renace.tech'   # opcional
-```
-
-## Cursor
-
-El repo incluye la entrada en [`.cursor/mcp.json`](../../.cursor/mcp.json):
-
-```json
-"rnv-manager": {
-  "command": "npx",
-  "args": ["-y", "tsx", "${workspaceFolder}/mcp/rnv-manager/src/index.ts"],
-  "env": {
-    "RNV_API_URL": "https://rnv.renace.tech",
-    "RNV_API_TOKEN": "${env:RNV_API_TOKEN}"
-  }
-}
-```
-
-1. Define `RNV_API_TOKEN` en el entorno del sistema o pégalo en Cursor → MCP → env.
-2. `npm install` dentro de `mcp/rnv-manager`.
-3. Reinicia MCP / Cursor.
-4. Prueba: «lista las tareas pending de Mi Flujo» → tool `rnv_list_tasks`.
+El servidor lee `.env` solo; no hace falta `export` en la terminal.
 
 ## Tools
 
@@ -84,11 +51,11 @@ El repo incluye la entrada en [`.cursor/mcp.json`](../../.cursor/mcp.json):
 
 ```bash
 cd mcp/rnv-manager
-RNV_API_TOKEN=rnv_… npm run inspect
+npm run inspect
 ```
 
 ## Seguridad
 
-- No subas `RNV_API_TOKEN` al git.
-- El MCP no expone vault/SSH/credenciales.
-- Corre en tu máquina; no despliega un MCP HTTP en el VPS.
+- `.env` está en `.gitignore` — no lo subas a git.
+- El MCP no expone vault/SSH.
+- Corre en tu Mac; no es un servicio en el VPS.

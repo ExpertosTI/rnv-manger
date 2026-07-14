@@ -7,11 +7,7 @@
         "tsx",
         "${workspaceFolder}/mcp/rnv-manager/src/index.ts"
       ],
-      "cwd": "${workspaceFolder}/mcp/rnv-manager",
-      "env": {
-        "RNV_API_URL": "https://rnv.renace.tech",
-        "RNV_API_TOKEN": "${env:RNV_API_TOKEN}"
-      }
+      "cwd": "${workspaceFolder}/mcp/rnv-manager"
     },
     "cloudflare": {
       "url": "https://mcp.cloudflare.com/mcp"

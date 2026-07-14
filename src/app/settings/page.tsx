@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import {
     Save, Mail, Key, Bell, Server, RefreshCw,
-    CheckCircle, AlertTriangle, Eye, EyeOff, Shield, Sparkles, MessageCircle
+    CheckCircle, AlertTriangle, Eye, EyeOff, Shield, Sparkles, MessageCircle, Copy, Trash2
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
@@ -112,12 +112,80 @@ export default function SettingsPage() {
     const [testingWa, setTestingWa] = useState(false);
     const [odooStatus, setOdooStatus] = useState<"unknown" | "ok" | "error">("unknown");
     const [testingOdoo, setTestingOdoo] = useState(false);
+    const [svcTokens, setSvcTokens] = useState<Array<{
+        id: string; name: string; role: string; active: boolean; createdAt?: string;
+    }>>([]);
+    const [newTokenName, setNewTokenName] = useState("cursor-mcp");
+    const [creatingToken, setCreatingToken] = useState(false);
+    const [freshToken, setFreshToken] = useState<string | null>(null);
 
     useEffect(() => {
         fetchSettings();
         checkSmtpStatus();
         checkWhatsAppStatus();
+        loadServiceTokens();
     }, []);
+
+    const loadServiceTokens = async () => {
+        try {
+            const res = await fetch("/api/auth/service-tokens");
+            const data = await res.json();
+            if (data.success && Array.isArray(data.data)) {
+                setSvcTokens(data.data);
+            }
+        } catch {
+            /* sin permiso o no disponible */
+        }
+    };
+
+    const createServiceToken = async () => {
+        setCreatingToken(true);
+        setFreshToken(null);
+        try {
+            const res = await fetch("/api/auth/service-tokens", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: newTokenName.trim() || "cursor-mcp", role: "admin" }),
+            });
+            const data = await res.json();
+            if (!data.success || !data.token) {
+                addToast(data.error || "No se pudo crear el token", "error");
+                return;
+            }
+            setFreshToken(data.token as string);
+            addToast("Token creado — cópialo a mcp/rnv-manager/.env", "success");
+            await loadServiceTokens();
+        } catch {
+            addToast("Error creando token", "error");
+        } finally {
+            setCreatingToken(false);
+        }
+    };
+
+    const revokeServiceToken = async (id: string) => {
+        try {
+            const res = await fetch(`/api/auth/service-tokens/${id}`, { method: "DELETE" });
+            const data = await res.json();
+            if (!data.success) {
+                addToast(data.error || "No se pudo revocar", "error");
+                return;
+            }
+            addToast("Token revocado", "success");
+            await loadServiceTokens();
+        } catch {
+            addToast("Error revocando token", "error");
+        }
+    };
+
+    const copyFreshToken = async () => {
+        if (!freshToken) return;
+        try {
+            await navigator.clipboard.writeText(freshToken);
+            addToast("Token copiado al portapapeles", "success");
+        } catch {
+            addToast("No se pudo copiar — selecciona el texto a mano", "warning");
+        }
+    };
 
     const fetchSettings = async () => {
         try {
@@ -387,6 +455,90 @@ export default function SettingsPage() {
             </div>
 
             <div className="grid gap-6">
+                <Card className="rounded-2xl border-2 border-violet-200 shadow-sm overflow-hidden">
+                    <CardHeader className="bg-gradient-to-r from-violet-50 to-transparent border-b border-violet-100">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <Key className="w-5 h-5 text-violet-600" />
+                            Cursor MCP
+                        </CardTitle>
+                        <p className="text-sm text-muted-foreground font-normal">
+                            Genera un token <code className="text-violet-700">rnv_…</code> y pégalo en el archivo local{" "}
+                            <code className="text-violet-700">mcp/rnv-manager/.env</code> (solo superadmin).
+                        </p>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-4">
+                        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
+                            <div className="flex-1 space-y-1.5">
+                                <label className="text-sm font-medium text-gray-700">Nombre</label>
+                                <Input
+                                    value={newTokenName}
+                                    onChange={(e) => setNewTokenName(e.target.value)}
+                                    placeholder="cursor-mcp"
+                                />
+                            </div>
+                            <Button
+                                onClick={createServiceToken}
+                                disabled={creatingToken}
+                                className="gap-2 rounded-xl bg-violet-600 hover:bg-violet-700"
+                            >
+                                {creatingToken ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Key className="w-4 h-4" />}
+                                Crear token admin
+                            </Button>
+                        </div>
+
+                        {freshToken && (
+                            <div className="rounded-xl border-2 border-amber-200 bg-amber-50 p-4 space-y-2">
+                                <p className="text-sm font-semibold text-amber-900">
+                                    Cópialo ahora — no se vuelve a mostrar
+                                </p>
+                                <code className="block text-xs break-all bg-white border rounded-lg p-3 text-gray-800">
+                                    {freshToken}
+                                </code>
+                                <p className="text-xs text-amber-800">
+                                    En el repo: abre <strong>mcp/rnv-manager/.env</strong> y deja:
+                                    <br />
+                                    <code>RNV_API_TOKEN={freshToken.slice(0, 12)}…</code>
+                                </p>
+                                <Button variant="outline" size="sm" className="gap-2" onClick={copyFreshToken}>
+                                    <Copy className="w-4 h-4" />
+                                    Copiar token
+                                </Button>
+                            </div>
+                        )}
+
+                        <div className="space-y-2">
+                            <p className="text-sm font-medium text-gray-700">Tokens existentes</p>
+                            {svcTokens.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">Ninguno aún.</p>
+                            ) : (
+                                <ul className="divide-y rounded-xl border border-gray-100 overflow-hidden">
+                                    {svcTokens.map((t) => (
+                                        <li key={t.id} className="flex items-center justify-between gap-3 px-3 py-2.5 bg-white text-sm">
+                                            <div>
+                                                <span className="font-medium">{t.name}</span>
+                                                <span className="text-muted-foreground ml-2">{t.role}</span>
+                                                {!t.active && (
+                                                    <span className="ml-2 text-red-600 text-xs">revocado</span>
+                                                )}
+                                            </div>
+                                            {t.active && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => revokeServiceToken(t.id)}
+                                                    className="text-red-600 hover:bg-red-50 p-1.5 rounded-lg"
+                                                    title="Revocar"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+
                 {SETTINGS_SECTIONS.map((section) => (
                     <Card key={section.id} className="rounded-2xl border-2 border-gray-100 shadow-sm overflow-hidden">
                         <CardHeader className="bg-gradient-to-r from-violet-50/80 to-transparent border-b border-gray-100">
