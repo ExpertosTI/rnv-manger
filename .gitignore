@@ -1,5 +1,6 @@
 # dependencies
 /node_modules
+mcp/rnv-manager/node_modules
 /.pnp
 .pnp.*
 .yarn/*
