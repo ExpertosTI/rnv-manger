@@ -13,6 +13,7 @@ interface Service {
     projectPath?: string;
     purpose?: string;
     domains?: string[];
+    whatsappPhone?: string;
     port?: number;
     url?: string;
     configFile?: string;
@@ -57,6 +58,7 @@ export default function ServiceDetailPage() {
         configFile: "",
         projectPath: "",
         purpose: "",
+        whatsappPhone: "",
         clientId: "",
         vpsId: "",
         status: "running",
@@ -83,6 +85,7 @@ export default function ServiceDetailPage() {
                     configFile: data.data.configFile || "",
                     projectPath: data.data.projectPath || "",
                     purpose: data.data.purpose || "",
+                    whatsappPhone: data.data.whatsappPhone || "",
                     clientId: data.data.client?.id || "",
                     vpsId: data.data.vps?.id || "",
                     status: data.data.status || "running",
@@ -303,6 +306,17 @@ export default function ServiceDetailPage() {
                                 />
                             </div>
                             <div>
+                                <label className="text-sm text-gray-400">WhatsApp del servicio</label>
+                                <input
+                                    type="text"
+                                    value={form.whatsappPhone}
+                                    onChange={(e) => setForm({ ...form, whatsappPhone: e.target.value })}
+                                    placeholder="1849xxxxxxx"
+                                    className="w-full mt-1 px-3 py-2 bg-gray-700 rounded-lg border border-gray-600 focus:border-cyan-500 focus:outline-none"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Número para identificar/notificar este servicio</p>
+                            </div>
+                            <div>
                                 <label className="text-sm text-gray-400">Assign to VPS</label>
                                 <select
                                     value={form.vpsId}
@@ -392,6 +406,10 @@ export default function ServiceDetailPage() {
                                 <div className="flex justify-between gap-4">
                                     <span className="text-gray-400">Carpeta</span>
                                     <span className="text-right font-mono text-xs break-all">{service.projectPath || "No detectada"}</span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                    <span className="text-gray-400">WhatsApp</span>
+                                    <span className="text-right">{service.whatsappPhone || "No vinculado"}</span>
                                 </div>
                                 <hr className="border-gray-700" />
                                 <div className="flex justify-between">

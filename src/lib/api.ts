@@ -466,6 +466,7 @@ export interface Service {
     projectPath?: string;
     purpose?: string;
     domains?: string[];
+    whatsappPhone?: string;
     port?: number;
     url?: string;
     faviconUrl?: string;

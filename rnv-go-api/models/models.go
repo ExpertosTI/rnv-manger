@@ -141,6 +141,7 @@ type Service struct {
 	ProjectPath   *string     `json:"projectPath,omitempty"`
 	Purpose       *string     `json:"purpose,omitempty"`
 	Domains       StringArray `gorm:"type:text;serializer:json" json:"domains,omitempty"`
+	WhatsAppPhone *string     `json:"whatsappPhone,omitempty"` // contacto WA vinculado al servicio
 	Port          *int        `json:"port,omitempty"`
 	ConfigFile    *string     `json:"configFile,omitempty"`
 	URL           *string     `json:"url,omitempty"`

@@ -96,6 +96,76 @@ func Test(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
+// Contacts scans Evolution WhatsApp contacts and matches them to RNV clients/services.
+func Contacts(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		dir, err := serviceslayer.FetchWhatsAppContacts(db, cfg)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error(), "data": dir})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": dir})
+	}
+}
+
+type LinkRequest struct {
+	ServiceID string `json:"serviceId" binding:"required"`
+	Phone     string `json:"phone" binding:"required"`
+}
+
+// LinkPhone binds a WhatsApp number to a service for quick identification/notify.
+func LinkPhone(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req LinkRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "serviceId y phone requeridos"})
+			return
+		}
+		svc, err := serviceslayer.LinkWhatsAppPhoneToService(db, req.ServiceID, req.Phone)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		serviceslayer.LogAudit(db, "UPDATE", "service",
+			"WhatsApp vinculado a servicio "+svc.Name,
+			models.JSON{"serviceId": svc.ID, "phone": req.Phone},
+			middleware.GetClientIP(c), middleware.GetUserID(c))
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": svc})
+	}
+}
+
+type NotifyRequest struct {
+	ServiceID string `json:"serviceId"`
+	ClientID  string `json:"clientId"`
+	Phone     string `json:"phone"`
+	Text      string `json:"text" binding:"required"`
+}
+
+// NotifyService sends WhatsApp using the number linked to a service/client.
+func NotifyService(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req NotifyRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "text requerido"})
+			return
+		}
+		to, source, err := serviceslayer.ResolveNotifyTarget(db, req.ServiceID, req.ClientID, req.Phone)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		if err := serviceslayer.SendWhatsApp(db, cfg, to, req.Text); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		serviceslayer.LogAudit(db, "WHATSAPP", "service",
+			"Notificación WhatsApp a "+to,
+			models.JSON{"to": to, "source": source, "serviceId": req.ServiceID, "clientId": req.ClientID},
+			middleware.GetClientIP(c), middleware.GetUserID(c))
+		c.JSON(http.StatusOK, gin.H{"success": true, "to": to, "source": source})
+	}
+}
+
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s

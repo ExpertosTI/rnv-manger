@@ -13,6 +13,7 @@ import {
     Network,
     ListTodo,
     PackageSearch,
+    MessageCircle,
     type LucideIcon,
 } from "lucide-react";
 
@@ -30,6 +31,7 @@ export const MAIN_NAV: NavItem[] = [
     { icon: Server, label: "Servidores VPS", href: "/vps", headerTitle: "Servidores VPS" },
     { icon: Database, label: "Servicios", href: "/services", headerTitle: "Servicios" },
     { icon: PackageSearch, label: "Inventario", href: "/inventory", headerTitle: "Inventario Real" },
+    { icon: MessageCircle, label: "WhatsApp", href: "/whatsapp", headerTitle: "WhatsApp — Contactos" },
     { icon: Network, label: "Mapa", href: "/map", headerTitle: "Mapa de Infraestructura" },
     { icon: Users, label: "Clientes", href: "/clients", headerTitle: "Clientes" },
     { icon: DollarSign, label: "Facturación", href: "/billing", headerTitle: "Facturación" },

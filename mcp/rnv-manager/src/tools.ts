@@ -428,7 +428,7 @@ export function registerTools(server: McpServer): void {
     "rnv_update_service_inventory",
     {
       description:
-        "Completa finalidad, cliente, ingreso/costo facturable, dominio o carpeta de un servicio descubierto.",
+        "Completa finalidad, cliente, ingreso/costo facturable, dominio, carpeta o WhatsApp de un servicio descubierto.",
       inputSchema: {
         id: z.string().describe("ID del servicio"),
         purpose: z.string().optional().describe("Finalidad: para qué/quién existe"),
@@ -438,6 +438,7 @@ export function registerTools(server: McpServer): void {
         billingCycle: z.enum(["monthly", "annual"]).optional(),
         url: z.string().url().optional(),
         projectPath: z.string().optional(),
+        whatsappPhone: z.string().optional().describe("Número WhatsApp vinculado al servicio"),
       },
     },
     async ({ id, ...updates }) => {
@@ -450,6 +451,73 @@ export function registerTools(server: McpServer): void {
           await rnvFetch(c, `/services/${id}`, {
             method: "PUT",
             body: JSON.stringify(body),
+          })
+        );
+      } catch (e) {
+        return errResult(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "rnv_whatsapp_contacts",
+    {
+      description:
+        "Escanea contactos WhatsApp de Evolution y los cruza con clientes/servicios de RNV para identificación rápida.",
+    },
+    async () => {
+      try {
+        const c = getClient();
+        return jsonResult(await rnvFetch(c, "/whatsapp/contacts"));
+      } catch (e) {
+        return errResult(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "rnv_whatsapp_link_service",
+    {
+      description: "Vincula un número WhatsApp a un servicio RNV.",
+      inputSchema: {
+        serviceId: z.string(),
+        phone: z.string().describe("Número con código país, ej. 1849…"),
+      },
+    },
+    async ({ serviceId, phone }) => {
+      try {
+        const c = getClient();
+        return jsonResult(
+          await rnvFetch(c, "/whatsapp/link", {
+            method: "POST",
+            body: JSON.stringify({ serviceId, phone }),
+          })
+        );
+      } catch (e) {
+        return errResult(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "rnv_whatsapp_notify",
+    {
+      description:
+        "Envía WhatsApp usando el número del servicio, del cliente o un teléfono directo.",
+      inputSchema: {
+        text: z.string().min(1),
+        serviceId: z.string().optional(),
+        clientId: z.string().optional(),
+        phone: z.string().optional(),
+      },
+    },
+    async (args) => {
+      try {
+        const c = getClient();
+        return jsonResult(
+          await rnvFetch(c, "/whatsapp/notify", {
+            method: "POST",
+            body: JSON.stringify(args),
           })
         );
       } catch (e) {
