@@ -463,7 +463,7 @@ export function registerTools(server: McpServer): void {
     "rnv_whatsapp_contacts",
     {
       description:
-        "Escanea contactos WhatsApp de Evolution y los cruza con clientes/servicios de RNV para identificación rápida.",
+        "Lista exclusivamente números guardados en clientes/servicios RNV. Nunca importa contactos genéricos de Evolution.",
     },
     async () => {
       try {
@@ -503,12 +503,11 @@ export function registerTools(server: McpServer): void {
     "rnv_whatsapp_notify",
     {
       description:
-        "Envía WhatsApp usando el número del servicio, del cliente o un teléfono directo.",
+        "Envía WhatsApp exclusivamente al número guardado en un servicio o cliente RNV.",
       inputSchema: {
         text: z.string().min(1),
         serviceId: z.string().optional(),
         clientId: z.string().optional(),
-        phone: z.string().optional(),
       },
     },
     async (args) => {

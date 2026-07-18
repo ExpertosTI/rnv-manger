@@ -1,16 +1,15 @@
 package serviceslayer
 
 import (
-	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/renace/rnv-go-api/config"
 	"github.com/renace/rnv-go-api/models"
 	"gorm.io/gorm"
 )
 
-// WhatsAppContact is a contact from the connected Evolution instance.
+// WhatsAppContact is an explicitly registered RNV recipient.
+// Evolution's generic contact book is deliberately never imported.
 type WhatsAppContact struct {
 	ID          string `json:"id,omitempty"`
 	RemoteJid   string `json:"remoteJid,omitempty"`
@@ -35,163 +34,70 @@ type WhatsAppDirectory struct {
 	Contacts []WhatsAppContact `json:"contacts"`
 }
 
-func phoneFromJid(jid string) string {
-	jid = strings.TrimSpace(jid)
-	if strings.HasSuffix(jid, "@g.us") {
-		return ""
-	}
-	return FormatWhatsAppRecipient(NormalizeWhatsAppNumber(jid))
-}
-
-func parseEvolutionContacts(raw []byte) []WhatsAppContact {
-	var list []map[string]interface{}
-	if err := json.Unmarshal(raw, &list); err != nil {
-		var wrapped struct {
-			Data []map[string]interface{} `json:"data"`
-		}
-		if err2 := json.Unmarshal(raw, &wrapped); err2 == nil && len(wrapped.Data) > 0 {
-			list = wrapped.Data
-		} else {
-			var single map[string]interface{}
-			if err3 := json.Unmarshal(raw, &single); err3 == nil {
-				if arr, ok := single["contacts"].([]interface{}); ok {
-					for _, item := range arr {
-						if m, ok := item.(map[string]interface{}); ok {
-							list = append(list, m)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	out := make([]WhatsAppContact, 0, len(list))
-	seen := map[string]bool{}
-	for _, item := range list {
-		jid, _ := item["remoteJid"].(string)
-		if jid == "" {
-			jid, _ = item["id"].(string)
-		}
-		if strings.HasSuffix(jid, "@g.us") || strings.Contains(jid, "@broadcast") {
-			continue
-		}
-		phone := phoneFromJid(jid)
-		if phone == "" {
-			if n, ok := item["number"].(string); ok {
-				phone = FormatWhatsAppRecipient(n)
-			}
-		}
-		if phone == "" || seen[phone] {
-			continue
-		}
-		seen[phone] = true
-		name, _ := item["pushName"].(string)
-		if name == "" {
-			name, _ = item["name"].(string)
-		}
-		pic, _ := item["profilePicUrl"].(string)
-		if pic == "" {
-			pic, _ = item["profilePictureUrl"].(string)
-		}
-		id, _ := item["id"].(string)
-		out = append(out, WhatsAppContact{
-			ID: id, RemoteJid: jid, PushName: name, ProfilePic: pic, Phone: phone,
-		})
-	}
-	return out
-}
-
-// FetchWhatsAppContacts lists contacts from Evolution and matches them to RNV clients/services.
+// FetchWhatsAppContacts builds a safe directory only from numbers explicitly
+// stored in RNV. It never calls Evolution findContacts and never imports a
+// generic instance's contacts/chats.
 func FetchWhatsAppContacts(db *gorm.DB, cfg *config.Config) (WhatsAppDirectory, error) {
 	wc := ResolveWhatsAppConfig(db, cfg)
 	dir := WhatsAppDirectory{Instance: wc.Instance, Contacts: []WhatsAppContact{}}
 	if !wc.IsConfigured() {
 		return dir, fmt.Errorf("WhatsApp/Evolution API no configurado")
 	}
-	state, connected := CheckEvolutionConnection(db, cfg)
+	state, _ := CheckEvolutionConnection(db, cfg)
 	dir.State = state
-	if !connected && state != "open" && state != "connected" {
-		// still try fetch; some instances return contacts while "connecting"
-	}
-
-	url := fmt.Sprintf("%s/chat/findContacts/%s", wc.APIURL, instancePath(wc.Instance))
-	body, _ := json.Marshal(map[string]interface{}{"where": map[string]interface{}{}})
-	raw, code, err := evolutionHTTP("POST", url, wc.APIKey, body)
-	if err != nil {
-		return dir, err
-	}
-	if code < 200 || code >= 300 {
-		return dir, fmt.Errorf("%s", humanizeEvolutionError(code, string(raw)))
-	}
-
-	contacts := parseEvolutionContacts(raw)
 
 	var clients []models.Client
 	var services []models.Service
 	db.Find(&clients)
 	db.Preload("Client").Preload("VPS").Find(&services)
 
-	clientByPhone := map[string]models.Client{}
+	byPhone := map[string]*WhatsAppContact{}
 	for _, cl := range clients {
 		if cl.Phone == nil {
 			continue
 		}
 		if p := FormatWhatsAppRecipient(*cl.Phone); p != "" {
-			clientByPhone[p] = cl
+			byPhone[p] = &WhatsAppContact{
+				Phone: p, PushName: cl.Name, MatchedKind: "client",
+				ClientID: cl.ID, ClientName: cl.Name,
+			}
 		}
 	}
-	serviceByPhone := map[string]models.Service{}
 	for _, svc := range services {
 		if svc.WhatsAppPhone == nil {
 			continue
 		}
 		if p := FormatWhatsAppRecipient(*svc.WhatsAppPhone); p != "" {
-			serviceByPhone[p] = svc
+			contact, exists := byPhone[p]
+			if !exists {
+				contact = &WhatsAppContact{Phone: p, PushName: svc.Name}
+				byPhone[p] = contact
+			}
+			if contact.ClientID != "" {
+				contact.MatchedKind = "both"
+			} else {
+				contact.MatchedKind = "service"
+			}
+			contact.ServiceID, contact.ServiceName = svc.ID, svc.Name
+			if svc.Purpose != nil {
+				contact.Purpose = *svc.Purpose
+			}
+			if svc.VPS != nil {
+				contact.VpsName = svc.VPS.Name
+			}
+			if contact.ClientID == "" && svc.Client != nil {
+				contact.ClientID, contact.ClientName = svc.Client.ID, svc.Client.Name
+			}
 		}
 	}
 
-	matched := 0
-	for i := range contacts {
-		c := &contacts[i]
-		cl, hasClient := clientByPhone[c.Phone]
-		svc, hasService := serviceByPhone[c.Phone]
-		switch {
-		case hasClient && hasService:
-			c.MatchedKind = "both"
-			c.ClientID, c.ClientName = cl.ID, cl.Name
-			c.ServiceID, c.ServiceName = svc.ID, svc.Name
-			if svc.Purpose != nil {
-				c.Purpose = *svc.Purpose
-			}
-			if svc.VPS != nil {
-				c.VpsName = svc.VPS.Name
-			}
-			matched++
-		case hasService:
-			c.MatchedKind = "service"
-			c.ServiceID, c.ServiceName = svc.ID, svc.Name
-			if svc.Purpose != nil {
-				c.Purpose = *svc.Purpose
-			}
-			if svc.Client != nil {
-				c.ClientID, c.ClientName = svc.Client.ID, svc.Client.Name
-			}
-			if svc.VPS != nil {
-				c.VpsName = svc.VPS.Name
-			}
-			matched++
-		case hasClient:
-			c.MatchedKind = "client"
-			c.ClientID, c.ClientName = cl.ID, cl.Name
-			matched++
-		default:
-			c.MatchedKind = "none"
-		}
+	contacts := make([]WhatsAppContact, 0, len(byPhone))
+	for _, contact := range byPhone {
+		contacts = append(contacts, *contact)
 	}
-
 	dir.Contacts = contacts
 	dir.Total = len(contacts)
-	dir.Matched = matched
+	dir.Matched = len(contacts)
 	return dir, nil
 }
 
@@ -213,15 +119,8 @@ func LinkWhatsAppPhoneToService(db *gorm.DB, serviceID, phone string) (models.Se
 	return svc, nil
 }
 
-// ResolveNotifyTarget finds a WhatsApp number from service, client or raw phone.
-func ResolveNotifyTarget(db *gorm.DB, serviceID, clientID, phone string) (string, string, error) {
-	if phone != "" {
-		n := FormatWhatsAppRecipient(phone)
-		if n == "" {
-			return "", "", fmt.Errorf("número inválido")
-		}
-		return n, "phone", nil
-	}
+// ResolveNotifyTarget only resolves explicitly registered RNV entities.
+func ResolveNotifyTarget(db *gorm.DB, serviceID, clientID string) (string, string, error) {
 	if serviceID != "" {
 		var svc models.Service
 		if err := db.Preload("Client").First(&svc, "id = ?", serviceID).Error; err != nil {
@@ -245,5 +144,33 @@ func ResolveNotifyTarget(db *gorm.DB, serviceID, clientID, phone string) (string
 		}
 		return FormatWhatsAppRecipient(*cl.Phone), "client", nil
 	}
-	return "", "", fmt.Errorf("indica serviceId, clientId o phone")
+	return "", "", fmt.Errorf("indica serviceId o clientId registrado en RNV")
+}
+
+// IsKnownWhatsAppRecipient prevents generic/arbitrary Evolution recipients.
+func IsKnownWhatsAppRecipient(db *gorm.DB, cfg *config.Config, phone string) bool {
+	target := FormatWhatsAppRecipient(phone)
+	if target == "" {
+		return false
+	}
+	for _, admin := range ResolveWhatsAppConfig(db, cfg).NotifyNums {
+		if target == FormatWhatsAppRecipient(admin) {
+			return true
+		}
+	}
+	var clients []models.Client
+	db.Where("phone IS NOT NULL AND phone <> ''").Find(&clients)
+	for _, client := range clients {
+		if client.Phone != nil && target == FormatWhatsAppRecipient(*client.Phone) {
+			return true
+		}
+	}
+	var services []models.Service
+	db.Where("whatsapp_phone IS NOT NULL AND whatsapp_phone <> ''").Find(&services)
+	for _, service := range services {
+		if service.WhatsAppPhone != nil && target == FormatWhatsAppRecipient(*service.WhatsAppPhone) {
+			return true
+		}
+	}
+	return false
 }

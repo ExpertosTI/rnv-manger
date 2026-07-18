@@ -17,11 +17,6 @@ type SendRequest struct {
 	Text string `json:"text" binding:"required"`
 }
 
-type TestRequest struct {
-	To   string `json:"to"`
-	Text string `json:"text"`
-}
-
 func Config(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status := serviceslayer.WhatsAppStatus(db, cfg)
@@ -42,6 +37,13 @@ func Send(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "WhatsApp/Evolution API no configurado"})
 			return
 		}
+		if !serviceslayer.IsKnownWhatsAppRecipient(db, cfg, req.To) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"error":   "Destino bloqueado: solo números guardados explícitamente en RNV (cliente/servicio/admin)",
+			})
+			return
+		}
 
 		if err := serviceslayer.SendWhatsApp(db, cfg, req.To, req.Text); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
@@ -60,43 +62,28 @@ func Send(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func Test(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req TestRequest
-		_ = c.ShouldBindJSON(&req)
-
 		wc := serviceslayer.ResolveWhatsAppConfig(db, cfg)
 		if !wc.IsConfigured() {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "WhatsApp/Evolution API no configurado"})
 			return
 		}
-
-		to := req.To
-		if to == "" && len(wc.NotifyNums) > 0 {
-			to = wc.NotifyNums[0]
-		}
-		if to == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Indica número destino o configura whatsapp_notify_numbers"})
+		state, connected := serviceslayer.CheckEvolutionConnection(db, cfg)
+		if !connected {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false, "error": "Instancia WhatsApp no conectada", "state": state,
+			})
 			return
 		}
-
-		text := req.Text
-		if text == "" {
-			text = serviceslayer.FormatTestMessage(db, cfg, wc.Instance)
-		}
-
-		if err := serviceslayer.SendWhatsApp(db, cfg, to, text); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
-			return
-		}
-
 		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "Mensaje de prueba enviado",
-			"to":      serviceslayer.NormalizeWhatsAppNumber(to),
+			"success":  true,
+			"message":  "Conexión WhatsApp verificada sin enviar mensajes",
+			"state":    state,
+			"instance": wc.Instance,
 		})
 	}
 }
 
-// Contacts scans Evolution WhatsApp contacts and matches them to RNV clients/services.
+// Contacts returns only recipients explicitly stored in RNV.
 func Contacts(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		dir, err := serviceslayer.FetchWhatsAppContacts(db, cfg)
@@ -137,7 +124,6 @@ func LinkPhone(db *gorm.DB) gin.HandlerFunc {
 type NotifyRequest struct {
 	ServiceID string `json:"serviceId"`
 	ClientID  string `json:"clientId"`
-	Phone     string `json:"phone"`
 	Text      string `json:"text" binding:"required"`
 }
 
@@ -149,7 +135,7 @@ func NotifyService(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "text requerido"})
 			return
 		}
-		to, source, err := serviceslayer.ResolveNotifyTarget(db, req.ServiceID, req.ClientID, req.Phone)
+		to, source, err := serviceslayer.ResolveNotifyTarget(db, req.ServiceID, req.ClientID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 			return

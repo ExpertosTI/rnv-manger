@@ -358,7 +358,7 @@ func (te *toolExecutor) rnvGetClient(args map[string]interface{}) map[string]int
 			"phone": client.Phone, "companyName": client.CompanyName,
 			"monthlyFee": client.MonthlyFee, "annualFee": client.AnnualFee,
 			"totalMonthlyCost": client.TotalMonthlyCost,
-			"billingCycle": client.BillingCycle, "paymentDay": client.PaymentDay,
+			"billingCycle":     client.BillingCycle, "paymentDay": client.PaymentDay,
 			"paymentMonth": client.PaymentMonth, "isActive": client.IsActive,
 			"currency": client.Currency, "notes": client.Notes,
 			"vps":      simplifyVPSList(client.VPSList),
@@ -374,10 +374,10 @@ func (te *toolExecutor) rnvCreateClient(args map[string]interface{}) map[string]
 		return map[string]interface{}{"success": false, "error": "name requerido"}
 	}
 	client := models.Client{
-		Name:       name,
-		IsActive:   true,
-		Currency:   "USD",
-		PaymentDay: intArg(args, "paymentDay", 1),
+		Name:         name,
+		IsActive:     true,
+		Currency:     "USD",
+		PaymentDay:   intArg(args, "paymentDay", 1),
 		BillingCycle: serviceslayer.BillingCycleMonthly,
 	}
 	if cycle := strArg(args, "billingCycle"); cycle == "annual" {
@@ -955,7 +955,7 @@ func (te *toolExecutor) rnvListCalendar(args map[string]interface{}) map[string]
 				}
 				events = append(events, map[string]interface{}{
 					"type": evType, "date": due.Format("2006-01-02"),
-					"title": "Cobro " + serviceslayer.BillingCycleLabel(cl) + ": " + cl.Name,
+					"title":    "Cobro " + serviceslayer.BillingCycleLabel(cl) + ": " + cl.Name,
 					"clientId": cl.ID, "amount": serviceslayer.ClientChargeAmount(cl),
 					"billingCycle": serviceslayer.ClientBillingCycle(cl),
 				})
@@ -1009,7 +1009,7 @@ func (te *toolExecutor) rnvListScheduledTasks(args map[string]interface{}) map[s
 		item := map[string]interface{}{
 			"id": t.ID, "title": t.Title, "type": t.Type, "status": t.Status,
 			"scheduledAt": t.ScheduledAt.Format("2006-01-02 15:04"),
-			"overdue": overdue, "daysPending": daysPending, "stale": stale,
+			"overdue":     overdue, "daysPending": daysPending, "stale": stale,
 		}
 		if t.Description != nil {
 			item["description"] = *t.Description
@@ -1294,7 +1294,7 @@ func (te *toolExecutor) rnvScanServices(args map[string]interface{}) map[string]
 		"success": true,
 		"message": fmt.Sprintf("Escaneo: %d encontrados, %d creados, %d actualizados", totalFound, totalCreated, totalUpdated),
 		"results": out,
-		"totals": map[string]interface{}{"found": totalFound, "created": totalCreated, "updated": totalUpdated},
+		"totals":  map[string]interface{}{"found": totalFound, "created": totalCreated, "updated": totalUpdated},
 	}
 }
 
@@ -1342,6 +1342,12 @@ func (te *toolExecutor) rnvSendWhatsApp(args map[string]interface{}) map[string]
 			return map[string]interface{}{"success": false, "error": err.Error()}
 		}
 		return map[string]interface{}{"success": true, "message": "Enviado por correo al admin (WhatsApp solo para clientes/OTP)", "channel": "email"}
+	}
+	if !serviceslayer.IsKnownWhatsAppRecipient(te.db, te.cfg, to) {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "Destino bloqueado: el número debe estar guardado explícitamente en un cliente o servicio RNV",
+		}
 	}
 	sent, err := serviceslayer.SendWhatsAppTo(te.db, te.cfg, to, text)
 	if err != nil {
@@ -1481,7 +1487,7 @@ func (te *toolExecutor) rnvBillingRemind(args map[string]interface{}) map[string
 	return map[string]interface{}{
 		"success": true,
 		"message": fmt.Sprintf("Recordatorios: %d enviados, %d fallidos", sent, failed),
-		"sent": sent, "failed": failed,
+		"sent":    sent, "failed": failed,
 	}
 }
 
@@ -1517,21 +1523,21 @@ func (te *toolExecutor) rnvServiceHealth(args map[string]interface{}) map[string
 		}
 	}
 	return map[string]interface{}{
-		"success": true,
-		"message": fmt.Sprintf("Revisados %d servicios — %d offline, %d cambios", len(results), len(offline), changed),
-		"offline": offline,
+		"success":      true,
+		"message":      fmt.Sprintf("Revisados %d servicios — %d offline, %d cambios", len(results), len(offline), changed),
+		"offline":      offline,
 		"offlineCount": len(offline),
-		"changed": changed,
+		"changed":      changed,
 	}
 }
 
 func (te *toolExecutor) rnvListOfflineServices(args map[string]interface{}) map[string]interface{} {
 	list, count := serviceslayer.ListOfflineServices(te.db)
 	return map[string]interface{}{
-		"success": true,
-		"count": count,
+		"success":  true,
+		"count":    count,
 		"services": list,
-		"message": fmt.Sprintf("%d servicios offline", count),
+		"message":  fmt.Sprintf("%d servicios offline", count),
 	}
 }
 
@@ -1631,9 +1637,9 @@ func simplifyClient(c models.Client) map[string]interface{} {
 	return map[string]interface{}{
 		"id": c.ID, "name": c.Name, "email": c.Email,
 		"billingCycle": serviceslayer.ClientBillingCycle(c),
-		"monthlyFee": c.MonthlyFee, "annualFee": c.AnnualFee,
+		"monthlyFee":   c.MonthlyFee, "annualFee": c.AnnualFee,
 		"totalMonthlyCost": c.TotalMonthlyCost,
-		"paymentDay": c.PaymentDay, "paymentMonth": c.PaymentMonth,
+		"paymentDay":       c.PaymentDay, "paymentMonth": c.PaymentMonth,
 		"isActive": c.IsActive, "companyName": c.CompanyName,
 	}
 }

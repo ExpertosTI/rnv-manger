@@ -274,14 +274,14 @@ export default function SettingsPage() {
             const data = await res.json();
             if (data.success) {
                 setWaStatus("ok");
-                addToast(`WhatsApp de prueba enviado a ${data.to}`, "success");
+                addToast("Conexión WhatsApp verificada — no se envió ningún mensaje", "success");
             } else {
                 setWaStatus("error");
-                addToast(data.error || "No se pudo enviar WhatsApp", "error");
+                addToast(data.error || "No se pudo verificar WhatsApp", "error");
             }
         } catch {
             setWaStatus("error");
-            addToast("Error al probar WhatsApp", "error");
+            addToast("Error al verificar WhatsApp", "error");
         } finally {
             setTestingWa(false);
         }
@@ -427,7 +427,7 @@ export default function SettingsPage() {
                     </div>
                     <Button variant="outline" onClick={testWhatsApp} disabled={testingWa} className="gap-2 rounded-xl border-2 border-emerald-300 text-emerald-800">
                         {testingWa ? <RefreshCw className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
-                        Probar WhatsApp
+                        Verificar conexión
                     </Button>
                 </div>
             </div>

@@ -41,7 +41,7 @@ export default function WhatsAppDirectoryPage() {
     const [services, setServices] = useState<ServiceOption[]>([]);
     const [loading, setLoading] = useState(true);
     const [query, setQuery] = useState("");
-    const [filter, setFilter] = useState<"all" | "matched" | "unmatched">("all");
+    const [filter, setFilter] = useState<"all" | "service" | "client">("all");
     const [linkingPhone, setLinkingPhone] = useState<string | null>(null);
     const [selectedService, setSelectedService] = useState("");
     const [notifyPhone, setNotifyPhone] = useState<string | null>(null);
@@ -78,8 +78,8 @@ export default function WhatsAppDirectoryPage() {
     const contacts = useMemo(() => {
         const list = dir?.contacts || [];
         return list.filter((c) => {
-            if (filter === "matched" && c.matchedKind === "none") return false;
-            if (filter === "unmatched" && c.matchedKind !== "none") return false;
+            if (filter === "service" && !c.serviceId) return false;
+            if (filter === "client" && !c.clientId) return false;
             if (!query.trim()) return true;
             const q = query.toLowerCase();
             return [c.pushName, c.phone, c.clientName, c.serviceName, c.purpose]
@@ -125,7 +125,6 @@ export default function WhatsAppDirectoryPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    phone: notifyPhone,
                     serviceId: contact?.serviceId,
                     clientId: contact?.clientId,
                     text: notifyText.trim(),
@@ -160,12 +159,12 @@ export default function WhatsAppDirectoryPage() {
                         WhatsApp — Contactos
                     </h1>
                     <p className="text-muted-foreground mt-1">
-                        Escanea contactos de la línea conectada en Evolution, vincúlalos a servicios y notifica rápido.
+                        Solo números registrados explícitamente en clientes/servicios RNV. Evolution se usa únicamente como transporte.
                     </p>
                 </div>
                 <Button onClick={() => load()} className="gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700">
                     <RefreshCw className="w-4 h-4" />
-                    Escanear contactos
+                    Actualizar directorio RNV
                 </Button>
             </div>
 
@@ -180,7 +179,7 @@ export default function WhatsAppDirectoryPage() {
                         <p className="font-semibold">{dir?.state || "—"}</p>
                     </div>
                     <div>
-                        <span className="text-muted-foreground">Contactos</span>
+                        <span className="text-muted-foreground">Destinatarios RNV</span>
                         <p className="font-semibold">{dir?.total || 0}</p>
                     </div>
                     <div>
@@ -188,7 +187,7 @@ export default function WhatsAppDirectoryPage() {
                         <p className="font-semibold text-emerald-700">{dir?.matched || 0}</p>
                     </div>
                     <p className="w-full text-xs text-muted-foreground">
-                        Remitente = número conectado en evoapi (849). Para reconectar: evoapi.renace.tech → instancia <b>renace</b> → QR.
+                        Seguridad: no se importan contactos, chats ni números genéricos de Evolution. Remitente = línea conectada en la instancia <b>renace</b>.
                     </p>
                 </CardContent>
             </Card>
@@ -204,14 +203,14 @@ export default function WhatsAppDirectoryPage() {
                     />
                 </div>
                 <div className="flex gap-2">
-                    {(["all", "matched", "unmatched"] as const).map((f) => (
+                    {(["all", "service", "client"] as const).map((f) => (
                         <Button
                             key={f}
                             variant={filter === f ? "default" : "outline"}
                             className="rounded-xl"
                             onClick={() => setFilter(f)}
                         >
-                            {f === "all" ? "Todos" : f === "matched" ? "Vinculados" : "Sin vincular"}
+                            {f === "all" ? "Todos" : f === "service" ? "Servicios" : "Clientes"}
                         </Button>
                     ))}
                 </div>
@@ -250,9 +249,7 @@ export default function WhatsAppDirectoryPage() {
                                                     {c.clientName}
                                                 </Link>
                                             </>
-                                        ) : (
-                                            "Sin vínculo en RNV — enlázalo a un servicio"
-                                        )}
+                                        ) : "Número registrado en RNV"}
                                     </p>
                                 </div>
                                 <div className="flex gap-2">
@@ -290,7 +287,7 @@ export default function WhatsAppDirectoryPage() {
                 ))}
                 {contacts.length === 0 && (
                     <p className="text-center text-muted-foreground py-10">
-                        No hay contactos con ese filtro. Escanea de nuevo o revisa la conexión en Evolution.
+                        No hay números registrados en RNV con ese filtro.
                     </p>
                 )}
             </div>
