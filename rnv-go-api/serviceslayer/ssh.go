@@ -2,6 +2,7 @@ package serviceslayer
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"time"
 
@@ -49,35 +50,32 @@ func SSHExec(cfg SSHConfig, command string, timeoutSec int) SSHResult {
 	}
 	defer session.Close()
 
-	var stdout, stderr []byte
 	outPipe, _ := session.StdoutPipe()
 	errPipe, _ := session.StderrPipe()
+
+	var stdout, stderr []byte
+	outDone := make(chan struct{})
+	errDone := make(chan struct{})
+	go func() {
+		stdout, _ = io.ReadAll(outPipe)
+		close(outDone)
+	}()
+	go func() {
+		stderr, _ = io.ReadAll(errPipe)
+		close(errDone)
+	}()
 
 	done := make(chan error, 1)
 	go func() {
 		done <- session.Run(command)
 	}()
 
-	// Read output with timeout
-	buf := make([]byte, 65536)
-	var outStr, errStr string
-
-	readCh := make(chan struct{})
-	go func() {
-		n, _ := outPipe.Read(buf)
-		stdout = buf[:n]
-		outStr = string(stdout)
-		n2 := make([]byte, 4096)
-		ne, _ := errPipe.Read(n2)
-		stderr = n2[:ne]
-		errStr = string(stderr)
-		close(readCh)
-	}()
-
 	timeout := time.Duration(timeoutSec) * time.Second
 	select {
 	case err := <-done:
-		<-readCh
+		<-outDone
+		<-errDone
+		outStr, errStr := string(stdout), string(stderr)
 		exitCode := 0
 		if err != nil {
 			if exitErr, ok := err.(*ssh.ExitError); ok {

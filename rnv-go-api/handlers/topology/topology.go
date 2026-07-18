@@ -116,6 +116,8 @@ func Map(db *gorm.DB) gin.HandlerFunc {
 					ParentID: &v.ID,
 					Meta: map[string]interface{}{
 						"type": s.Type, "port": s.Port, "url": s.URL, "faviconUrl": s.FaviconURL,
+						"runtime": s.Runtime, "image": s.Image, "domains": s.Domains,
+						"projectPath": s.ProjectPath, "purpose": s.Purpose,
 						"monthlyCost": s.MonthlyCost, "annualCost": s.AnnualCost,
 						"billingCycle": s.BillingCycle, "charge": charge, "chargeCycle": cycle,
 						"clientId": clientID, "clientName": clientName,
@@ -129,6 +131,8 @@ func Map(db *gorm.DB) gin.HandlerFunc {
 				svcNodes = append(svcNodes, map[string]interface{}{
 					"id": s.ID, "name": s.Name, "type": s.Type, "status": uptimeLabel(s),
 					"charge": charge, "chargeCycle": cycle, "url": s.URL, "faviconUrl": s.FaviconURL,
+					"runtime": s.Runtime, "image": s.Image, "domains": s.Domains,
+					"projectPath": s.ProjectPath, "purpose": s.Purpose,
 					"clientName": clientName, "lastChecked": s.LastChecked,
 				})
 			}
@@ -147,7 +151,7 @@ func Map(db *gorm.DB) gin.HandlerFunc {
 					"ip": v.IPAddress, "provider": v.Provider,
 					"monthlyCost": v.MonthlyCost, "serviceCount": len(svcs),
 					"servicesMonthlyCost": svcMonthlyCost,
-					"clientId": v.ClientID, "clientName": clientName,
+					"clientId":            v.ClientID, "clientName": clientName,
 				},
 			})
 
@@ -156,8 +160,8 @@ func Map(db *gorm.DB) gin.HandlerFunc {
 				"clientId": v.ClientID, "clientName": clientName,
 				"monthlyCost": v.MonthlyCost, "serviceCount": len(svcs),
 				"servicesMonthlyCost": svcMonthlyCost,
-				"totalClusterCost": v.MonthlyCost + svcMonthlyCost,
-				"services": svcNodes,
+				"totalClusterCost":    v.MonthlyCost + svcMonthlyCost,
+				"services":            svcNodes,
 			})
 		}
 
@@ -184,9 +188,9 @@ func Map(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"nodes":   nodes,
-			"edges":   edges,
+			"success":  true,
+			"nodes":    nodes,
+			"edges":    edges,
 			"clusters": clusters,
 			"totals": gin.H{
 				"clients": len(clients), "vps": len(vpsList), "services": len(services),

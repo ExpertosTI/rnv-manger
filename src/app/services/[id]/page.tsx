@@ -8,6 +8,11 @@ interface Service {
     id: string;
     name: string;
     type: string;
+    runtime?: string;
+    image?: string;
+    projectPath?: string;
+    purpose?: string;
+    domains?: string[];
     port?: number;
     url?: string;
     configFile?: string;
@@ -50,6 +55,8 @@ export default function ServiceDetailPage() {
         port: 0,
         monthlyCost: 0,
         configFile: "",
+        projectPath: "",
+        purpose: "",
         clientId: "",
         vpsId: "",
         status: "running",
@@ -74,6 +81,8 @@ export default function ServiceDetailPage() {
                     port: data.data.port || 0,
                     monthlyCost: data.data.monthlyCost || 0,
                     configFile: data.data.configFile || "",
+                    projectPath: data.data.projectPath || "",
+                    purpose: data.data.purpose || "",
                     clientId: data.data.client?.id || "",
                     vpsId: data.data.vps?.id || "",
                     status: data.data.status || "running",
@@ -164,7 +173,7 @@ export default function ServiceDetailPage() {
         );
     }
 
-    const serviceUrl = service.url || `https://${service.name}.renace.tech`;
+    const serviceUrl = service.url;
 
     return (
         <div className="min-h-screen bg-gray-900 text-white p-8">
@@ -274,6 +283,26 @@ export default function ServiceDetailPage() {
                                 />
                             </div>
                             <div>
+                                <label className="text-sm text-gray-400">Project / Folder Path</label>
+                                <input
+                                    type="text"
+                                    value={form.projectPath}
+                                    onChange={(e) => setForm({ ...form, projectPath: e.target.value })}
+                                    placeholder="/opt/app"
+                                    className="w-full mt-1 px-3 py-2 bg-gray-700 rounded-lg border border-gray-600 focus:border-cyan-500 focus:outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-sm text-gray-400">Finalidad / para quién existe</label>
+                                <textarea
+                                    value={form.purpose}
+                                    onChange={(e) => setForm({ ...form, purpose: e.target.value })}
+                                    placeholder="Ej. ERP de Makro, API interna, proxy compartido..."
+                                    rows={3}
+                                    className="w-full mt-1 px-3 py-2 bg-gray-700 rounded-lg border border-gray-600 focus:border-cyan-500 focus:outline-none"
+                                />
+                            </div>
+                            <div>
                                 <label className="text-sm text-gray-400">Assign to VPS</label>
                                 <select
                                     value={form.vpsId}
@@ -310,19 +339,29 @@ export default function ServiceDetailPage() {
                     ) : (
                         <div className="space-y-4">
                             {/* URL Link */}
-                            <a
-                                href={serviceUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="block text-center py-3 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-lg hover:opacity-90 transition font-semibold"
-                            >
-                                🔗 Open {serviceUrl}
-                            </a>
+                            {serviceUrl ? (
+                                <a
+                                    href={serviceUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block text-center py-3 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-lg hover:opacity-90 transition font-semibold"
+                                >
+                                    🔗 Open {serviceUrl}
+                                </a>
+                            ) : (
+                                <div className="text-center py-3 border border-yellow-500/40 text-yellow-300 rounded-lg">
+                                    Sin dominio detectado
+                                </div>
+                            )}
 
                             <div className="space-y-3 mt-6">
                                 <div className="flex justify-between">
                                     <span className="text-gray-400">Type</span>
                                     <span className="capitalize">{service.type}</span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                    <span className="text-gray-400">Runtime / Image</span>
+                                    <span className="text-right">{service.runtime || "unknown"}{service.image ? ` · ${service.image}` : ""}</span>
                                 </div>
                                 {service.port && (
                                     <div className="flex justify-between">
@@ -341,8 +380,18 @@ export default function ServiceDetailPage() {
                                 </div>
                                 <hr className="border-gray-700" />
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Monthly Cost</span>
-                                    <span className="text-green-400 font-semibold">${service.monthlyCost}/mo</span>
+                                    <span className="text-gray-400">Ingreso facturable</span>
+                                    <span className={service.monthlyCost > 0 ? "text-green-400 font-semibold" : "text-yellow-400"}>
+                                        ${service.monthlyCost}/mo
+                                    </span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                    <span className="text-gray-400">Finalidad</span>
+                                    <span className="text-right">{service.purpose || "No definida"}</span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                    <span className="text-gray-400">Carpeta</span>
+                                    <span className="text-right font-mono text-xs break-all">{service.projectPath || "No detectada"}</span>
                                 </div>
                                 <hr className="border-gray-700" />
                                 <div className="flex justify-between">

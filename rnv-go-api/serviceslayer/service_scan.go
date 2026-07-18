@@ -14,28 +14,45 @@ import (
 )
 
 type DiscoveredService struct {
-	Name   string  `json:"name"`
-	Type   string  `json:"type"`
-	Port   *int    `json:"port,omitempty"`
-	Status string  `json:"status"`
-	Image  string  `json:"image,omitempty"`
-	URL    *string `json:"url,omitempty"`
+	Name        string      `json:"name"`
+	Type        string      `json:"type"`
+	Runtime     string      `json:"runtime"`
+	Port        *int        `json:"port,omitempty"`
+	Status      string      `json:"status"`
+	Image       string      `json:"image,omitempty"`
+	URL         *string     `json:"url,omitempty"`
+	Domains     []string    `json:"domains,omitempty"`
+	ProjectPath string      `json:"projectPath,omitempty"`
+	Labels      models.JSON `json:"labels,omitempty"`
 }
 
 type VPSScanResult struct {
-	VpsID    string              `json:"vpsId"`
-	VpsName  string              `json:"vpsName"`
-	IP       string              `json:"ip"`
-	Success  bool                `json:"success"`
-	Error    string              `json:"error,omitempty"`
-	Output   string              `json:"output,omitempty"`
-	Found    []DiscoveredService `json:"found"`
-	Created  int                 `json:"created"`
-	Updated  int                 `json:"updated"`
+	VpsID   string              `json:"vpsId"`
+	VpsName string              `json:"vpsName"`
+	IP      string              `json:"ip"`
+	Success bool                `json:"success"`
+	Error   string              `json:"error,omitempty"`
+	Output  string              `json:"output,omitempty"`
+	Found   []DiscoveredService `json:"found"`
+	Created int                 `json:"created"`
+	Updated int                 `json:"updated"`
 }
 
 var portRe = regexp.MustCompile(`:(\d+)->`)
 var hostRuleRe = regexp.MustCompile(`Host\(` + "`" + `([^` + "`" + `]+)` + "`" + `\)`)
+
+func appendUniqueString(items []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return items
+	}
+	for _, item := range items {
+		if strings.EqualFold(item, value) {
+			return items
+		}
+	}
+	return append(items, value)
+}
 
 func inferServiceType(name, image string) string {
 	s := strings.ToLower(name + " " + image)
@@ -66,7 +83,6 @@ func inferServiceType(name, image string) string {
 		return "docker"
 	}
 }
-
 
 func inferServiceURL(name string) *string {
 	name = strings.TrimSpace(name)
@@ -113,11 +129,12 @@ func parseDockerLine(line string) (DiscoveredService, bool) {
 	}
 
 	return DiscoveredService{
-		Name:   name,
-		Type:   inferServiceType(name, image),
-		Port:   port,
-		Status: status,
-		Image:  image,
+		Name:    name,
+		Type:    inferServiceType(name, image),
+		Runtime: "docker",
+		Port:    port,
+		Status:  status,
+		Image:   image,
 	}, true
 }
 
@@ -181,9 +198,11 @@ func mergeTraefikHosts(existing []DiscoveredService, inspectOutput string) []Dis
 		u := "https://" + host
 		if d, ok := byName[name]; ok {
 			d.URL = &u
+			d.Domains = appendUniqueString(d.Domains, host)
 		} else {
 			existing = append(existing, DiscoveredService{
-				Name: name, Type: inferServiceType(name, ""), Status: "running", URL: &u,
+				Name: name, Type: inferServiceType(name, ""), Runtime: "docker",
+				Status: "running", URL: &u, Domains: []string{host},
 			})
 			byName[name] = &existing[len(existing)-1]
 		}
@@ -249,6 +268,7 @@ func SyncScannedServices(db *gorm.DB, vps models.VPS, discovered []DiscoveredSer
 			svc := models.Service{
 				Name:     d.Name,
 				Type:     d.Type,
+				Runtime:  d.Runtime,
 				Port:     d.Port,
 				Status:   d.Status,
 				VpsID:    &vps.ID,
@@ -260,7 +280,15 @@ func SyncScannedServices(db *gorm.DB, vps models.VPS, discovered []DiscoveredSer
 			if d.URL != nil {
 				svc.URL = d.URL
 			}
+			if d.Image != "" {
+				svc.Image = &d.Image
+			}
+			if d.ProjectPath != "" {
+				svc.ProjectPath = &d.ProjectPath
+			}
+			svc.Domains = models.StringArray(d.Domains)
 			svc.LastChecked = &now
+			svc.DiscoveredAt = &now
 			EnrichServiceIcon(&svc)
 			if db.Create(&svc).Error == nil {
 				created++
@@ -268,7 +296,17 @@ func SyncScannedServices(db *gorm.DB, vps models.VPS, discovered []DiscoveredSer
 			continue
 		}
 		updates := map[string]interface{}{
-			"type": d.Type, "status": d.Status, "last_checked": now,
+			"type": d.Type, "runtime": d.Runtime, "status": d.Status,
+			"last_checked": now, "discovered_at": now,
+		}
+		if d.Image != "" {
+			updates["image"] = d.Image
+		}
+		if d.ProjectPath != "" {
+			updates["project_path"] = d.ProjectPath
+		}
+		if len(d.Domains) > 0 {
+			updates["domains"] = models.StringArray(d.Domains)
 		}
 		if d.Port != nil {
 			updates["port"] = *d.Port

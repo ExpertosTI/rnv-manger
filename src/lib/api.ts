@@ -461,6 +461,11 @@ export interface Service {
     id: string;
     name: string;
     type: string;
+    runtime?: string;
+    image?: string;
+    projectPath?: string;
+    purpose?: string;
+    domains?: string[];
     port?: number;
     url?: string;
     faviconUrl?: string;

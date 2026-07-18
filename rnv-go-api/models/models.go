@@ -73,28 +73,28 @@ func (s *StringArray) Scan(value interface{}) error {
 
 // Client model
 type Client struct {
-	ID              string      `gorm:"type:text;primaryKey" json:"id"`
-	Name            string      `gorm:"not null" json:"name"`
-	Email           *string     `json:"email,omitempty"`
-	Phone           *string     `json:"phone,omitempty"`
-	CompanyName     *string     `json:"companyName,omitempty"`
-	Notes           *string     `json:"notes,omitempty"`
-	IsActive        bool        `gorm:"default:true" json:"isActive"`
-	BillingCycle    string      `gorm:"default:'monthly'" json:"billingCycle"` // monthly | annual
-	MonthlyFee      float64     `gorm:"default:0" json:"monthlyFee"`
-	AnnualFee       float64     `gorm:"default:0" json:"annualFee"`
-	Currency        string      `gorm:"default:'USD'" json:"currency"`
-	PaymentDay      int         `gorm:"default:1" json:"paymentDay"`
-	PaymentMonth    int         `gorm:"default:1" json:"paymentMonth"` // 1-12, usado en ciclo anual
-	OdooPartnerID   *int        `json:"odooPartnerId,omitempty"`
-	OdooLastSync    *time.Time  `json:"odooLastSync,omitempty"`
-	OdooData        JSON        `gorm:"type:jsonb" json:"odooData,omitempty"`
+	ID               string     `gorm:"type:text;primaryKey" json:"id"`
+	Name             string     `gorm:"not null" json:"name"`
+	Email            *string    `json:"email,omitempty"`
+	Phone            *string    `json:"phone,omitempty"`
+	CompanyName      *string    `json:"companyName,omitempty"`
+	Notes            *string    `json:"notes,omitempty"`
+	IsActive         bool       `gorm:"default:true" json:"isActive"`
+	BillingCycle     string     `gorm:"default:'monthly'" json:"billingCycle"` // monthly | annual
+	MonthlyFee       float64    `gorm:"default:0" json:"monthlyFee"`
+	AnnualFee        float64    `gorm:"default:0" json:"annualFee"`
+	Currency         string     `gorm:"default:'USD'" json:"currency"`
+	PaymentDay       int        `gorm:"default:1" json:"paymentDay"`
+	PaymentMonth     int        `gorm:"default:1" json:"paymentMonth"` // 1-12, usado en ciclo anual
+	OdooPartnerID    *int       `json:"odooPartnerId,omitempty"`
+	OdooLastSync     *time.Time `json:"odooLastSync,omitempty"`
+	OdooData         JSON       `gorm:"type:jsonb" json:"odooData,omitempty"`
 	TotalMonthlyCost float64    `gorm:"default:0" json:"totalMonthlyCost"`
-	VPSList         []VPS       `gorm:"foreignKey:ClientID" json:"vpsList,omitempty"`
-	Services        []Service   `gorm:"foreignKey:ClientID" json:"services,omitempty"`
-	Payments        []Payment   `gorm:"foreignKey:ClientID" json:"payments,omitempty"`
-	CreatedAt       time.Time   `json:"createdAt"`
-	UpdatedAt       time.Time   `json:"updatedAt"`
+	VPSList          []VPS      `gorm:"foreignKey:ClientID" json:"vpsList,omitempty"`
+	Services         []Service  `gorm:"foreignKey:ClientID" json:"services,omitempty"`
+	Payments         []Payment  `gorm:"foreignKey:ClientID" json:"payments,omitempty"`
+	CreatedAt        time.Time  `json:"createdAt"`
+	UpdatedAt        time.Time  `json:"updatedAt"`
 }
 
 func (c *Client) BeforeCreate(tx *gorm.DB) error {
@@ -133,30 +133,60 @@ func (v *VPS) BeforeCreate(tx *gorm.DB) error {
 
 // Service model
 type Service struct {
-	ID            string     `gorm:"type:text;primaryKey" json:"id"`
-	Name          string     `gorm:"not null" json:"name"`
-	Type          string     `gorm:"not null" json:"type"`
-	Port          *int       `json:"port,omitempty"`
-	ConfigFile    *string    `json:"configFile,omitempty"`
-	URL           *string    `json:"url,omitempty"`
-	FaviconURL    *string    `json:"faviconUrl,omitempty"`
-	ResourceUsage JSON       `gorm:"type:jsonb" json:"resourceUsage,omitempty"`
-	BillingCycle  string     `gorm:"default:'monthly'" json:"billingCycle"` // monthly | annual
-	MonthlyCost   float64    `gorm:"default:0" json:"monthlyCost"`
-	AnnualCost    float64    `gorm:"default:0" json:"annualCost"`
-	Status        string     `gorm:"default:'unknown'" json:"status"`
-	LastChecked   *time.Time `json:"lastChecked,omitempty"`
-	VpsID         *string    `json:"vpsId,omitempty"`
-	VPS           *VPS       `gorm:"foreignKey:VpsID" json:"vps,omitempty"`
-	ClientID      *string    `json:"clientId,omitempty"`
-	Client        *Client    `gorm:"foreignKey:ClientID" json:"client,omitempty"`
-	CreatedAt     time.Time  `json:"createdAt"`
-	UpdatedAt     time.Time  `json:"updatedAt"`
+	ID            string      `gorm:"type:text;primaryKey" json:"id"`
+	Name          string      `gorm:"not null" json:"name"`
+	Type          string      `gorm:"not null" json:"type"`
+	Runtime       string      `gorm:"default:'unknown'" json:"runtime"`
+	Image         *string     `json:"image,omitempty"`
+	ProjectPath   *string     `json:"projectPath,omitempty"`
+	Purpose       *string     `json:"purpose,omitempty"`
+	Domains       StringArray `gorm:"type:text;serializer:json" json:"domains,omitempty"`
+	Port          *int        `json:"port,omitempty"`
+	ConfigFile    *string     `json:"configFile,omitempty"`
+	URL           *string     `json:"url,omitempty"`
+	FaviconURL    *string     `json:"faviconUrl,omitempty"`
+	ResourceUsage JSON        `gorm:"type:jsonb" json:"resourceUsage,omitempty"`
+	BillingCycle  string      `gorm:"default:'monthly'" json:"billingCycle"` // monthly | annual
+	MonthlyCost   float64     `gorm:"default:0" json:"monthlyCost"`
+	AnnualCost    float64     `gorm:"default:0" json:"annualCost"`
+	Status        string      `gorm:"default:'unknown'" json:"status"`
+	LastChecked   *time.Time  `json:"lastChecked,omitempty"`
+	DiscoveredAt  *time.Time  `json:"discoveredAt,omitempty"`
+	VpsID         *string     `json:"vpsId,omitempty"`
+	VPS           *VPS        `gorm:"foreignKey:VpsID" json:"vps,omitempty"`
+	ClientID      *string     `json:"clientId,omitempty"`
+	Client        *Client     `gorm:"foreignKey:ClientID" json:"client,omitempty"`
+	CreatedAt     time.Time   `json:"createdAt"`
+	UpdatedAt     time.Time   `json:"updatedAt"`
 }
 
 func (s *Service) BeforeCreate(tx *gorm.DB) error {
 	if s.ID == "" {
 		s.ID = cuid.New()
+	}
+	return nil
+}
+
+// InventorySnapshot stores the latest read-only discovery result for a VPS.
+// Data contains folders/projects, containers, systemd units, listening ports
+// and reverse-proxy domains; it must never contain file contents or secrets.
+type InventorySnapshot struct {
+	ID        string    `gorm:"type:text;primaryKey" json:"id"`
+	VpsID     string    `gorm:"not null;index" json:"vpsId"`
+	VPS       *VPS      `gorm:"foreignKey:VpsID;constraint:OnDelete:CASCADE" json:"vps,omitempty"`
+	Data      JSON      `gorm:"type:jsonb" json:"data"`
+	Success   bool      `gorm:"default:false" json:"success"`
+	Error     string    `json:"error,omitempty"`
+	ScannedAt time.Time `gorm:"not null;index" json:"scannedAt"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+func (s *InventorySnapshot) BeforeCreate(tx *gorm.DB) error {
+	if s.ID == "" {
+		s.ID = cuid.New()
+	}
+	if s.ScannedAt.IsZero() {
+		s.ScannedAt = time.Now()
 	}
 	return nil
 }
@@ -186,20 +216,20 @@ func (p *Payment) BeforeCreate(tx *gorm.DB) error {
 
 // ScheduledTask — recordatorios y acciones programadas (calendario / AI)
 type ScheduledTask struct {
-	ID          string     `gorm:"type:text;primaryKey" json:"id"`
-	Title       string     `gorm:"not null" json:"title"`
-	Description *string    `json:"description,omitempty"`
-	Type        string     `gorm:"default:'reminder'" json:"type"` // reminder|billing|reactivation|follow_up|custom
-	ScheduledAt time.Time  `gorm:"not null;index" json:"scheduledAt"`
-	ClientID    *string    `json:"clientId,omitempty"`
-	Client      *Client    `gorm:"foreignKey:ClientID" json:"client,omitempty"`
-	ServiceID   *string    `json:"serviceId,omitempty"`
-	Service     *Service   `gorm:"foreignKey:ServiceID" json:"service,omitempty"`
-	Status      string     `gorm:"default:'pending'" json:"status"` // pending|done|cancelled
-	NotifyEmail bool       `gorm:"default:false" json:"notifyEmail"`
-	Metadata    JSON       `gorm:"type:jsonb" json:"metadata,omitempty"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
+	ID          string    `gorm:"type:text;primaryKey" json:"id"`
+	Title       string    `gorm:"not null" json:"title"`
+	Description *string   `json:"description,omitempty"`
+	Type        string    `gorm:"default:'reminder'" json:"type"` // reminder|billing|reactivation|follow_up|custom
+	ScheduledAt time.Time `gorm:"not null;index" json:"scheduledAt"`
+	ClientID    *string   `json:"clientId,omitempty"`
+	Client      *Client   `gorm:"foreignKey:ClientID" json:"client,omitempty"`
+	ServiceID   *string   `json:"serviceId,omitempty"`
+	Service     *Service  `gorm:"foreignKey:ServiceID" json:"service,omitempty"`
+	Status      string    `gorm:"default:'pending'" json:"status"` // pending|done|cancelled
+	NotifyEmail bool      `gorm:"default:false" json:"notifyEmail"`
+	Metadata    JSON      `gorm:"type:jsonb" json:"metadata,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 func (t *ScheduledTask) BeforeCreate(tx *gorm.DB) error {
@@ -397,16 +427,16 @@ func (cr *Credential) BeforeCreate(tx *gorm.DB) error {
 
 // ServiceToken model — API tokens for CLI access
 type ServiceToken struct {
-	ID        string     `gorm:"type:text;primaryKey" json:"id"`
-	Name      string     `gorm:"not null" json:"name"`
-	TokenHash string     `gorm:"not null" json:"-"`
-	Role      string     `gorm:"default:'viewer'" json:"role"`
-	CreatedBy string     `gorm:"not null" json:"createdBy"`
+	ID        string        `gorm:"type:text;primaryKey" json:"id"`
+	Name      string        `gorm:"not null" json:"name"`
+	TokenHash string        `gorm:"not null" json:"-"`
+	Role      string        `gorm:"default:'viewer'" json:"role"`
+	CreatedBy string        `gorm:"not null" json:"createdBy"`
 	Creator   *AllowedEmail `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
-	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
-	LastUsed  *time.Time `json:"lastUsed,omitempty"`
-	Active    bool       `gorm:"default:true" json:"active"`
-	CreatedAt time.Time  `json:"createdAt"`
+	ExpiresAt *time.Time    `json:"expiresAt,omitempty"`
+	LastUsed  *time.Time    `json:"lastUsed,omitempty"`
+	Active    bool          `gorm:"default:true" json:"active"`
+	CreatedAt time.Time     `json:"createdAt"`
 }
 
 func (st *ServiceToken) BeforeCreate(tx *gorm.DB) error {

@@ -11,29 +11,30 @@ import (
 	"github.com/renace/rnv-go-api/config"
 	"github.com/renace/rnv-go-api/database"
 	aiHandler "github.com/renace/rnv-go-api/handlers/ai"
-	authHandler "github.com/renace/rnv-go-api/handlers/auth"
 	auditHandler "github.com/renace/rnv-go-api/handlers/audit"
+	authHandler "github.com/renace/rnv-go-api/handlers/auth"
 	backupHandler "github.com/renace/rnv-go-api/handlers/backup"
 	billingHandler "github.com/renace/rnv-go-api/handlers/billing"
 	calendarHandler "github.com/renace/rnv-go-api/handlers/calendar"
 	clientsHandler "github.com/renace/rnv-go-api/handlers/clients"
 	dnsHandler "github.com/renace/rnv-go-api/handlers/dns"
 	emailHandler "github.com/renace/rnv-go-api/handlers/email"
-	whatsappHandler "github.com/renace/rnv-go-api/handlers/whatsapp"
 	healthHandler "github.com/renace/rnv-go-api/handlers/health"
 	historyHandler "github.com/renace/rnv-go-api/handlers/history"
 	hostingerHandler "github.com/renace/rnv-go-api/handlers/hostinger"
+	inventoryHandler "github.com/renace/rnv-go-api/handlers/inventory"
 	monitorHandler "github.com/renace/rnv-go-api/handlers/monitor"
 	notificationsHandler "github.com/renace/rnv-go-api/handlers/notifications"
 	odooHandler "github.com/renace/rnv-go-api/handlers/odoo"
 	servicesHandler "github.com/renace/rnv-go-api/handlers/services"
 	settingsHandler "github.com/renace/rnv-go-api/handlers/settings"
-	topologyHandler "github.com/renace/rnv-go-api/handlers/topology"
 	sshHandler "github.com/renace/rnv-go-api/handlers/ssh"
 	statsHandler "github.com/renace/rnv-go-api/handlers/stats"
+	topologyHandler "github.com/renace/rnv-go-api/handlers/topology"
 	usersHandler "github.com/renace/rnv-go-api/handlers/users"
 	vaultHandler "github.com/renace/rnv-go-api/handlers/vault"
 	vpsHandler "github.com/renace/rnv-go-api/handlers/vps"
+	whatsappHandler "github.com/renace/rnv-go-api/handlers/whatsapp"
 	"github.com/renace/rnv-go-api/middleware"
 	"github.com/renace/rnv-go-api/scheduler"
 	"github.com/renace/rnv-go-api/serviceslayer"
@@ -172,6 +173,8 @@ func main() {
 		// Stats
 		auth.GET("/stats", statsHandler.Dashboard(db))
 		auth.GET("/topology", topologyHandler.Map(db))
+		auth.GET("/inventory", inventoryHandler.Report(db))
+		auth.POST("/inventory/scan", middleware.RequireRole("superadmin", "admin"), inventoryHandler.Scan(db, cfg))
 		auth.GET("/dns/audit", dnsHandler.Audit(db))
 		auth.POST("/dns/audit", dnsHandler.Audit(db))
 

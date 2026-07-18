@@ -12,6 +12,7 @@ import {
     Calendar,
     Network,
     ListTodo,
+    PackageSearch,
     type LucideIcon,
 } from "lucide-react";
 
@@ -28,6 +29,7 @@ export const MAIN_NAV: NavItem[] = [
     { icon: ListTodo, label: "Mi Flujo", href: "/workflow", headerTitle: "Mi Flujo" },
     { icon: Server, label: "Servidores VPS", href: "/vps", headerTitle: "Servidores VPS" },
     { icon: Database, label: "Servicios", href: "/services", headerTitle: "Servicios" },
+    { icon: PackageSearch, label: "Inventario", href: "/inventory", headerTitle: "Inventario Real" },
     { icon: Network, label: "Mapa", href: "/map", headerTitle: "Mapa de Infraestructura" },
     { icon: Users, label: "Clientes", href: "/clients", headerTitle: "Clientes" },
     { icon: DollarSign, label: "Facturación", href: "/billing", headerTitle: "Facturación" },

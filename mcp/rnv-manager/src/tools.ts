@@ -333,6 +333,132 @@ export function registerTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "rnv_scan_inventory",
+    {
+      description:
+        "Escanea inventario real por SSH: IPs, puertos en escucha, contenedores Docker, proyectos/carpetas, servicios systemd y dominios de Traefik/Nginx/Caddy. Sin vpsId escanea todos. No lee secretos ni contenido de .env.",
+      inputSchema: {
+        vpsId: z
+          .string()
+          .optional()
+          .describe("ID del VPS. Vacío = todos los VPS registrados"),
+      },
+    },
+    async ({ vpsId }) => {
+      try {
+        const c = getClient();
+        const data = await rnvFetch(
+          c,
+          `/inventory/scan${qs({ vpsId })}`,
+          { method: "POST" }
+        );
+        return jsonResult(data);
+      } catch (e) {
+        return errResult(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "rnv_inventory",
+    {
+      description:
+        "Muestra el último inventario real por servidor, servicios, dominios, carpeta/proyecto, cliente/finalidad y rentabilidad mensual.",
+      inputSchema: {
+        vpsId: z.string().optional().describe("Filtrar por ID del VPS"),
+      },
+    },
+    async ({ vpsId }) => {
+      try {
+        const c = getClient();
+        return jsonResult(
+          await rnvFetch(c, `/inventory${qs({ vpsId })}`)
+        );
+      } catch (e) {
+        return errResult(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "rnv_scan_services",
+    {
+      description:
+        "Escaneo rápido existente de contenedores Docker + dominios Traefik; sincroniza servicios con RNV. Para inventario completo usa rnv_scan_inventory.",
+      inputSchema: {
+        vpsId: z.string().optional().describe("ID del VPS. Vacío = todos"),
+      },
+    },
+    async ({ vpsId }) => {
+      try {
+        const c = getClient();
+        return jsonResult(
+          await rnvFetch(c, `/services/scan${qs({ vpsId })}`, {
+            method: "POST",
+          })
+        );
+      } catch (e) {
+        return errResult(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "rnv_dns_inventory",
+    {
+      description:
+        "Cruza los dominios DNS de renace.tech con IPs, VPS y servicios registrados para detectar dominios sin servicio o servicios sin DNS.",
+      inputSchema: {
+        domain: z.string().optional().describe("Zona base; default renace.tech"),
+      },
+    },
+    async ({ domain }) => {
+      try {
+        const c = getClient();
+        return jsonResult(
+          await rnvFetch(c, `/dns/audit${qs({ domain })}`)
+        );
+      } catch (e) {
+        return errResult(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "rnv_update_service_inventory",
+    {
+      description:
+        "Completa finalidad, cliente, ingreso/costo facturable, dominio o carpeta de un servicio descubierto.",
+      inputSchema: {
+        id: z.string().describe("ID del servicio"),
+        purpose: z.string().optional().describe("Finalidad: para qué/quién existe"),
+        clientId: z.string().nullable().optional().describe("Cliente dueño/beneficiario"),
+        monthlyCost: z.number().min(0).optional().describe("Ingreso mensual facturable"),
+        annualCost: z.number().min(0).optional().describe("Ingreso anual facturable"),
+        billingCycle: z.enum(["monthly", "annual"]).optional(),
+        url: z.string().url().optional(),
+        projectPath: z.string().optional(),
+      },
+    },
+    async ({ id, ...updates }) => {
+      try {
+        const c = getClient();
+        const body = Object.fromEntries(
+          Object.entries(updates).filter(([, value]) => value !== undefined)
+        );
+        return jsonResult(
+          await rnvFetch(c, `/services/${id}`, {
+            method: "PUT",
+            body: JSON.stringify(body),
+          })
+        );
+      } catch (e) {
+        return errResult(e);
+      }
+    }
+  );
+
+  server.registerTool(
     "rnv_search",
     {
       description:

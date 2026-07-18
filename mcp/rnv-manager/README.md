@@ -46,6 +46,14 @@ El servidor lee `.env` solo; no hace falta `export` en la terminal.
 | `rnv_topology` | Mapa / clusters |
 | `rnv_stats` | Dashboard |
 | `rnv_search` | Búsqueda en clients+vps+services |
+| `rnv_scan_inventory` | Escaneo real: Docker, systemd, puertos, carpetas y dominios |
+| `rnv_inventory` | Inventario enriquecido con cliente, finalidad e ingreso/beneficio |
+| `rnv_scan_services` | Escaneo rápido Docker + Traefik |
+| `rnv_dns_inventory` | Cruce dominio → IP → VPS → servicio |
+| `rnv_update_service_inventory` | Completar finalidad, cliente, precio, dominio y carpeta |
+
+El escáner solo lee metadatos operativos. No devuelve contenido de archivos,
+variables de entorno, llaves ni contraseñas.
 
 ## Inspector (opcional)
 
