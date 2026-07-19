@@ -14,6 +14,7 @@ import {
     ListTodo,
     PackageSearch,
     MessageCircle,
+    Sparkles,
     type LucideIcon,
 } from "lucide-react";
 
@@ -28,10 +29,11 @@ export type NavItem = {
 export const MAIN_NAV: NavItem[] = [
     { icon: LayoutDashboard, label: "Panel Principal", href: "/", headerTitle: "Panel Principal" },
     { icon: ListTodo, label: "Mi Flujo", href: "/workflow", headerTitle: "Mi Flujo" },
+    { icon: Sparkles, label: "Wizard", href: "/wizard", headerTitle: "Organizar y cobrar" },
     { icon: Server, label: "Servidores VPS", href: "/vps", headerTitle: "Servidores VPS" },
     { icon: Database, label: "Servicios", href: "/services", headerTitle: "Servicios" },
     { icon: PackageSearch, label: "Inventario", href: "/inventory", headerTitle: "Inventario Real" },
-    { icon: MessageCircle, label: "WhatsApp", href: "/whatsapp", headerTitle: "WhatsApp — Contactos" },
+    { icon: MessageCircle, label: "WhatsApp", href: "/whatsapp", headerTitle: "WhatsApp Renace" },
     { icon: Network, label: "Mapa", href: "/map", headerTitle: "Mapa de Infraestructura" },
     { icon: Users, label: "Clientes", href: "/clients", headerTitle: "Clientes" },
     { icon: DollarSign, label: "Facturación", href: "/billing", headerTitle: "Facturación" },

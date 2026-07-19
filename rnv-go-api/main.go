@@ -239,6 +239,8 @@ func main() {
 		auth.GET("/whatsapp", whatsappHandler.Config(db, cfg))
 		auth.POST("/whatsapp", whatsappHandler.Send(db, cfg))
 		auth.POST("/whatsapp/test", whatsappHandler.Test(db, cfg))
+		auth.GET("/whatsapp/qr", middleware.RequireRole("superadmin", "admin"), whatsappHandler.QR(db, cfg))
+		auth.POST("/whatsapp/logout", middleware.RequireRole("superadmin", "admin"), whatsappHandler.Logout(db, cfg))
 		auth.GET("/whatsapp/contacts", whatsappHandler.Contacts(db, cfg))
 		auth.POST("/whatsapp/link", middleware.RequireRole("superadmin", "admin"), whatsappHandler.LinkPhone(db))
 		auth.POST("/whatsapp/notify", middleware.RequireRole("superadmin", "admin"), whatsappHandler.NotifyService(db, cfg))

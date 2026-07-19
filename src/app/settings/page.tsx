@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
     Save, Mail, Key, Bell, Server, RefreshCw,
     CheckCircle, AlertTriangle, Eye, EyeOff, Shield, Sparkles, MessageCircle, Copy, Trash2
@@ -44,14 +45,8 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
         id: "whatsapp",
         title: "WhatsApp (Evolution API)",
         icon: MessageCircle,
-        description: "Canal central — línea 849 (instancia renace en Evolution)",
-        fields: [
-            { key: "evolution_api_url", label: "URL Evolution API", type: "text", placeholder: "https://evoapi.renace.tech" },
-            { key: "evolution_api_key", label: "API Key", type: "password", placeholder: "apikey de Evolution" },
-            { key: "evolution_instance", label: "Instancia", type: "text", placeholder: "renace", description: "Nombre exacto en evoapi. Debe tener escaneado SOLO el WhatsApp de Renace (849), nunca de un cliente." },
-            { key: "whatsapp_owner_number", label: "Número dueño (empresa)", type: "text", placeholder: "18494577463", description: "Si Evolution está conectado a otro número, RNV bloquea todos los envíos." },
-            { key: "whatsapp_notify_numbers", label: "Números de alerta", type: "text", placeholder: "18494577463", description: "OTP/login admin. Cobros van al teléfono del cliente desde la línea empresa." },
-            { key: "whatsapp_sender_label", label: "Etiqueta remitente", type: "text", placeholder: "Renace" },        ],
+        description: "Conexión por QR en /whatsapp — sin formularios. Credenciales solo en el servidor.",
+        fields: [],
     },
     {
         id: "api",
@@ -65,8 +60,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
             { key: "odoo_user", label: "Odoo Usuario", type: "text", placeholder: "admin" },
             { key: "odoo_key", label: "Odoo API Key", type: "password", placeholder: "API key...", description: "Usada por el asistente IA y facturación" },
         ],
-    },
-    {
+    },    {
         id: "ai",
         title: "Asistente IA",
         icon: Sparkles,
@@ -109,7 +103,6 @@ export default function SettingsPage() {
     const [smtpStatus, setSmtpStatus] = useState<"unknown" | "ok" | "error">("unknown");
     const [waStatus, setWaStatus] = useState<"unknown" | "ok" | "warning" | "error">("unknown");
     const [waDetail, setWaDetail] = useState("");
-    const [testingWa, setTestingWa] = useState(false);
     const [odooStatus, setOdooStatus] = useState<"unknown" | "ok" | "error">("unknown");
     const [testingOdoo, setTestingOdoo] = useState(false);
     const [svcTokens, setSvcTokens] = useState<Array<{
@@ -266,36 +259,6 @@ export default function SettingsPage() {
         }
     };
 
-    const testWhatsApp = async () => {
-        setTestingWa(true);
-        try {
-            const resSave = await fetch("/api/settings", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ settings }),
-            });
-            const saveData = await resSave.json();
-            if (!saveData.success) {
-                addToast(saveData.error || "Error al guardar credenciales", "error");
-                return;
-            }
-            const res = await fetch("/api/whatsapp/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-            const data = await res.json();
-            if (data.success) {
-                setWaStatus("ok");
-                addToast("Conexión WhatsApp verificada — no se envió ningún mensaje", "success");
-            } else {
-                setWaStatus("error");
-                addToast(data.error || "No se pudo verificar WhatsApp", "error");
-            }
-        } catch {
-            setWaStatus("error");
-            addToast("Error al verificar WhatsApp", "error");
-        } finally {
-            setTestingWa(false);
-        }
-    };
-
     const testOdooConnection = async () => {
         setTestingOdoo(true);
         try {
@@ -434,9 +397,11 @@ export default function SettingsPage() {
                             </p>
                         </div>
                     </div>
-                    <Button variant="outline" onClick={testWhatsApp} disabled={testingWa} className="gap-2 rounded-xl border-2 border-emerald-300 text-emerald-800">
-                        {testingWa ? <RefreshCw className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
-                        Verificar conexión
+                    <Button asChild variant="outline" className="gap-2 rounded-xl border-2 border-emerald-300 text-emerald-800">
+                        <Link href="/whatsapp">
+                            <MessageCircle className="w-4 h-4" />
+                            Conectar con QR
+                        </Link>
                     </Button>
                 </div>
             </div>
@@ -586,6 +551,22 @@ export default function SettingsPage() {
                                 <div className="md:col-span-2 p-4 rounded-xl bg-violet-50 border border-violet-100 text-sm text-gray-700 space-y-2">
                                     <p>El asistente (cono violeta) usa <code className="bg-white px-1.5 py-0.5 rounded border text-violet-700">GEMINI_API_KEY</code> en el servidor.</p>
                                     <p>Puede gestionar clientes, VPS, servicios, mapa de infraestructura, calendario y Odoo.</p>
+                                </div>
+                            )}
+                            {section.id === "whatsapp" && (
+                                <div className="md:col-span-2 p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-sm text-emerald-950 space-y-3">
+                                    <p>
+                                        Ya no hay formulario de URL/API key/instancia. Eso vive en el servidor.
+                                        Conecta escaneando un QR con el WhatsApp de Renace.
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button asChild className="rounded-xl bg-emerald-600 hover:bg-emerald-700">
+                                            <Link href="/whatsapp">Abrir wizard QR WhatsApp</Link>
+                                        </Button>
+                                        <Button asChild variant="outline" className="rounded-xl">
+                                            <Link href="/wizard">Organizar servicios para cobrar</Link>
+                                        </Button>
+                                    </div>
                                 </div>
                             )}
                         </CardContent>

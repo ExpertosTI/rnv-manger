@@ -93,6 +93,31 @@ func Test(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
+// QR returns a connect QR for the company WhatsApp line (credentials stay on server).
+func QR(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		qr, err := serviceslayer.FetchEvolutionConnectQR(db, cfg)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error(), "data": qr})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": qr})
+	}
+}
+
+// Logout disconnects the current Evolution session so a new company QR can be scanned.
+func Logout(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := serviceslayer.LogoutEvolutionInstance(db, cfg); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		serviceslayer.LogAudit(db, "WHATSAPP", "system", "Sesión WhatsApp desconectada (logout Evolution)",
+			models.JSON{}, middleware.GetClientIP(c), middleware.GetUserID(c))
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "Sesión desconectada. Genera un nuevo QR con la línea empresa."})
+	}
+}
+
 // Contacts returns only recipients explicitly stored in RNV.
 func Contacts(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {

@@ -270,6 +270,132 @@ func AssertCompanyWhatsAppSender(db *gorm.DB, cfg *config.Config) (owner string,
 	return owner, nil
 }
 
+// EvolutionQR holds a QR image for linking the company WhatsApp line.
+type EvolutionQR struct {
+	Base64      string `json:"base64,omitempty"`
+	Code        string `json:"code,omitempty"`
+	State       string `json:"state"`
+	Instance    string `json:"instance"`
+	Expected    string `json:"expectedOwner"`
+	OwnerNumber string `json:"ownerNumber,omitempty"`
+	OwnerOK     bool   `json:"ownerOk"`
+	Connected   bool   `json:"connected"`
+	Message     string `json:"message,omitempty"`
+}
+
+func extractQRBase64(raw []byte) (base64Str, code string) {
+	var m map[string]interface{}
+	if json.Unmarshal(raw, &m) != nil {
+		return "", ""
+	}
+	base64Str = stringField(m, "base64", "qrcode")
+	code = stringField(m, "code")
+	if nested, ok := m["qrcode"].(map[string]interface{}); ok {
+		if base64Str == "" {
+			base64Str = stringField(nested, "base64")
+		}
+		if code == "" {
+			code = stringField(nested, "code")
+		}
+	}
+	if base64Str != "" && !strings.HasPrefix(base64Str, "data:") {
+		base64Str = "data:image/png;base64," + base64Str
+	}
+	return base64Str, code
+}
+
+// FetchEvolutionConnectQR starts/reconnects the instance and returns a QR to scan.
+// Credentials stay on the server (env); the UI never needs URL/key/instance fields.
+func FetchEvolutionConnectQR(db *gorm.DB, cfg *config.Config) (EvolutionQR, error) {
+	wc := ResolveWhatsAppConfig(db, cfg)
+	out := EvolutionQR{
+		Instance: wc.Instance,
+		Expected: FormatWhatsAppRecipient(wc.OwnerNumber),
+	}
+	if out.Expected == "" {
+		out.Expected = "18494577463"
+	}
+	if !wc.IsConfigured() {
+		return out, fmt.Errorf("WhatsApp no configurado en el servidor (EVOLUTION_* en /etc/rnv-manager/rnv.env)")
+	}
+
+	state, connected := CheckEvolutionConnection(db, cfg)
+	out.State = state
+	if connected {
+		if owner, err := FetchEvolutionOwnerNumber(db, cfg); err == nil {
+			out.OwnerNumber = owner
+			out.OwnerOK = owner == out.Expected
+			out.Connected = out.OwnerOK
+			if out.OwnerOK {
+				out.Message = "Línea empresa conectada. No hace falta escanear."
+				return out, nil
+			}
+			out.Message = fmt.Sprintf(
+				"Hay un WhatsApp conectado (+%s) que NO es la línea empresa (+%s). Desconecta y escanea el de Renace.",
+				owner, out.Expected,
+			)
+		}
+	}
+
+	url := fmt.Sprintf("%s/instance/connect/%s", wc.APIURL, instancePath(wc.Instance))
+	raw, code, err := evolutionHTTP(http.MethodGet, url, wc.APIKey, nil)
+	if err != nil {
+		return out, err
+	}
+	if code < 200 || code >= 300 {
+		return out, fmt.Errorf("%s", humanizeEvolutionError(code, string(raw)))
+	}
+	b64, qrCode := extractQRBase64(raw)
+	out.Base64 = b64
+	out.Code = qrCode
+	if out.Base64 == "" {
+		// Already open / pairing without QR payload
+		state2, connected2 := CheckEvolutionConnection(db, cfg)
+		out.State = state2
+		if connected2 {
+			if owner, err := FetchEvolutionOwnerNumber(db, cfg); err == nil {
+				out.OwnerNumber = owner
+				out.OwnerOK = owner == out.Expected
+				out.Connected = out.OwnerOK
+			}
+		}
+		if out.Base64 == "" && !out.Connected {
+			out.Message = "Evolution no devolvió QR. Reintenta o revisa la instancia en evoapi."
+		}
+		return out, nil
+	}
+	out.State = "connecting"
+	out.Message = fmt.Sprintf(
+		"Escanea con el WhatsApp de Renace (+%s): Ajustes → Dispositivos vinculados → Vincular dispositivo",
+		out.Expected,
+	)
+	return out, nil
+}
+
+// LogoutEvolutionInstance disconnects the current WhatsApp session (needed to leave a client line).
+func LogoutEvolutionInstance(db *gorm.DB, cfg *config.Config) error {
+	wc := ResolveWhatsAppConfig(db, cfg)
+	if !wc.IsConfigured() {
+		return fmt.Errorf("WhatsApp no configurado en el servidor")
+	}
+	url := fmt.Sprintf("%s/instance/logout/%s", wc.APIURL, instancePath(wc.Instance))
+	raw, code, err := evolutionHTTP(http.MethodDelete, url, wc.APIKey, nil)
+	if err != nil {
+		return err
+	}
+	if code < 200 || code >= 300 {
+		// Some Evolution versions use POST
+		raw2, code2, err2 := evolutionHTTP(http.MethodPost, url, wc.APIKey, []byte("{}"))
+		if err2 != nil {
+			return err2
+		}
+		if code2 < 200 || code2 >= 300 {
+			return fmt.Errorf("%s", humanizeEvolutionError(code, string(raw)+"; "+string(raw2)))
+		}
+	}
+	return nil
+}
+
 func humanizeEvolutionError(statusCode int, raw string) string {
 	low := strings.ToLower(raw)
 	if strings.Contains(low, "connection closed") {
