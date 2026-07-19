@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -80,6 +81,77 @@ func Update(db *gorm.DB) gin.HandlerFunc {
 		serviceslayer.LogAudit(db, "UPDATE", "service", "Servicio actualizado: "+svc.Name,
 			models.JSON{"serviceId": id}, ip, userID)
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": svc})
+	}
+}
+
+type bulkOrgItem struct {
+	ID          string   `json:"id"`
+	ClientID    *string  `json:"clientId"`
+	Purpose     *string  `json:"purpose"`
+	MonthlyCost *float64 `json:"monthlyCost"`
+}
+
+type bulkOrgRequest struct {
+	Items []bulkOrgItem `json:"items" binding:"required"`
+}
+
+// BulkOrganize updates client/purpose/monthlyCost for many services in one request.
+func BulkOrganize(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req bulkOrgRequest
+		if err := c.ShouldBindJSON(&req); err != nil || len(req.Items) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "items requerido"})
+			return
+		}
+		updated := 0
+		failed := 0
+		touchedClients := map[string]bool{}
+		for _, item := range req.Items {
+			if item.ID == "" {
+				failed++
+				continue
+			}
+			var svc models.Service
+			if err := db.First(&svc, "id = ?", item.ID).Error; err != nil {
+				failed++
+				continue
+			}
+			if svc.ClientID != nil {
+				touchedClients[*svc.ClientID] = true
+			}
+			updates := map[string]interface{}{}
+			if item.ClientID != nil {
+				if *item.ClientID == "" {
+					updates["client_id"] = nil
+				} else {
+					updates["client_id"] = *item.ClientID
+					touchedClients[*item.ClientID] = true
+				}
+			}
+			if item.Purpose != nil {
+				updates["purpose"] = *item.Purpose
+			}
+			if item.MonthlyCost != nil {
+				updates["monthly_cost"] = *item.MonthlyCost
+				updates["billing_cycle"] = "monthly"
+			}
+			if len(updates) == 0 {
+				continue
+			}
+			if err := db.Model(&svc).Updates(updates).Error; err != nil {
+				failed++
+				continue
+			}
+			updated++
+		}
+		for clientID := range touchedClients {
+			serviceslayer.RecalculateClientCost(db, clientID)
+		}
+		serviceslayer.LogAudit(db, "UPDATE", "service",
+			fmt.Sprintf("Organización masiva: %d ok, %d fallos", updated, failed),
+			models.JSON{"updated": updated, "failed": failed},
+			middleware.GetClientIP(c), middleware.GetUserID(c))
+		c.JSON(http.StatusOK, gin.H{"success": true, "updated": updated, "failed": failed})
 	}
 }
 

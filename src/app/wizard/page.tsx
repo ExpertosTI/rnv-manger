@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-    CheckCircle2, CircleDollarSign, PackageSearch, RefreshCw, Server, Sparkles,
+    CheckCircle2, CircleDollarSign, PackageSearch, RefreshCw, Sparkles, Wand2, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 
-type ClientOpt = { id: string; name: string };
+type ClientOpt = { id: string; name: string; monthlyFee?: number };
 
 type WizardService = {
     id: string;
@@ -28,15 +28,111 @@ type WizardService = {
     vpsId: string;
     vpsName: string;
     vpsIp: string;
+    vpsClientId?: string;
+    vpsClientName?: string;
 };
 
 type Draft = {
     clientId: string;
     purpose: string;
     monthlyCost: string;
+    skip: boolean;
 };
 
 const money = (n: number) => `$${n.toFixed(2)}`;
+
+const INFRA_TYPES = new Set([
+    "postgres", "postgresql", "mysql", "mariadb", "redis", "mongodb", "mongo",
+    "rabbitmq", "elasticsearch", "traefik", "nginx", "caddy", "portainer",
+    "watchtower", "prometheus", "grafana", "docker", "unknown",
+]);
+
+const DEFAULT_PRICE: Record<string, number> = {
+    odoo: 100,
+    wordpress: 40,
+    nextjs: 50,
+    nodejs: 50,
+    n8n: 40,
+    ghost: 35,
+    app: 50,
+};
+
+function normalize(s: string) {
+    return s.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/[^a-z0-9]/g, "");
+}
+
+function subdomainHint(svc: WizardService): string {
+    const raw = svc.url || svc.domains?.[0] || svc.name;
+    try {
+        const host = raw.includes("://") ? new URL(raw).hostname : raw;
+        const first = host.split(".")[0] || svc.name;
+        return first.replace(/[-_]/g, " ").trim();
+    } catch {
+        return svc.name;
+    }
+}
+
+function suggestPurpose(svc: WizardService): string {
+    if (svc.purpose?.trim()) return svc.purpose.trim();
+    const hint = subdomainHint(svc);
+    const t = (svc.type || "").toLowerCase();
+    if (t.includes("odoo")) return `Odoo — ${hint}`;
+    if (t.includes("wordpress")) return `WordPress — ${hint}`;
+    if (t.includes("n8n")) return `Automatización n8n — ${hint}`;
+    if (INFRA_TYPES.has(t)) return `Infra interna — ${svc.name}`;
+    return hint || svc.name;
+}
+
+function suggestPrice(svc: WizardService, defaultOdoo: number): number {
+    if (svc.monthlyRevenue > 0) return svc.monthlyRevenue;
+    const t = (svc.type || "").toLowerCase();
+    if (INFRA_TYPES.has(t)) return 0;
+    if (t.includes("odoo")) return defaultOdoo;
+    for (const [key, price] of Object.entries(DEFAULT_PRICE)) {
+        if (t.includes(key)) return price;
+    }
+    if (svc.url || (svc.domains && svc.domains.length > 0)) return defaultOdoo > 0 ? Math.min(defaultOdoo, 50) : 50;
+    return 0;
+}
+
+function suggestClient(svc: WizardService, clients: ClientOpt[]): string {
+    if (svc.clientId) return svc.clientId;
+    if (svc.vpsClientId) return svc.vpsClientId;
+    const hay = normalize([svc.name, subdomainHint(svc), ...(svc.domains || [])].join(" "));
+    let best = "";
+    let bestScore = 0;
+    for (const c of clients) {
+        const cn = normalize(c.name);
+        if (!cn) continue;
+        if (hay.includes(cn) || cn.includes(hay)) {
+            const score = Math.min(cn.length, hay.length);
+            if (score > bestScore) {
+                best = c.id;
+                bestScore = score;
+            }
+            continue;
+        }
+        // token match: "Luis La Grasa" ↔ lagrasa
+        const tokens = cn.split(/\s+/).filter((t) => t.length >= 4);
+        for (const token of tokens) {
+            if (hay.includes(token) && token.length > bestScore) {
+                best = c.id;
+                bestScore = token.length;
+            }
+        }
+    }
+    return best;
+}
+
+function isOnline(status: string) {
+    return ["online", "running", "active", "up"].includes((status || "").toLowerCase());
+}
+
+function isBillableCandidate(svc: WizardService) {
+    const t = (svc.type || "").toLowerCase();
+    if (INFRA_TYPES.has(t) && !svc.url && !(svc.domains && svc.domains.length)) return false;
+    return true;
+}
 
 export default function ServiceWizardPage() {
     const { addToast } = useToast();
@@ -44,10 +140,27 @@ export default function ServiceWizardPage() {
     const [clients, setClients] = useState<ClientOpt[]>([]);
     const [loading, setLoading] = useState(true);
     const [scanning, setScanning] = useState(false);
-    const [step, setStep] = useState(0);
+    const [saving, setSaving] = useState(false);
     const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-    const [savingId, setSavingId] = useState<string | null>(null);
-    const [filter, setFilter] = useState<"needs" | "online" | "all">("needs");
+    const [selected, setSelected] = useState<Record<string, boolean>>({});
+    const [filter, setFilter] = useState<"ready" | "needs" | "online" | "all">("ready");
+    const [defaultPrice, setDefaultPrice] = useState("100");
+    const [bulkClientId, setBulkClientId] = useState("");
+    const [onlyPublic, setOnlyPublic] = useState(true);
+
+    const buildDrafts = useCallback((rows: WizardService[], clientList: ClientOpt[], priceDefault: number) => {
+        const next: Record<string, Draft> = {};
+        for (const s of rows) {
+            const infra = INFRA_TYPES.has((s.type || "").toLowerCase()) && !s.url;
+            next[s.id] = {
+                clientId: suggestClient(s, clientList),
+                purpose: suggestPurpose(s),
+                monthlyCost: String(suggestPrice(s, priceDefault)),
+                skip: infra,
+            };
+        }
+        return next;
+    }, []);
 
     const load = useCallback(async () => {
         try {
@@ -58,6 +171,12 @@ export default function ServiceWizardPage() {
             const inv = await invRes.json();
             const cl = await clientsRes.json();
             if (!invRes.ok || !inv.success) throw new Error(inv.error || "No se pudo cargar inventario");
+
+            const clientList: ClientOpt[] = cl.success && Array.isArray(cl.data)
+                ? cl.data.map((c: { id: string; name: string; monthlyFee?: number }) => ({
+                    id: c.id, name: c.name, monthlyFee: c.monthlyFee,
+                }))
+                : [];
 
             const rows: WizardService[] = [];
             for (const server of inv.data || []) {
@@ -77,34 +196,32 @@ export default function ServiceWizardPage() {
                         vpsId: server.vpsId,
                         vpsName: server.vpsName,
                         vpsIp: server.ip,
+                        vpsClientId: server.client?.id,
+                        vpsClientName: server.client?.name,
                     });
                 }
             }
             setServices(rows);
-
-            const nextDrafts: Record<string, Draft> = {};
+            setClients(clientList);
+            const price = parseFloat(defaultPrice) || 100;
+            setDrafts(buildDrafts(rows, clientList, price));
+            // preselect all ready public apps
+            const sel: Record<string, boolean> = {};
             for (const s of rows) {
-                nextDrafts[s.id] = {
-                    clientId: s.clientId || "",
-                    purpose: s.purpose || "",
-                    monthlyCost: s.monthlyRevenue > 0 ? String(s.monthlyRevenue) : "",
-                };
+                if (isBillableCandidate(s) && isOnline(s.status)) sel[s.id] = true;
             }
-            setDrafts(nextDrafts);
-
-            if (cl.success && Array.isArray(cl.data)) {
-                setClients(cl.data.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
-            }
+            setSelected(sel);
         } catch (error) {
             addToast(error instanceof Error ? error.message : "Error cargando wizard", "error");
         } finally {
             setLoading(false);
         }
-    }, [addToast]);
+    }, [addToast, buildDrafts, defaultPrice]);
 
     useEffect(() => {
         void load();
-    }, [load]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const scanAll = async () => {
         setScanning(true);
@@ -112,8 +229,7 @@ export default function ServiceWizardPage() {
             const res = await fetch("/api/inventory/scan", { method: "POST" });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Falló el escaneo");
-            addToast("Escaneo completado — revisa los servicios abajo", "success");
-            setStep(1);
+            addToast("Escaneo listo — ya hay sugerencias automáticas", "success");
             await load();
         } catch (error) {
             addToast(error instanceof Error ? error.message : "Error escaneando", "error");
@@ -122,65 +238,113 @@ export default function ServiceWizardPage() {
         }
     };
 
-    const needsWork = useMemo(
-        () => services.filter((s) => !s.clientId || !s.purpose || !s.generatesRevenue),
-        [services],
-    );
-    const online = useMemo(
-        () => services.filter((s) => s.status === "online" || s.status === "running" || s.status === "active"),
-        [services],
-    );
+    const autoFill = () => {
+        const price = parseFloat(defaultPrice) || 100;
+        setDrafts(buildDrafts(services, clients, price));
+        addToast("Sugerencias aplicadas (cliente, propósito y precio)", "success");
+    };
+
+    const draftReady = (id: string) => {
+        const d = drafts[id];
+        if (!d || d.skip) return false;
+        return !!(d.clientId && d.purpose.trim() && parseFloat(d.monthlyCost || "0") > 0);
+    };
+
+    const billablePool = useMemo(() => {
+        return services.filter((s) => {
+            if (drafts[s.id]?.skip) return false;
+            if (onlyPublic && !isBillableCandidate(s)) return false;
+            return true;
+        });
+    }, [services, drafts, onlyPublic]);
+
+    const readyList = useMemo(() => billablePool.filter((s) => draftReady(s.id)), [billablePool, drafts]);
+    const needsList = useMemo(() => billablePool.filter((s) => !draftReady(s.id)), [billablePool, drafts]);
+    const onlineList = useMemo(() => billablePool.filter((s) => isOnline(s.status)), [billablePool]);
 
     const visible = useMemo(() => {
-        if (filter === "needs") return needsWork;
-        if (filter === "online") return online;
-        return services;
-    }, [filter, needsWork, online, services]);
+        if (filter === "ready") return readyList;
+        if (filter === "needs") return needsList;
+        if (filter === "online") return onlineList;
+        return billablePool;
+    }, [filter, readyList, needsList, onlineList, billablePool]);
 
-    const totalBillable = useMemo(
-        () => services.reduce((sum, s) => sum + (s.monthlyRevenue || 0), 0),
-        [services],
+    const selectedIds = useMemo(
+        () => visible.filter((s) => selected[s.id]).map((s) => s.id),
+        [visible, selected],
     );
 
-    const saveOne = async (svc: WizardService) => {
-        const d = drafts[svc.id];
-        if (!d) return;
-        const cost = parseFloat(d.monthlyCost || "0");
-        if (!d.clientId) {
-            addToast("Elige un cliente para poder cobrar", "warning");
+    const projectedRevenue = useMemo(() => {
+        return billablePool.reduce((sum, s) => {
+            const d = drafts[s.id];
+            if (!d || d.skip) return sum;
+            const n = parseFloat(d.monthlyCost || "0");
+            return sum + (Number.isFinite(n) ? n : 0);
+        }, 0);
+    }, [billablePool, drafts]);
+
+    const toggleAllVisible = (on: boolean) => {
+        setSelected((prev) => {
+            const next = { ...prev };
+            for (const s of visible) next[s.id] = on;
+            return next;
+        });
+    };
+
+    const applyBulkToSelected = () => {
+        if (selectedIds.length === 0) {
+            addToast("Selecciona al menos un servicio", "warning");
             return;
         }
-        if (!d.purpose.trim()) {
-            addToast("Describe para qué sirve (purpose)", "warning");
-            return;
-        }
-        setSavingId(svc.id);
-        try {
-            const currentRes = await fetch(`/api/services/${svc.id}`);
-            const currentData = await currentRes.json();
-            if (!currentRes.ok || !currentData.success) {
-                throw new Error(currentData.error || "No se pudo leer el servicio");
+        const price = parseFloat(defaultPrice);
+        setDrafts((prev) => {
+            const next = { ...prev };
+            for (const id of selectedIds) {
+                const cur = next[id] || { clientId: "", purpose: "", monthlyCost: "", skip: false };
+                next[id] = {
+                    ...cur,
+                    clientId: bulkClientId || cur.clientId,
+                    monthlyCost: Number.isFinite(price) && price >= 0 ? String(price) : cur.monthlyCost,
+                    purpose: cur.purpose || suggestPurpose(services.find((s) => s.id === id)!),
+                    skip: false,
+                };
             }
-            const current = currentData.data || {};
-            const res = await fetch(`/api/services/${svc.id}`, {
-                method: "PUT",
+            return next;
+        });
+        addToast(`Aplicado a ${selectedIds.length} seleccionados`, "success");
+    };
+
+    const saveBulk = async (ids: string[]) => {
+        const items = ids.map((id) => {
+            const d = drafts[id];
+            const cost = parseFloat(d?.monthlyCost || "0");
+            return {
+                id,
+                clientId: d?.clientId || "",
+                purpose: (d?.purpose || "").trim(),
+                monthlyCost: Number.isFinite(cost) ? cost : 0,
+            };
+        }).filter((i) => i.clientId && i.purpose && i.monthlyCost > 0);
+
+        if (items.length === 0) {
+            addToast("Nada listo para guardar (falta cliente, propósito o precio > 0)", "warning");
+            return;
+        }
+        setSaving(true);
+        try {
+            const res = await fetch("/api/services/bulk-organize", {
+                method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    ...current,
-                    clientId: d.clientId,
-                    purpose: d.purpose.trim(),
-                    monthlyCost: Number.isFinite(cost) ? cost : 0,
-                    billingCycle: "monthly",
-                }),
+                body: JSON.stringify({ items }),
             });
             const data = await res.json();
-            if (!res.ok || !data.success) throw new Error(data.error || "No se pudo guardar");
-            addToast(`Organizado: ${svc.name}`, "success");
+            if (!res.ok || !data.success) throw new Error(data.error || "Falló el guardado masivo");
+            addToast(`Guardados ${data.updated} servicios${data.failed ? ` (${data.failed} fallos)` : ""}`, "success");
             await load();
         } catch (error) {
             addToast(error instanceof Error ? error.message : "Error al guardar", "error");
         } finally {
-            setSavingId(null);
+            setSaving(false);
         }
     };
 
@@ -193,213 +357,196 @@ export default function ServiceWizardPage() {
     }
 
     return (
-        <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
-            <div>
-                <h1 className="text-3xl font-bold flex items-center gap-3">
-                    <Sparkles className="w-8 h-8 text-emerald-600" />
-                    Wizard — Organizar y cobrar
-                </h1>
-                <p className="text-muted-foreground mt-1">
-                    Escanea lo que está en línea, identifícalo y asígnalo a un cliente con precio mensual.
-                </p>
+        <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-5">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold flex items-center gap-3">
+                        <Sparkles className="w-8 h-8 text-emerald-600" />
+                        Wizard rápido
+                    </h1>
+                    <p className="text-muted-foreground mt-1">
+                        Auto-detecta cliente y propósito. Tú solo confirmas precio y guardas en lote.
+                    </p>
+                </div>
+                <div className="text-right">
+                    <p className="text-xs text-muted-foreground">Proyección mensual</p>
+                    <p className="text-2xl font-bold text-emerald-700">{money(projectedRevenue)}</p>
+                </div>
             </div>
 
-            <div className="grid sm:grid-cols-3 gap-3">
-                {[
-                    { n: 0, label: "Escanear" },
-                    { n: 1, label: "Identificar" },
-                    { n: 2, label: "Cobrar" },
-                ].map((s) => (
-                    <button
-                        key={s.n}
-                        type="button"
-                        onClick={() => setStep(s.n)}
-                        className={`rounded-2xl border-2 p-4 text-left transition ${
-                            step === s.n ? "border-emerald-500 bg-emerald-50" : "border-gray-200 hover:border-emerald-200"
-                        }`}
-                    >
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Paso {s.n + 1}</p>
-                        <p className="font-semibold">{s.label}</p>
-                    </button>
-                ))}
-            </div>
-
-            {step === 0 && (
-                <Card className="rounded-2xl border-2">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <PackageSearch className="w-5 h-5 text-emerald-600" />
-                            Descubrir servicios en tus VPS
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <p className="text-sm text-muted-foreground">
-                            RNV entra por SSH a tus servidores y lista contenedores, proyectos, puertos y dominios.
-                            No tienes que pegar IPs a mano.
-                        </p>
-                        <div className="flex flex-wrap gap-4 text-sm">
-                            <div>
-                                <span className="text-muted-foreground">Servicios conocidos</span>
-                                <p className="text-2xl font-bold">{services.length}</p>
-                            </div>
-                            <div>
-                                <span className="text-muted-foreground">Sin organizar</span>
-                                <p className="text-2xl font-bold text-amber-700">{needsWork.length}</p>
-                            </div>
-                            <div>
-                                <span className="text-muted-foreground">Ingreso mensual marcado</span>
-                                <p className="text-2xl font-bold text-emerald-700">{money(totalBillable)}</p>
-                            </div>
+            <Card className="rounded-2xl border-2 border-emerald-100 sticky top-2 z-20 bg-white/95 backdrop-blur shadow-sm">
+                <CardContent className="p-4 space-y-3">
+                    <div className="flex flex-wrap gap-2 items-end">
+                        <div>
+                            <label className="text-xs text-muted-foreground">Precio Odoo / app (USD)</label>
+                            <Input
+                                className="w-28 rounded-xl mt-1"
+                                type="number"
+                                value={defaultPrice}
+                                onChange={(e) => setDefaultPrice(e.target.value)}
+                            />
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                            <Button onClick={scanAll} disabled={scanning} className="gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700">
-                                {scanning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Server className="w-4 h-4" />}
-                                Escanear todos los VPS
-                            </Button>
-                            <Button variant="outline" className="rounded-xl" onClick={() => setStep(1)} disabled={services.length === 0}>
-                                Continuar con lo ya descubierto
-                            </Button>
-                            <Button variant="ghost" className="rounded-xl" asChild>
-                                <Link href="/inventory">Ver inventario completo</Link>
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
-
-            {step >= 1 && (
-                <div className="space-y-4">
-                    <div className="flex flex-wrap gap-2">
-                        {([
-                            ["needs", `Por organizar (${needsWork.length})`],
-                            ["online", `En línea (${online.length})`],
-                            ["all", `Todos (${services.length})`],
-                        ] as const).map(([key, label]) => (
-                            <Button
-                                key={key}
-                                variant={filter === key ? "default" : "outline"}
-                                className="rounded-xl"
-                                onClick={() => setFilter(key)}
+                        <div className="min-w-[180px] flex-1">
+                            <label className="text-xs text-muted-foreground">Cliente para seleccionados</label>
+                            <select
+                                className="w-full border rounded-xl p-2 mt-1"
+                                value={bulkClientId}
+                                onChange={(e) => setBulkClientId(e.target.value)}
                             >
-                                {label}
-                            </Button>
-                        ))}
-                        <Button variant="outline" className="rounded-xl ml-auto" onClick={() => setStep(2)}>
-                            Resumen de cobro
+                                <option value="">— (mantener sugerido) —</option>
+                                {clients.map((c) => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <Button variant="outline" className="rounded-xl gap-1" onClick={autoFill}>
+                            <Wand2 className="w-4 h-4" /> Autocompletar todo
+                        </Button>
+                        <Button variant="outline" className="rounded-xl" onClick={applyBulkToSelected}>
+                            Aplicar a {selectedIds.length || 0}
+                        </Button>
+                        <Button
+                            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 gap-1"
+                            disabled={saving || readyList.length === 0}
+                            onClick={() => saveBulk(readyList.map((s) => s.id))}
+                        >
+                            {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                            Guardar {readyList.length} listos
+                        </Button>
+                        <Button variant="ghost" className="rounded-xl gap-1" disabled={scanning} onClick={scanAll}>
+                            {scanning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <PackageSearch className="w-4 h-4" />}
+                            Re-escanear
                         </Button>
                     </div>
+                    <div className="flex flex-wrap gap-2 items-center text-sm">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={onlyPublic} onChange={(e) => setOnlyPublic(e.target.checked)} />
+                            Solo apps cobrables (oculta DB/redis/traefik)
+                        </label>
+                        <span className="text-muted-foreground">·</span>
+                        <button type="button" className="text-emerald-700 hover:underline" onClick={() => toggleAllVisible(true)}>
+                            Seleccionar visibles
+                        </button>
+                        <button type="button" className="text-muted-foreground hover:underline" onClick={() => toggleAllVisible(false)}>
+                            Quitar selección
+                        </button>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl ml-auto gap-1"
+                            disabled={saving || selectedIds.length === 0}
+                            onClick={() => saveBulk(selectedIds)}
+                        >
+                            <CircleDollarSign className="w-4 h-4" />
+                            Guardar selección ({selectedIds.length})
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
 
+            <div className="flex flex-wrap gap-2">
+                {([
+                    ["ready", `Listos (${readyList.length})`],
+                    ["needs", `Faltan datos (${needsList.length})`],
+                    ["online", `En línea (${onlineList.length})`],
+                    ["all", `Todos (${billablePool.length})`],
+                ] as const).map(([key, label]) => (
+                    <Button key={key} variant={filter === key ? "default" : "outline"} className="rounded-xl" onClick={() => setFilter(key)}>
+                        {label}
+                    </Button>
+                ))}
+                <Button variant="ghost" className="rounded-xl ml-auto" asChild>
+                    <Link href="/billing">Facturación</Link>
+                </Button>
+            </div>
+
+            <div className="rounded-2xl border overflow-hidden">
+                <div className="grid grid-cols-[36px_1.2fr_1fr_1.2fr_100px] gap-2 px-3 py-2 bg-muted/40 text-xs font-medium text-muted-foreground border-b">
+                    <span />
+                    <span>Servicio</span>
+                    <span>Cliente</span>
+                    <span>Propósito</span>
+                    <span>USD/mes</span>
+                </div>
+                <div className="max-h-[62vh] overflow-auto divide-y">
                     {visible.map((svc) => {
-                        const d = drafts[svc.id] || { clientId: "", purpose: "", monthlyCost: "" };
-                        const ready = !!(d.clientId && d.purpose.trim() && parseFloat(d.monthlyCost || "0") > 0);
+                        const d = drafts[svc.id] || { clientId: "", purpose: "", monthlyCost: "", skip: false };
+                        const ready = draftReady(svc.id);
                         return (
-                            <Card key={svc.id} className="rounded-2xl border">
-                                <CardContent className="p-4 space-y-3">
-                                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
-                                        <div>
-                                            <p className="font-semibold text-lg flex items-center gap-2 flex-wrap">
-                                                {svc.name}
-                                                <Badge variant="outline">{svc.type}</Badge>
-                                                <Badge className={svc.status === "online" || svc.status === "running" ? "bg-emerald-100 text-emerald-800" : ""}>
-                                                    {svc.status}
-                                                </Badge>
-                                                {ready && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
-                                            </p>
-                                            <p className="text-sm text-muted-foreground">
-                                                {svc.vpsName} · {svc.vpsIp}
-                                                {svc.domains?.length ? ` · ${svc.domains.slice(0, 2).join(", ")}` : ""}
-                                                {svc.url ? ` · ${svc.url}` : ""}
-                                            </p>
-                                        </div>
-                                        <Button
-                                            size="sm"
-                                            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 gap-1"
-                                            disabled={savingId === svc.id}
-                                            onClick={() => saveOne(svc)}
-                                        >
-                                            {savingId === svc.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CircleDollarSign className="w-4 h-4" />}
-                                            Guardar cobro
-                                        </Button>
-                                    </div>
-                                    <div className="grid md:grid-cols-3 gap-3">
-                                        <div>
-                                            <label className="text-xs text-muted-foreground">Cliente</label>
-                                            <select
-                                                className="w-full border rounded-xl p-2 mt-1"
-                                                value={d.clientId}
-                                                onChange={(e) => setDrafts((prev) => ({
-                                                    ...prev,
-                                                    [svc.id]: { ...d, clientId: e.target.value },
-                                                }))}
-                                            >
-                                                <option value="">— ¿De quién es? —</option>
-                                                {clients.map((c) => (
-                                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-muted-foreground">¿Para qué sirve?</label>
-                                            <Input
-                                                className="mt-1 rounded-xl"
-                                                placeholder="Ej. tienda, CRM, landing…"
-                                                value={d.purpose}
-                                                onChange={(e) => setDrafts((prev) => ({
-                                                    ...prev,
-                                                    [svc.id]: { ...d, purpose: e.target.value },
-                                                }))}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-muted-foreground">Cobro mensual (USD)</label>
-                                            <Input
-                                                className="mt-1 rounded-xl"
-                                                type="number"
-                                                min="0"
-                                                step="0.01"
-                                                placeholder="0.00"
-                                                value={d.monthlyCost}
-                                                onChange={(e) => setDrafts((prev) => ({
-                                                    ...prev,
-                                                    [svc.id]: { ...d, monthlyCost: e.target.value },
-                                                }))}
-                                            />
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
+                            <div
+                                key={svc.id}
+                                className={`grid grid-cols-[36px_1.2fr_1fr_1.2fr_100px] gap-2 px-3 py-2 items-center text-sm ${
+                                    ready ? "bg-emerald-50/40" : ""
+                                }`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={!!selected[svc.id]}
+                                    onChange={(e) => setSelected((prev) => ({ ...prev, [svc.id]: e.target.checked }))}
+                                />
+                                <div className="min-w-0">
+                                    <p className="font-medium truncate flex items-center gap-1">
+                                        {ready && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                                        <span className="truncate">{svc.name}</span>
+                                    </p>
+                                    <p className="text-xs text-muted-foreground truncate">
+                                        {svc.type} · {isOnline(svc.status) ? "online" : svc.status}
+                                        {svc.url ? ` · ${svc.url.replace(/^https?:\/\//, "")}` : ""}
+                                    </p>
+                                </div>
+                                <select
+                                    className="w-full border rounded-lg p-1.5 text-xs"
+                                    value={d.clientId}
+                                    onChange={(e) => setDrafts((prev) => ({
+                                        ...prev,
+                                        [svc.id]: { ...d, clientId: e.target.value, skip: false },
+                                    }))}
+                                >
+                                    <option value="">—</option>
+                                    {clients.map((c) => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
+                                <Input
+                                    className="h-8 rounded-lg text-xs"
+                                    value={d.purpose}
+                                    onChange={(e) => setDrafts((prev) => ({
+                                        ...prev,
+                                        [svc.id]: { ...d, purpose: e.target.value, skip: false },
+                                    }))}
+                                />
+                                <Input
+                                    className="h-8 rounded-lg text-xs"
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={d.monthlyCost}
+                                    onChange={(e) => setDrafts((prev) => ({
+                                        ...prev,
+                                        [svc.id]: { ...d, monthlyCost: e.target.value, skip: false },
+                                    }))}
+                                />
+                            </div>
                         );
                     })}
-
                     {visible.length === 0 && (
-                        <p className="text-center text-muted-foreground py-12">
-                            Nada en este filtro. Escanea VPS o cambia el filtro.
+                        <p className="text-center text-muted-foreground py-10 text-sm">
+                            Nada en este filtro. Prueba «Autocompletar todo» o cambia el filtro.
                         </p>
                     )}
                 </div>
-            )}
+            </div>
 
-            {step === 2 && (
-                <Card className="rounded-2xl border-2 border-emerald-100">
-                    <CardHeader>
-                        <CardTitle>Resumen para cobrar</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        <p className="text-3xl font-bold text-emerald-700">{money(totalBillable)} <span className="text-base font-normal text-muted-foreground">/ mes</span></p>
-                        <p className="text-sm text-muted-foreground">
-                            {services.filter((s) => s.generatesRevenue).length} servicios con precio · {needsWork.length} aún sin organizar
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                            <Button className="rounded-xl" asChild>
-                                <Link href="/billing">Ir a facturación</Link>
-                            </Button>
-                            <Button variant="outline" className="rounded-xl" onClick={() => { setFilter("needs"); setStep(1); }}>
-                                Seguir organizando
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
+            <Card className="rounded-2xl">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Flujo de 30 segundos</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground space-y-1">
+                    <p>1. Pon precio Odoo (ej. 100) → <b>Autocompletar todo</b></p>
+                    <p>2. Revisa pestaña <b>Listos</b> → <b>Guardar N listos</b></p>
+                    <p>3. En <b>Faltan datos</b>, selecciona varios, elige cliente y <b>Aplicar a selección</b></p>
+                </CardContent>
+            </Card>
         </div>
     );
 }

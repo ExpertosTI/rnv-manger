@@ -147,6 +147,7 @@ func main() {
 		auth.GET("/services/offline", servicesHandler.Offline(db))
 		auth.POST("/services/:id/health-check", servicesHandler.ProbeHealth(db, cfg))
 		auth.POST("/services", servicesHandler.Create(db))
+		auth.POST("/services/bulk-organize", middleware.RequireRole("superadmin", "admin"), servicesHandler.BulkOrganize(db))
 		auth.GET("/services/:id", servicesHandler.Get(db))
 		auth.GET("/services/:id/tasks", servicesHandler.ListTasks(db))
 		auth.PUT("/services/:id", servicesHandler.Update(db))
