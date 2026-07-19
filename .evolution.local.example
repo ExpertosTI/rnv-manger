@@ -2,5 +2,7 @@
 EVOLUTION_API_URL=https://evoapi.renace.tech
 EVOLUTION_API_KEY=
 EVOLUTION_INSTANCE=renace
-# Destinatarios de alertas (coma, sin +). Dos números = redundancia.
-WHATSAPP_NOTIFY_NUMBERS=18494577463,18093487921
+# Owner = WhatsApp empresa Renace (849). Nunca un número de cliente.
+WHATSAPP_OWNER_NUMBER=18494577463
+# Destinatarios OTP/login admin (coma, sin +).
+WHATSAPP_NOTIFY_NUMBERS=18494577463

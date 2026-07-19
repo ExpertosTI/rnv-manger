@@ -34,6 +34,9 @@ type Config struct {
 	EvolutionInstance string
 	WhatsAppNotifyNumbers string
 	WhatsAppSenderLabel   string
+	// WhatsAppOwnerNumber is the ONLY phone allowed as Evolution session owner for RNV.
+	// Prevents sending OTP/admin/client messages from a client's WhatsApp instance.
+	WhatsAppOwnerNumber string
 }
 
 func Load() *Config {
@@ -70,6 +73,8 @@ func Load() *Config {
 		EvolutionInstance: getEnv("EVOLUTION_INSTANCE", "renace"),
 		WhatsAppNotifyNumbers: getEnv("WHATSAPP_NOTIFY_NUMBERS", ""),
 		WhatsAppSenderLabel:   getEnv("WHATSAPP_SENDER_LABEL", "Renace"),
+		// Default: línea empresa Renace (849 Adderly). Nunca un número de cliente.
+		WhatsAppOwnerNumber: getEnv("WHATSAPP_OWNER_NUMBER", "18494577463"),
 	}
 
 	if cfg.JWTSecret == "change-me-in-production-use-32-chars-min" {

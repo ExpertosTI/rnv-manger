@@ -74,11 +74,21 @@ func Test(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			})
 			return
 		}
+		owner, err := serviceslayer.AssertCompanyWhatsAppSender(db, cfg)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false, "error": err.Error(), "state": state,
+				"ownerNumber": owner, "expectedOwner": wc.OwnerNumber,
+			})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{
-			"success":  true,
-			"message":  "Conexión WhatsApp verificada sin enviar mensajes",
-			"state":    state,
-			"instance": wc.Instance,
+			"success":       true,
+			"message":       "Conexión WhatsApp verificada — remitente es la línea empresa Renace (sin enviar mensajes)",
+			"state":         state,
+			"instance":      wc.Instance,
+			"ownerNumber":   owner,
+			"expectedOwner": wc.OwnerNumber,
 		})
 	}
 }

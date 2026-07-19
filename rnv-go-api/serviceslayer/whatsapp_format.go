@@ -166,11 +166,20 @@ func FormatVPSAlert(db *gorm.DB, cfg *config.Config, name, ip, status string) st
 	return WAAlertEnvelope(db, cfg, icon, alertType, title, body.String())
 }
 
-// FormatTestMessage builds the WhatsApp test ping.
+// FormatTestMessage builds the WhatsApp test ping (uses real connected owner, never a hardcoded client).
 func FormatTestMessage(db *gorm.DB, cfg *config.Config, instance string) string {
+	wc := ResolveWhatsAppConfig(db, cfg)
+	owner := wc.OwnerNumber
+	if live, err := FetchEvolutionOwnerNumber(db, cfg); err == nil && live != "" {
+		owner = live
+	}
+	remitente := "—"
+	if owner != "" {
+		remitente = "+" + owner
+	}
 	body := waField("Canal", "WhatsApp Evolution API") +
 		waField("Instancia", instance) +
-		waField("Remitente", "+1 809 348 7921") +
+		waField("Remitente", remitente) +
 		waField("Estado", "✅ *Conectado*")
 	return WAReportEnvelope(db, cfg, "Test", "Canal de notificaciones activo", body)
 }

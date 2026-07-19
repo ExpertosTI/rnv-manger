@@ -48,10 +48,10 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
         fields: [
             { key: "evolution_api_url", label: "URL Evolution API", type: "text", placeholder: "https://evoapi.renace.tech" },
             { key: "evolution_api_key", label: "API Key", type: "password", placeholder: "apikey de Evolution" },
-            { key: "evolution_instance", label: "Instancia", type: "text", placeholder: "renace", description: "Nombre exacto en evoapi (ahora: renace)" },
-            { key: "whatsapp_notify_numbers", label: "Números de alerta", type: "text", placeholder: "18494577463", description: "OTP/login. Cobros van al teléfono del cliente." },
-            { key: "whatsapp_sender_label", label: "Etiqueta remitente", type: "text", placeholder: "Renace" },
-        ],
+            { key: "evolution_instance", label: "Instancia", type: "text", placeholder: "renace", description: "Nombre exacto en evoapi. Debe tener escaneado SOLO el WhatsApp de Renace (849), nunca de un cliente." },
+            { key: "whatsapp_owner_number", label: "Número dueño (empresa)", type: "text", placeholder: "18494577463", description: "Si Evolution está conectado a otro número, RNV bloquea todos los envíos." },
+            { key: "whatsapp_notify_numbers", label: "Números de alerta", type: "text", placeholder: "18494577463", description: "OTP/login admin. Cobros van al teléfono del cliente desde la línea empresa." },
+            { key: "whatsapp_sender_label", label: "Etiqueta remitente", type: "text", placeholder: "Renace" },        ],
     },
     {
         id: "api",
@@ -237,14 +237,23 @@ export default function SettingsPage() {
                     evolution_api_url: d.apiUrl || prev.evolution_api_url || "https://evoapi.renace.tech",
                     evolution_instance: d.instance || prev.evolution_instance || "renace",
                     whatsapp_sender_label: d.senderLabel || prev.whatsapp_sender_label || "Renace",
+                    whatsapp_owner_number: d.expectedOwner || prev.whatsapp_owner_number || "18494577463",
                 }));
-                if (d.connected || d.ready) {
+                if (d.ownerOk === false) {
+                    setWaStatus("error");
+                    setWaDetail(
+                        d.ownerWarning ||
+                            `PRIVACIDAD: instancia conectada a +${d.ownerNumber || "?"} (no es la línea empresa +${d.expectedOwner || "18494577463"}). Desconecta ese QR y escanea el WhatsApp de Renace.`
+                    );
+                } else if (d.connected || d.ready) {
                     setWaStatus("ok");
-                    setWaDetail(`Instancia ${d.instance} conectada (${d.state || "open"})`);
+                    setWaDetail(
+                        `Instancia ${d.instance} OK — remitente empresa +${d.ownerNumber || d.expectedOwner || "18494577463"} (${d.state || "open"})`
+                    );
                 } else {
                     setWaStatus("warning");
                     setWaDetail(
-                        `Credenciales OK pero instancia desconectada (estado: ${d.state || "close"}). Reconecta el QR en Evolution Manager.`
+                        `Credenciales OK pero instancia desconectada (estado: ${d.state || "close"}). Reconecta el QR de la línea empresa Renace (849) en Evolution Manager.`
                     );
                 }
             } else {
@@ -421,7 +430,7 @@ export default function SettingsPage() {
                                         "WhatsApp — guarda credenciales y envía prueba"}
                             </p>
                             <p className="text-sm opacity-80 mt-0.5">
-                                {waDetail || "Remitente: +1 809 348 7921 · API en evoapi.renace.tech"}
+                                {waDetail || "Remitente permitido: +1 849 457 7463 (empresa Renace) · evoapi.renace.tech"}
                             </p>
                         </div>
                     </div>

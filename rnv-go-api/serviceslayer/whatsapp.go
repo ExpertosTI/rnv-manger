@@ -25,6 +25,8 @@ type WhatsAppConfig struct {
 	Instance    string
 	NotifyNums  []string
 	SenderLabel string
+	// OwnerNumber is the company WhatsApp that MUST be connected to the instance.
+	OwnerNumber string
 }
 
 var digitsOnly = regexp.MustCompile(`\D`)
@@ -61,9 +63,13 @@ func ResolveWhatsAppConfig(db *gorm.DB, cfg *config.Config) WhatsAppConfig {
 		APIKey:      cfg.EvolutionAPIKey,
 		Instance:    cfg.EvolutionInstance,
 		SenderLabel: cfg.WhatsAppSenderLabel,
+		OwnerNumber: FormatWhatsAppRecipient(cfg.WhatsAppOwnerNumber),
 	}
 	if wc.SenderLabel == "" {
 		wc.SenderLabel = "Renace"
+	}
+	if wc.OwnerNumber == "" {
+		wc.OwnerNumber = "18494577463" // línea empresa Renace (849)
 	}
 	for _, n := range strings.Split(cfg.WhatsAppNotifyNumbers, ",") {
 		if num := FormatWhatsAppRecipient(n); num != "" {
@@ -78,7 +84,7 @@ func ResolveWhatsAppConfig(db *gorm.DB, cfg *config.Config) WhatsAppConfig {
 	var settings []models.AppSettings
 	db.Where("key IN ?", []string{
 		"evolution_api_url", "evolution_api_key", "evolution_instance",
-		"whatsapp_notify_numbers", "whatsapp_sender_label",
+		"whatsapp_notify_numbers", "whatsapp_sender_label", "whatsapp_owner_number",
 	}).Find(&settings)
 
 	for _, s := range settings {
@@ -109,6 +115,13 @@ func ResolveWhatsAppConfig(db *gorm.DB, cfg *config.Config) WhatsAppConfig {
 		case "whatsapp_sender_label":
 			if wc.SenderLabel == "Renace" || wc.SenderLabel == "" {
 				wc.SenderLabel = s.Value
+			}
+		case "whatsapp_owner_number":
+			// Env WHATSAPP_OWNER_NUMBER always wins (privacidad). Settings solo si no hay env.
+			if os.Getenv("WHATSAPP_OWNER_NUMBER") == "" {
+				if num := FormatWhatsAppRecipient(s.Value); num != "" {
+					wc.OwnerNumber = num
+				}
 			}
 		}
 	}
@@ -183,6 +196,80 @@ func extractConnectionState(m map[string]interface{}) string {
 	return ""
 }
 
+func stringField(m map[string]interface{}, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := m[k].(string); ok && strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// FetchEvolutionOwnerNumber returns the WhatsApp phone connected to the RNV Evolution instance.
+func FetchEvolutionOwnerNumber(db *gorm.DB, cfg *config.Config) (string, error) {
+	wc := ResolveWhatsAppConfig(db, cfg)
+	if !wc.IsConfigured() {
+		return "", fmt.Errorf("WhatsApp/Evolution API no configurado")
+	}
+	url := fmt.Sprintf("%s/instance/fetchInstances?instanceName=%s", wc.APIURL, instancePath(wc.Instance))
+	raw, code, err := evolutionHTTP(http.MethodGet, url, wc.APIKey, nil)
+	if err != nil {
+		return "", err
+	}
+	if code < 200 || code >= 300 {
+		return "", fmt.Errorf("%s", humanizeEvolutionError(code, string(raw)))
+	}
+
+	var list []map[string]interface{}
+	if json.Unmarshal(raw, &list) != nil {
+		var wrapped struct {
+			Instance map[string]interface{} `json:"instance"`
+		}
+		if json.Unmarshal(raw, &wrapped) == nil && wrapped.Instance != nil {
+			list = []map[string]interface{}{wrapped.Instance}
+		} else {
+			var single map[string]interface{}
+			if json.Unmarshal(raw, &single) == nil {
+				list = []map[string]interface{}{single}
+			}
+		}
+	}
+	for _, item := range list {
+		inst := item
+		if nested, ok := item["instance"].(map[string]interface{}); ok {
+			inst = nested
+		}
+		rawOwner := stringField(inst, "ownerJid", "owner", "wuid", "number", "phone")
+		if rawOwner == "" {
+			continue
+		}
+		if num := FormatWhatsAppRecipient(rawOwner); num != "" {
+			return num, nil
+		}
+	}
+	return "", fmt.Errorf("no se pudo leer el número conectado en la instancia %s", wc.Instance)
+}
+
+// AssertCompanyWhatsAppSender blocks sends when Evolution is logged into a non-company (client) line.
+func AssertCompanyWhatsAppSender(db *gorm.DB, cfg *config.Config) (owner string, err error) {
+	wc := ResolveWhatsAppConfig(db, cfg)
+	owner, ferr := FetchEvolutionOwnerNumber(db, cfg)
+	if ferr != nil {
+		return "", fmt.Errorf("no se pudo verificar el remitente WhatsApp: %w", ferr)
+	}
+	expected := FormatWhatsAppRecipient(wc.OwnerNumber)
+	if expected == "" {
+		expected = "18494577463"
+	}
+	if owner != expected {
+		return owner, fmt.Errorf(
+			"PRIVACIDAD: la instancia '%s' está conectada al número +%s (posible línea de cliente). RNV solo puede enviar desde la línea empresa +%s. Desconecta ese QR en evoapi y escanea el WhatsApp de Renace (%s)",
+			wc.Instance, owner, expected, expected,
+		)
+	}
+	return owner, nil
+}
+
 func humanizeEvolutionError(statusCode int, raw string) string {
 	low := strings.ToLower(raw)
 	if strings.Contains(low, "connection closed") {
@@ -247,6 +334,7 @@ func postSendText(wc WhatsAppConfig, number, text string) error {
 }
 
 // SendWhatsApp sends a text message via Evolution API from the connected instance.
+// Refuses to send if the Evolution session is a client phone (not Renace company line).
 func SendWhatsApp(db *gorm.DB, cfg *config.Config, to, text string) error {
 	wc := ResolveWhatsAppConfig(db, cfg)
 	if !wc.IsConfigured() {
@@ -259,6 +347,10 @@ func SendWhatsApp(db *gorm.DB, cfg *config.Config, to, text string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return fmt.Errorf("mensaje vacío")
+	}
+
+	if _, err := AssertCompanyWhatsAppSender(db, cfg); err != nil {
+		return err
 	}
 
 	state, connected := CheckEvolutionConnection(db, cfg)
@@ -317,15 +409,33 @@ func SendWhatsAppAlert(db *gorm.DB, cfg *config.Config, text string) error {
 func WhatsAppStatus(db *gorm.DB, cfg *config.Config) map[string]interface{} {
 	wc := ResolveWhatsAppConfig(db, cfg)
 	state, connected := CheckEvolutionConnection(db, cfg)
+	owner, ownerErr := FetchEvolutionOwnerNumber(db, cfg)
+	ownerOK := false
+	var ownerWarning string
+	if ownerErr == nil {
+		ownerOK = owner == FormatWhatsAppRecipient(wc.OwnerNumber)
+		if !ownerOK {
+			ownerWarning = fmt.Sprintf(
+				"La instancia está conectada a +%s, no a la línea empresa +%s. No se enviará ningún mensaje hasta reconectar el WhatsApp de Renace.",
+				owner, wc.OwnerNumber,
+			)
+		}
+	} else if connected {
+		ownerWarning = ownerErr.Error()
+	}
 	return map[string]interface{}{
-		"configured":  wc.IsConfigured(),
-		"connected":   connected,
-		"state":       state,
-		"apiUrl":      wc.APIURL,
-		"instance":    wc.Instance,
-		"notifyCount": len(wc.NotifyNums),
-		"senderLabel": wc.SenderLabel,
-		"hasApiKey":   wc.APIKey != "",
-		"ready":       wc.IsConfigured() && connected,
+		"configured":    wc.IsConfigured(),
+		"connected":     connected && ownerOK,
+		"state":         state,
+		"apiUrl":        wc.APIURL,
+		"instance":      wc.Instance,
+		"notifyCount":   len(wc.NotifyNums),
+		"senderLabel":   wc.SenderLabel,
+		"hasApiKey":     wc.APIKey != "",
+		"ready":         wc.IsConfigured() && connected && ownerOK,
+		"ownerNumber":   owner,
+		"expectedOwner": wc.OwnerNumber,
+		"ownerOk":       ownerOK,
+		"ownerWarning":  ownerWarning,
 	}
 }
