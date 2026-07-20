@@ -159,6 +159,8 @@ export default function ServiceWizardPage() {
     const [createForServiceId, setCreateForServiceId] = useState<string | null>(null);
     const [creating, setCreating] = useState(false);
     const [newClient, setNewClient] = useState({ name: "", email: "", phone: "", companyName: "" });
+    /** Mantener la fila visible al editar precio (si queda en 0 sale de «Listos»). */
+    const [editingId, setEditingId] = useState<string | null>(null);
 
     const buildDrafts = useCallback((rows: WizardService[], clientList: ClientOpt[], priceDefault: number) => {
         const next: Record<string, Draft> = {};
@@ -275,11 +277,18 @@ export default function ServiceWizardPage() {
     const onlineList = useMemo(() => billablePool.filter((s) => isOnline(s.status)), [billablePool]);
 
     const visible = useMemo(() => {
-        if (filter === "ready") return readyList;
-        if (filter === "needs") return needsList;
-        if (filter === "online") return onlineList;
-        return billablePool;
-    }, [filter, readyList, needsList, onlineList, billablePool]);
+        let base =
+            filter === "ready" ? readyList
+            : filter === "needs" ? needsList
+            : filter === "online" ? onlineList
+            : billablePool;
+        // Si estás editando y el filtro la sacaría (ej. precio → 0), no desaparece a mitad de tipeo.
+        if (editingId && !base.some((s) => s.id === editingId)) {
+            const row = billablePool.find((s) => s.id === editingId);
+            if (row) base = [...base, row];
+        }
+        return base;
+    }, [filter, readyList, needsList, onlineList, billablePool, editingId]);
 
     const selectedIds = useMemo(
         () => visible.filter((s) => selected[s.id]).map((s) => s.id),
@@ -580,6 +589,12 @@ export default function ServiceWizardPage() {
                                 className={`grid grid-cols-[36px_minmax(0,1.4fr)_minmax(160px,1.1fr)_minmax(0,1.2fr)_88px] gap-2 px-3 py-2.5 items-center text-sm transition-colors ${
                                     ready ? "bg-emerald-50/50" : "hover:bg-muted/20"
                                 }`}
+                                onFocus={() => setEditingId(svc.id)}
+                                onBlur={(e) => {
+                                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                                        setEditingId(null);
+                                    }
+                                }}
                             >
                                 <input
                                     type="checkbox"
@@ -649,10 +664,13 @@ export default function ServiceWizardPage() {
                                     min="0"
                                     step="1"
                                     value={d.monthlyCost}
-                                    onChange={(e) => setDrafts((prev) => ({
-                                        ...prev,
-                                        [svc.id]: { ...d, monthlyCost: e.target.value, skip: false },
-                                    }))}
+                                    onChange={(e) => {
+                                        setEditingId(svc.id);
+                                        setDrafts((prev) => ({
+                                            ...prev,
+                                            [svc.id]: { ...d, monthlyCost: e.target.value, skip: false },
+                                        }));
+                                    }}
                                 />
                             </div>
                         );
