@@ -7,7 +7,6 @@ import {
     Sparkles, UserPlus, Wand2, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
     Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -15,7 +14,15 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { clients as clientsApi } from "@/lib/api";
 
-type ClientOpt = { id: string; name: string; monthlyFee?: number };
+type BillingCycle = "monthly" | "annual";
+
+type ClientOpt = {
+    id: string;
+    name: string;
+    monthlyFee?: number;
+    annualFee?: number;
+    billingCycle?: BillingCycle;
+};
 
 type WizardService = {
     id: string;
@@ -27,6 +34,9 @@ type WizardService = {
     purpose?: string;
     clientId?: string;
     clientName?: string;
+    billingCycle?: BillingCycle;
+    monthlyCost?: number;
+    annualCost?: number;
     monthlyRevenue: number;
     generatesRevenue: boolean;
     vpsId: string;
@@ -39,11 +49,13 @@ type WizardService = {
 type Draft = {
     clientId: string;
     purpose: string;
-    monthlyCost: string;
+    billingCycle: BillingCycle;
+    amount: string;
     skip: boolean;
 };
 
-const money = (n: number) => `$${n.toFixed(2)}`;
+const money = (n: number) =>
+    n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
 const INFRA_TYPES = new Set([
     "postgres", "postgresql", "mysql", "mariadb", "redis", "mongodb", "mongo",
@@ -91,8 +103,31 @@ function suggestPurpose(svc: WizardService): string {
     return hint || svc.name;
 }
 
-function suggestPrice(svc: WizardService, defaultOdoo: number): number {
-    if (svc.monthlyRevenue > 0) return svc.monthlyRevenue;
+function suggestCycle(svc: WizardService, clients: ClientOpt[], clientId: string): BillingCycle {
+    if (svc.billingCycle === "annual" || (svc.annualCost && svc.annualCost > 0)) return "annual";
+    const cl = clients.find((c) => c.id === clientId);
+    if (cl?.billingCycle === "annual") return "annual";
+    return "monthly";
+}
+
+function suggestAmount(svc: WizardService, clients: ClientOpt[], clientId: string, cycle: BillingCycle, defaultOdoo: number): number {
+    if (cycle === "annual") {
+        if (svc.annualCost && svc.annualCost > 0) return svc.annualCost;
+        const cl = clients.find((c) => c.id === clientId);
+        if (cl?.annualFee && cl.annualFee > 0) return cl.annualFee;
+        // convertir sugerencia mensual → anual
+        const monthly = suggestMonthly(svc, defaultOdoo);
+        return monthly > 0 ? monthly * 12 : 0;
+    }
+    if (svc.monthlyCost && svc.monthlyCost > 0) return svc.monthlyCost;
+    if (svc.monthlyRevenue > 0 && svc.billingCycle !== "annual") return svc.monthlyRevenue;
+    const cl = clients.find((c) => c.id === clientId);
+    if (cl?.monthlyFee && cl.monthlyFee > 0) return cl.monthlyFee;
+    return suggestMonthly(svc, defaultOdoo);
+}
+
+function suggestMonthly(svc: WizardService, defaultOdoo: number): number {
+    if (svc.monthlyRevenue > 0 && svc.billingCycle !== "annual") return svc.monthlyRevenue;
     const t = (svc.type || "").toLowerCase();
     if (INFRA_TYPES.has(t)) return 0;
     if (t.includes("odoo")) return defaultOdoo;
@@ -120,7 +155,6 @@ function suggestClient(svc: WizardService, clients: ClientOpt[]): string {
             }
             continue;
         }
-        // token match: "Luis La Grasa" ↔ lagrasa
         const tokens = cn.split(/\s+/).filter((t) => t.length >= 4);
         for (const token of tokens) {
             if (hay.includes(token) && token.length > bestScore) {
@@ -142,6 +176,42 @@ function isBillableCandidate(svc: WizardService) {
     return true;
 }
 
+function CycleToggle({
+    value,
+    onChange,
+    compact,
+}: {
+    value: BillingCycle;
+    onChange: (v: BillingCycle) => void;
+    compact?: boolean;
+}) {
+    return (
+        <div
+            className={`inline-flex bg-stone-100/80 p-0.5 ${compact ? "text-[10px]" : "text-xs"}`}
+            role="group"
+            aria-label="Ciclo de cobro"
+        >
+            {([
+                ["monthly", "Mes"],
+                ["annual", "Año"],
+            ] as const).map(([key, label]) => (
+                <button
+                    key={key}
+                    type="button"
+                    className={`px-2 py-1 font-medium transition-colors ${
+                        value === key
+                            ? "bg-white text-stone-900 shadow-sm"
+                            : "text-stone-500 hover:text-stone-800"
+                    }`}
+                    onClick={() => onChange(key)}
+                >
+                    {label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
 export default function ServiceWizardPage() {
     const { addToast } = useToast();
     const [services, setServices] = useState<WizardService[]>([]);
@@ -153,23 +223,30 @@ export default function ServiceWizardPage() {
     const [selected, setSelected] = useState<Record<string, boolean>>({});
     const [filter, setFilter] = useState<"ready" | "needs" | "online" | "all">("ready");
     const [defaultPrice, setDefaultPrice] = useState("100");
+    const [defaultCycle, setDefaultCycle] = useState<BillingCycle>("monthly");
     const [bulkClientId, setBulkClientId] = useState("");
     const [onlyPublic, setOnlyPublic] = useState(true);
     const [createOpen, setCreateOpen] = useState(false);
     const [createForServiceId, setCreateForServiceId] = useState<string | null>(null);
     const [creating, setCreating] = useState(false);
-    const [newClient, setNewClient] = useState({ name: "", email: "", phone: "", companyName: "" });
-    /** Mantener la fila visible al editar precio (si queda en 0 sale de «Listos»). */
+    const [newClient, setNewClient] = useState({
+        name: "", email: "", phone: "", companyName: "", billingCycle: "monthly" as BillingCycle,
+    });
     const [editingId, setEditingId] = useState<string | null>(null);
 
-    const buildDrafts = useCallback((rows: WizardService[], clientList: ClientOpt[], priceDefault: number) => {
+    const buildDrafts = useCallback((rows: WizardService[], clientList: ClientOpt[], priceDefault: number, cycleDefault: BillingCycle) => {
         const next: Record<string, Draft> = {};
         for (const s of rows) {
             const infra = INFRA_TYPES.has((s.type || "").toLowerCase()) && !s.url;
+            const clientId = suggestClient(s, clientList);
+            const cycle = s.billingCycle === "annual" || s.billingCycle === "monthly"
+                ? s.billingCycle
+                : (clientId ? suggestCycle(s, clientList, clientId) : cycleDefault);
             next[s.id] = {
-                clientId: suggestClient(s, clientList),
+                clientId,
                 purpose: suggestPurpose(s),
-                monthlyCost: String(suggestPrice(s, priceDefault)),
+                billingCycle: cycle,
+                amount: String(suggestAmount(s, clientList, clientId, cycle, priceDefault)),
                 skip: infra,
             };
         }
@@ -187,8 +264,12 @@ export default function ServiceWizardPage() {
             if (!invRes.ok || !inv.success) throw new Error(inv.error || "No se pudo cargar inventario");
 
             const clientList: ClientOpt[] = cl.success && Array.isArray(cl.data)
-                ? cl.data.map((c: { id: string; name: string; monthlyFee?: number }) => ({
-                    id: c.id, name: c.name, monthlyFee: c.monthlyFee,
+                ? cl.data.map((c: ClientOpt & { billingCycle?: string }) => ({
+                    id: c.id,
+                    name: c.name,
+                    monthlyFee: c.monthlyFee,
+                    annualFee: c.annualFee,
+                    billingCycle: c.billingCycle === "annual" ? "annual" : "monthly",
                 }))
                 : [];
 
@@ -205,6 +286,9 @@ export default function ServiceWizardPage() {
                         purpose: svc.purpose,
                         clientId: svc.clientId,
                         clientName: svc.clientName,
+                        billingCycle: svc.billingCycle === "annual" ? "annual" : "monthly",
+                        monthlyCost: svc.monthlyCost || 0,
+                        annualCost: svc.annualCost || 0,
                         monthlyRevenue: svc.monthlyRevenue || 0,
                         generatesRevenue: !!svc.generatesRevenue,
                         vpsId: server.vpsId,
@@ -218,8 +302,7 @@ export default function ServiceWizardPage() {
             setServices(rows);
             setClients(clientList);
             const price = parseFloat(defaultPrice) || 100;
-            setDrafts(buildDrafts(rows, clientList, price));
-            // preselect all ready public apps
+            setDrafts(buildDrafts(rows, clientList, price, defaultCycle));
             const sel: Record<string, boolean> = {};
             for (const s of rows) {
                 if (isBillableCandidate(s) && isOnline(s.status)) sel[s.id] = true;
@@ -230,7 +313,7 @@ export default function ServiceWizardPage() {
         } finally {
             setLoading(false);
         }
-    }, [addToast, buildDrafts, defaultPrice]);
+    }, [addToast, buildDrafts, defaultPrice, defaultCycle]);
 
     useEffect(() => {
         void load();
@@ -254,14 +337,14 @@ export default function ServiceWizardPage() {
 
     const autoFill = () => {
         const price = parseFloat(defaultPrice) || 100;
-        setDrafts(buildDrafts(services, clients, price));
-        addToast("Sugerencias aplicadas (cliente, propósito y precio)", "success");
+        setDrafts(buildDrafts(services, clients, price, defaultCycle));
+        addToast("Sugerencias aplicadas (cliente, propósito y cobro)", "success");
     };
 
     const draftReady = (id: string) => {
         const d = drafts[id];
         if (!d || d.skip) return false;
-        return !!(d.clientId && d.purpose.trim() && parseFloat(d.monthlyCost || "0") > 0);
+        return !!(d.clientId && d.purpose.trim() && parseFloat(d.amount || "0") > 0);
     };
 
     const billablePool = useMemo(() => {
@@ -282,7 +365,6 @@ export default function ServiceWizardPage() {
             : filter === "needs" ? needsList
             : filter === "online" ? onlineList
             : billablePool;
-        // Si estás editando y el filtro la sacaría (ej. precio → 0), no desaparece a mitad de tipeo.
         if (editingId && !base.some((s) => s.id === editingId)) {
             const row = billablePool.find((s) => s.id === editingId);
             if (row) base = [...base, row];
@@ -295,14 +377,17 @@ export default function ServiceWizardPage() {
         [visible, selected],
     );
 
-    const projectedRevenue = useMemo(() => {
+    const projectedMonthly = useMemo(() => {
         return billablePool.reduce((sum, s) => {
             const d = drafts[s.id];
             if (!d || d.skip) return sum;
-            const n = parseFloat(d.monthlyCost || "0");
-            return sum + (Number.isFinite(n) ? n : 0);
+            const n = parseFloat(d.amount || "0");
+            if (!Number.isFinite(n) || n <= 0) return sum;
+            return sum + (d.billingCycle === "annual" ? n / 12 : n);
         }, 0);
     }, [billablePool, drafts]);
+
+    const projectedAnnual = useMemo(() => projectedMonthly * 12, [projectedMonthly]);
 
     const toggleAllVisible = (on: boolean) => {
         setSelected((prev) => {
@@ -321,12 +406,18 @@ export default function ServiceWizardPage() {
         setDrafts((prev) => {
             const next = { ...prev };
             for (const id of selectedIds) {
-                const cur = next[id] || { clientId: "", purpose: "", monthlyCost: "", skip: false };
+                const cur = next[id] || {
+                    clientId: "", purpose: "", billingCycle: defaultCycle, amount: "", skip: false,
+                };
                 const svc = services.find((s) => s.id === id);
+                const cycle = defaultCycle;
                 next[id] = {
                     ...cur,
                     clientId: bulkClientId || cur.clientId,
-                    monthlyCost: Number.isFinite(price) && price >= 0 ? String(price) : cur.monthlyCost,
+                    billingCycle: cycle,
+                    amount: Number.isFinite(price) && price >= 0
+                        ? String(cycle === "annual" && price < 500 ? price * 12 : price)
+                        : cur.amount,
                     purpose: cur.purpose || (svc ? suggestPurpose(svc) : cur.purpose),
                     skip: false,
                 };
@@ -338,12 +429,14 @@ export default function ServiceWizardPage() {
 
     const openCreateClient = (serviceId?: string) => {
         const svc = serviceId ? services.find((s) => s.id === serviceId) : null;
+        const draft = serviceId ? drafts[serviceId] : null;
         setCreateForServiceId(serviceId || null);
         setNewClient({
             name: svc ? titleCase(subdomainHint(svc)) : "",
             email: "",
             phone: "",
             companyName: "",
+            billingCycle: draft?.billingCycle || defaultCycle,
         });
         setCreateOpen(true);
     };
@@ -356,24 +449,44 @@ export default function ServiceWizardPage() {
         setCreating(true);
         try {
             const fee = parseFloat(defaultPrice) || 0;
+            const annual = newClient.billingCycle === "annual";
             const created = await clientsApi.create({
                 name: newClient.name.trim(),
                 email: newClient.email.trim() || undefined,
                 phone: newClient.phone.trim() || undefined,
                 companyName: newClient.companyName.trim() || undefined,
-                billingCycle: "monthly",
-                monthlyFee: fee,
+                billingCycle: newClient.billingCycle,
+                monthlyFee: annual ? 0 : fee,
+                annualFee: annual ? (fee < 500 && fee > 0 ? fee * 12 : fee || 0) : 0,
                 paymentDay: 1,
+                paymentMonth: annual ? 1 : undefined,
             });
             const client = created.data;
-            setClients((prev) => [...prev, { id: client.id, name: client.name, monthlyFee: client.monthlyFee }]);
+            setClients((prev) => [
+                ...prev,
+                {
+                    id: client.id,
+                    name: client.name,
+                    monthlyFee: client.monthlyFee,
+                    annualFee: client.annualFee,
+                    billingCycle: client.billingCycle === "annual" ? "annual" : "monthly",
+                },
+            ]);
+
+            const assignCycle: BillingCycle = client.billingCycle === "annual" ? "annual" : "monthly";
+            const assignAmount = assignCycle === "annual"
+                ? String(client.annualFee || fee * 12 || 1200)
+                : String(client.monthlyFee || fee || 100);
 
             if (createForServiceId) {
                 setDrafts((prev) => ({
                     ...prev,
                     [createForServiceId]: {
-                        ...(prev[createForServiceId] || { purpose: "", monthlyCost: String(fee || 100), skip: false }),
+                        ...(prev[createForServiceId] || { purpose: "", skip: false }),
                         clientId: client.id,
+                        billingCycle: assignCycle,
+                        amount: assignAmount,
+                        purpose: prev[createForServiceId]?.purpose || "",
                         skip: false,
                     },
                 }));
@@ -383,8 +496,10 @@ export default function ServiceWizardPage() {
                     const next = { ...prev };
                     for (const id of selectedIds) {
                         next[id] = {
-                            ...(next[id] || { purpose: "", monthlyCost: String(fee || 100), skip: false }),
+                            ...(next[id] || { purpose: "", skip: false }),
                             clientId: client.id,
+                            billingCycle: assignCycle,
+                            amount: assignAmount,
                             skip: false,
                         };
                     }
@@ -397,7 +512,7 @@ export default function ServiceWizardPage() {
 
             setCreateOpen(false);
             setCreateForServiceId(null);
-            setNewClient({ name: "", email: "", phone: "", companyName: "" });
+            setNewClient({ name: "", email: "", phone: "", companyName: "", billingCycle: "monthly" });
             addToast(`Cliente «${client.name}» creado`, "success");
         } catch (error) {
             addToast(error instanceof Error ? error.message : "Error al crear cliente", "error");
@@ -409,17 +524,18 @@ export default function ServiceWizardPage() {
     const saveBulk = async (ids: string[]) => {
         const items = ids.map((id) => {
             const d = drafts[id];
-            const cost = parseFloat(d?.monthlyCost || "0");
+            const amount = parseFloat(d?.amount || "0");
             return {
                 id,
                 clientId: d?.clientId || "",
                 purpose: (d?.purpose || "").trim(),
-                monthlyCost: Number.isFinite(cost) ? cost : 0,
+                billingCycle: d?.billingCycle || "monthly",
+                amount: Number.isFinite(amount) ? amount : 0,
             };
-        }).filter((i) => i.clientId && i.purpose && i.monthlyCost > 0);
+        }).filter((i) => i.clientId && i.purpose && i.amount > 0);
 
         if (items.length === 0) {
-            addToast("Nada listo para guardar (falta cliente, propósito o precio > 0)", "warning");
+            addToast("Nada listo para guardar (falta cliente, propósito o monto > 0)", "warning");
             return;
         }
         setSaving(true);
@@ -440,49 +556,88 @@ export default function ServiceWizardPage() {
         }
     };
 
+    const setDraftCycle = (id: string, cycle: BillingCycle, cur: Draft) => {
+        setEditingId(id);
+        const n = parseFloat(cur.amount || "0");
+        let amount = cur.amount;
+        if (Number.isFinite(n) && n > 0) {
+            if (cycle === "annual" && cur.billingCycle === "monthly") amount = String(Math.round(n * 12));
+            if (cycle === "monthly" && cur.billingCycle === "annual") amount = String(Math.round(n / 12));
+        }
+        setDrafts((prev) => ({
+            ...prev,
+            [id]: { ...cur, billingCycle: cycle, amount, skip: false },
+        }));
+    };
+
     if (loading) {
         return (
             <div className="min-h-[60vh] grid place-items-center">
-                <RefreshCw className="w-8 h-8 animate-spin text-emerald-600" />
+                <RefreshCw className="w-7 h-7 animate-spin text-teal-700" />
             </div>
         );
     }
 
     return (
-        <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-5">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="relative max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-10 space-y-6">
+            <div
+                className="pointer-events-none absolute inset-x-0 -top-8 h-56 -z-10 opacity-90"
+                style={{
+                    background:
+                        "radial-gradient(ellipse 80% 60% at 10% 0%, rgba(15,118,110,0.12), transparent 55%), radial-gradient(ellipse 50% 40% at 90% 10%, rgba(68,64,60,0.06), transparent 50%)",
+                }}
+            />
+
+            <header className="flex flex-col md:flex-row md:items-end justify-between gap-5">
                 <div>
-                    <h1 className="text-3xl font-bold flex items-center gap-3">
-                        <Sparkles className="w-8 h-8 text-emerald-600" />
-                        Wizard rápido
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500 mb-2">Organización</p>
+                    <h1
+                        className="text-3xl md:text-4xl font-semibold tracking-tight text-stone-900 flex items-center gap-3"
+                        style={{ fontFamily: "var(--font-outfit), sans-serif" }}
+                    >
+                        <Sparkles className="w-7 h-7 text-teal-700" />
+                        Wizard de cobro
                     </h1>
-                    <p className="text-muted-foreground mt-1">
-                        Auto-detecta cliente y propósito. Tú solo confirmas precio y guardas en lote.
+                    <p className="text-stone-500 mt-2 max-w-xl text-[15px] leading-relaxed">
+                        Asigna cliente, propósito y cobro mensual o anual. Guarda en lote cuando esté listo.
                     </p>
                 </div>
-                <div className="text-right">
-                    <p className="text-xs text-muted-foreground">Proyección mensual</p>
-                    <p className="text-2xl font-bold text-emerald-700">{money(projectedRevenue)}</p>
+                <div className="flex gap-6 md:text-right">
+                    <div>
+                        <p className="text-[11px] uppercase tracking-wider text-stone-400">Equiv. / mes</p>
+                        <p className="text-2xl font-semibold text-teal-800 tabular-nums" style={{ fontFamily: "var(--font-outfit), sans-serif" }}>
+                            {money(projectedMonthly)}
+                        </p>
+                    </div>
+                    <div>
+                        <p className="text-[11px] uppercase tracking-wider text-stone-400">Equiv. / año</p>
+                        <p className="text-2xl font-semibold text-stone-800 tabular-nums" style={{ fontFamily: "var(--font-outfit), sans-serif" }}>
+                            {money(projectedAnnual)}
+                        </p>
+                    </div>
                 </div>
-            </div>
+            </header>
 
-            <Card className="rounded-2xl border-2 border-emerald-100 sticky top-2 z-20 bg-white/95 backdrop-blur shadow-sm">
-                <CardContent className="p-4 space-y-3">
-                    <div className="flex flex-wrap gap-2 items-end">
+            <section className="sticky top-2 z-20 border border-stone-200/80 bg-white/90 backdrop-blur-md shadow-[0_8px_30px_rgba(28,25,23,0.04)]">
+                <div className="p-4 space-y-3">
+                    <div className="flex flex-wrap gap-3 items-end">
                         <div>
-                            <label className="text-xs text-muted-foreground">Precio Odoo / app (USD)</label>
-                            <Input
-                                className="w-28 rounded-xl mt-1"
-                                type="number"
-                                value={defaultPrice}
-                                onChange={(e) => setDefaultPrice(e.target.value)}
-                            />
+                            <label className="text-[11px] uppercase tracking-wider text-stone-400">Precio base</label>
+                            <div className="flex items-center gap-2 mt-1">
+                                <Input
+                                    className="w-24 border-stone-200 bg-white"
+                                    type="number"
+                                    value={defaultPrice}
+                                    onChange={(e) => setDefaultPrice(e.target.value)}
+                                />
+                                <CycleToggle value={defaultCycle} onChange={setDefaultCycle} />
+                            </div>
                         </div>
                         <div className="min-w-[200px] flex-1">
-                            <label className="text-xs text-muted-foreground">Cliente para seleccionados</label>
+                            <label className="text-[11px] uppercase tracking-wider text-stone-400">Cliente (selección)</label>
                             <div className="flex gap-1.5 mt-1">
                                 <select
-                                    className="w-full border rounded-xl p-2 bg-background"
+                                    className="w-full border border-stone-200 bg-white px-2.5 py-2 text-sm"
                                     value={bulkClientId}
                                     onChange={(e) => {
                                         if (e.target.value === "__create__") {
@@ -492,16 +647,18 @@ export default function ServiceWizardPage() {
                                         setBulkClientId(e.target.value);
                                     }}
                                 >
-                                    <option value="">— (mantener sugerido) —</option>
+                                    <option value="">— mantener sugerido —</option>
                                     <option value="__create__">＋ Crear cliente nuevo…</option>
                                     {clients.map((c) => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                        <option key={c.id} value={c.id}>
+                                            {c.name}{c.billingCycle === "annual" ? " · anual" : ""}
+                                        </option>
                                     ))}
                                 </select>
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    className="rounded-xl shrink-0 px-3"
+                                    className="shrink-0 border-stone-200 px-3"
                                     title="Crear cliente"
                                     onClick={() => openCreateClient()}
                                 >
@@ -509,41 +666,40 @@ export default function ServiceWizardPage() {
                                 </Button>
                             </div>
                         </div>
-                        <Button variant="outline" className="rounded-xl gap-1" onClick={autoFill}>
-                            <Wand2 className="w-4 h-4" /> Autocompletar todo
+                        <Button variant="outline" className="border-stone-200 gap-1.5" onClick={autoFill}>
+                            <Wand2 className="w-4 h-4" /> Autocompletar
                         </Button>
-                        <Button variant="outline" className="rounded-xl" onClick={applyBulkToSelected}>
+                        <Button variant="outline" className="border-stone-200" onClick={applyBulkToSelected}>
                             Aplicar a {selectedIds.length || 0}
                         </Button>
                         <Button
-                            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 gap-1"
+                            className="bg-teal-800 hover:bg-teal-900 text-white gap-1.5"
                             disabled={saving || readyList.length === 0}
                             onClick={() => saveBulk(readyList.map((s) => s.id))}
                         >
                             {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
                             Guardar {readyList.length} listos
                         </Button>
-                        <Button variant="ghost" className="rounded-xl gap-1" disabled={scanning} onClick={scanAll}>
+                        <Button variant="ghost" className="text-stone-500 gap-1.5" disabled={scanning} onClick={scanAll}>
                             {scanning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <PackageSearch className="w-4 h-4" />}
                             Re-escanear
                         </Button>
                     </div>
-                    <div className="flex flex-wrap gap-2 items-center text-sm">
+                    <div className="flex flex-wrap gap-3 items-center text-sm text-stone-600">
                         <label className="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" checked={onlyPublic} onChange={(e) => setOnlyPublic(e.target.checked)} />
-                            Solo apps cobrables (oculta DB/redis/traefik)
+                            <input type="checkbox" className="accent-teal-800" checked={onlyPublic} onChange={(e) => setOnlyPublic(e.target.checked)} />
+                            Solo apps cobrables
                         </label>
-                        <span className="text-muted-foreground">·</span>
-                        <button type="button" className="text-emerald-700 hover:underline" onClick={() => toggleAllVisible(true)}>
+                        <button type="button" className="text-teal-800 hover:underline" onClick={() => toggleAllVisible(true)}>
                             Seleccionar visibles
                         </button>
-                        <button type="button" className="text-muted-foreground hover:underline" onClick={() => toggleAllVisible(false)}>
+                        <button type="button" className="text-stone-400 hover:underline" onClick={() => toggleAllVisible(false)}>
                             Quitar selección
                         </button>
                         <Button
                             size="sm"
                             variant="outline"
-                            className="rounded-xl ml-auto gap-1"
+                            className="ml-auto border-stone-200 gap-1"
                             disabled={saving || selectedIds.length === 0}
                             onClick={() => saveBulk(selectedIds)}
                         >
@@ -551,43 +707,57 @@ export default function ServiceWizardPage() {
                             Guardar selección ({selectedIds.length})
                         </Button>
                     </div>
-                </CardContent>
-            </Card>
+                </div>
+            </section>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-1 border-b border-stone-200">
                 {([
-                    ["ready", `Listos (${readyList.length})`],
-                    ["needs", `Faltan datos (${needsList.length})`],
-                    ["online", `En línea (${onlineList.length})`],
-                    ["all", `Todos (${billablePool.length})`],
-                ] as const).map(([key, label]) => (
-                    <Button key={key} variant={filter === key ? "default" : "outline"} className="rounded-xl" onClick={() => setFilter(key)}>
+                    ["ready", `Listos`, readyList.length],
+                    ["needs", `Faltan datos`, needsList.length],
+                    ["online", `En línea`, onlineList.length],
+                    ["all", `Todos`, billablePool.length],
+                ] as const).map(([key, label, count]) => (
+                    <button
+                        key={key}
+                        type="button"
+                        onClick={() => setFilter(key)}
+                        className={`px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                            filter === key
+                                ? "border-teal-800 text-stone-900"
+                                : "border-transparent text-stone-400 hover:text-stone-700"
+                        }`}
+                    >
                         {label}
-                    </Button>
+                        <span className={`ml-1.5 tabular-nums ${filter === key ? "text-teal-800" : "text-stone-300"}`}>
+                            {count}
+                        </span>
+                    </button>
                 ))}
-                <Button variant="ghost" className="rounded-xl ml-auto" asChild>
-                    <Link href="/billing">Facturación</Link>
-                </Button>
+                <Link href="/billing" className="ml-auto text-sm text-stone-400 hover:text-teal-800 px-2 py-2">
+                    Facturación →
+                </Link>
             </div>
 
-            <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
-                <div className="grid grid-cols-[36px_minmax(0,1.4fr)_minmax(160px,1.1fr)_minmax(0,1.2fr)_88px] gap-2 px-3 py-2.5 bg-muted/50 text-[11px] uppercase tracking-wide font-medium text-muted-foreground border-b">
+            <div className="border border-stone-200 bg-white overflow-hidden">
+                <div className="grid grid-cols-[32px_minmax(0,1.35fr)_minmax(150px,1fr)_minmax(0,1.1fr)_minmax(140px,0.85fr)] gap-2 px-3 py-2.5 bg-stone-50 text-[10px] uppercase tracking-[0.14em] font-medium text-stone-400 border-b border-stone-200">
                     <span />
                     <span>Servicio</span>
                     <span>Cliente</span>
                     <span>Propósito</span>
-                    <span>USD/mes</span>
+                    <span>Cobro</span>
                 </div>
-                <div className="max-h-[62vh] overflow-auto divide-y divide-border/60">
+                <div className="max-h-[62vh] overflow-auto">
                     {visible.map((svc) => {
-                        const d = drafts[svc.id] || { clientId: "", purpose: "", monthlyCost: "", skip: false };
+                        const d = drafts[svc.id] || {
+                            clientId: "", purpose: "", billingCycle: "monthly" as BillingCycle, amount: "", skip: false,
+                        };
                         const ready = draftReady(svc.id);
                         const online = isOnline(svc.status);
                         return (
                             <div
                                 key={svc.id}
-                                className={`grid grid-cols-[36px_minmax(0,1.4fr)_minmax(160px,1.1fr)_minmax(0,1.2fr)_88px] gap-2 px-3 py-2.5 items-center text-sm transition-colors ${
-                                    ready ? "bg-emerald-50/50" : "hover:bg-muted/20"
+                                className={`grid grid-cols-[32px_minmax(0,1.35fr)_minmax(150px,1fr)_minmax(0,1.1fr)_minmax(140px,0.85fr)] gap-2 px-3 py-2.5 items-center text-sm border-b border-stone-100 last:border-0 ${
+                                    ready ? "bg-teal-50/40" : "hover:bg-stone-50/80"
                                 }`}
                                 onFocus={() => setEditingId(svc.id)}
                                 onBlur={(e) => {
@@ -598,30 +768,30 @@ export default function ServiceWizardPage() {
                             >
                                 <input
                                     type="checkbox"
-                                    className="accent-emerald-600"
+                                    className="accent-teal-800"
                                     checked={!!selected[svc.id]}
                                     onChange={(e) => setSelected((prev) => ({ ...prev, [svc.id]: e.target.checked }))}
                                 />
                                 <div className="min-w-0">
-                                    <p className="font-medium truncate flex items-center gap-1.5">
+                                    <p className="font-medium text-stone-900 truncate flex items-center gap-1.5">
                                         <span
-                                            className={`w-2 h-2 rounded-full shrink-0 ${
-                                                online ? "bg-emerald-500" : "bg-amber-400"
+                                            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                                online ? "bg-teal-600" : "bg-amber-500"
                                             }`}
                                             title={online ? "En línea" : svc.status}
                                         />
-                                        {ready && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                                        {ready && <CheckCircle2 className="w-3.5 h-3.5 text-teal-700 shrink-0" />}
                                         <span className="truncate">{svc.name}</span>
                                     </p>
-                                    <p className="text-xs text-muted-foreground truncate pl-3.5">
+                                    <p className="text-xs text-stone-400 truncate pl-3">
                                         {svc.type}
                                         {svc.url ? ` · ${svc.url.replace(/^https?:\/\//, "")}` : ""}
                                     </p>
                                 </div>
                                 <div className="flex gap-1 items-center min-w-0">
                                     <select
-                                        className={`w-full border rounded-lg p-1.5 text-xs bg-background ${
-                                            !d.clientId ? "border-amber-300 text-muted-foreground" : "border-input"
+                                        className={`w-full border bg-white px-2 py-1.5 text-xs ${
+                                            !d.clientId ? "border-amber-300 text-stone-400" : "border-stone-200 text-stone-800"
                                         }`}
                                         value={d.clientId}
                                         onChange={(e) => {
@@ -629,21 +799,31 @@ export default function ServiceWizardPage() {
                                                 openCreateClient(svc.id);
                                                 return;
                                             }
+                                            const clientId = e.target.value;
+                                            const cl = clients.find((c) => c.id === clientId);
+                                            const cycle = cl?.billingCycle === "annual" ? "annual" as const : d.billingCycle;
+                                            let amount = d.amount;
+                                            if (cl) {
+                                                if (cycle === "annual" && cl.annualFee) amount = String(cl.annualFee);
+                                                else if (cycle === "monthly" && cl.monthlyFee) amount = String(cl.monthlyFee);
+                                            }
                                             setDrafts((prev) => ({
                                                 ...prev,
-                                                [svc.id]: { ...d, clientId: e.target.value, skip: false },
+                                                [svc.id]: { ...d, clientId, billingCycle: cycle, amount, skip: false },
                                             }));
                                         }}
                                     >
                                         <option value="">Sin cliente…</option>
                                         <option value="__create__">＋ Crear «{titleCase(subdomainHint(svc))}»…</option>
                                         {clients.map((c) => (
-                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                            <option key={c.id} value={c.id}>
+                                                {c.name}{c.billingCycle === "annual" ? " · año" : ""}
+                                            </option>
                                         ))}
                                     </select>
                                     <button
                                         type="button"
-                                        className="shrink-0 h-8 w-8 inline-flex items-center justify-center rounded-lg border border-dashed border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                                        className="shrink-0 h-8 w-8 inline-flex items-center justify-center border border-dashed border-teal-600/40 text-teal-800 hover:bg-teal-50"
                                         title="Crear cliente aquí"
                                         onClick={() => openCreateClient(svc.id)}
                                     >
@@ -651,70 +831,78 @@ export default function ServiceWizardPage() {
                                     </button>
                                 </div>
                                 <Input
-                                    className="h-8 rounded-lg text-xs"
+                                    className="h-8 border-stone-200 text-xs"
                                     value={d.purpose}
                                     onChange={(e) => setDrafts((prev) => ({
                                         ...prev,
                                         [svc.id]: { ...d, purpose: e.target.value, skip: false },
                                     }))}
                                 />
-                                <Input
-                                    className="h-8 rounded-lg text-xs"
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    value={d.monthlyCost}
-                                    onChange={(e) => {
-                                        setEditingId(svc.id);
-                                        setDrafts((prev) => ({
-                                            ...prev,
-                                            [svc.id]: { ...d, monthlyCost: e.target.value, skip: false },
-                                        }));
-                                    }}
-                                />
+                                <div className="flex flex-col gap-1 min-w-0">
+                                    <div className="flex items-center gap-1">
+                                        <CycleToggle
+                                            compact
+                                            value={d.billingCycle}
+                                            onChange={(cycle) => setDraftCycle(svc.id, cycle, d)}
+                                        />
+                                        <Input
+                                            className="h-7 border-stone-200 text-xs tabular-nums"
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            value={d.amount}
+                                            onChange={(e) => {
+                                                setEditingId(svc.id);
+                                                setDrafts((prev) => ({
+                                                    ...prev,
+                                                    [svc.id]: { ...d, amount: e.target.value, skip: false },
+                                                }));
+                                            }}
+                                        />
+                                    </div>
+                                    {d.billingCycle === "annual" && parseFloat(d.amount || "0") > 0 && (
+                                        <p className="text-[10px] text-stone-400 tabular-nums">
+                                            ≈ {money(parseFloat(d.amount) / 12)}/mes
+                                        </p>
+                                    )}
+                                </div>
                             </div>
                         );
                     })}
                     {visible.length === 0 && (
-                        <p className="text-center text-muted-foreground py-10 text-sm">
-                            Nada en este filtro. Prueba «Autocompletar todo» o cambia el filtro.
+                        <p className="text-center text-stone-400 py-12 text-sm">
+                            Nada en este filtro. Prueba Autocompletar o cambia de pestaña.
                         </p>
                     )}
                 </div>
             </div>
 
-            <Card className="rounded-2xl border-dashed">
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Flujo rápido</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground space-y-1">
-                    <p>1. Precio Odoo → <b>Autocompletar todo</b></p>
-                    <p>2. Si falta cliente: botón <b>+</b> o «Crear…» en el desplegable (nombre sugerido del dominio)</p>
-                    <p>3. Pestaña <b>Listos</b> → <b>Guardar N listos</b></p>
-                </CardContent>
-            </Card>
+            <p className="text-xs text-stone-400 leading-relaxed max-w-2xl">
+                Usa <b className="font-medium text-stone-600">Mes / Año</b> en cada fila. Al crear un cliente puedes
+                marcarlo como anual. El total de arriba muestra el equivalente mensual de todo lo proyectado.
+            </p>
 
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-                <DialogContent className="sm:max-w-md rounded-2xl">
+                <DialogContent className="sm:max-w-md border-stone-200">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <UserPlus className="w-5 h-5 text-emerald-600" />
+                        <DialogTitle className="flex items-center gap-2" style={{ fontFamily: "var(--font-outfit), sans-serif" }}>
+                            <UserPlus className="w-5 h-5 text-teal-700" />
                             Nuevo cliente
                         </DialogTitle>
                         <DialogDescription>
-                            Se crea aquí mismo y queda asignado al servicio
+                            Se crea aquí y queda asignado
                             {createForServiceId
-                                ? ` «${services.find((s) => s.id === createForServiceId)?.name || ""}»`
+                                ? ` a «${services.find((s) => s.id === createForServiceId)?.name || ""}»`
                                 : selectedIds.length > 0
-                                    ? ` y a ${selectedIds.length} seleccionados`
+                                    ? ` a ${selectedIds.length} seleccionados`
                                     : ""}.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-3 py-1">
                         <div>
-                            <label className="text-xs text-muted-foreground">Nombre *</label>
+                            <label className="text-[11px] uppercase tracking-wider text-stone-400">Nombre *</label>
                             <Input
-                                className="rounded-xl mt-1"
+                                className="mt-1 border-stone-200"
                                 autoFocus
                                 placeholder="Ej. MVP Flow Boutique"
                                 value={newClient.name}
@@ -724,40 +912,49 @@ export default function ServiceWizardPage() {
                                 }}
                             />
                         </div>
+                        <div>
+                            <label className="text-[11px] uppercase tracking-wider text-stone-400">Ciclo de cobro</label>
+                            <div className="mt-1.5">
+                                <CycleToggle
+                                    value={newClient.billingCycle}
+                                    onChange={(billingCycle) => setNewClient((p) => ({ ...p, billingCycle }))}
+                                />
+                            </div>
+                        </div>
                         <div className="grid grid-cols-2 gap-2">
                             <div>
-                                <label className="text-xs text-muted-foreground">Email</label>
+                                <label className="text-[11px] uppercase tracking-wider text-stone-400">Email</label>
                                 <Input
-                                    className="rounded-xl mt-1"
+                                    className="mt-1 border-stone-200"
                                     type="email"
                                     value={newClient.email}
                                     onChange={(e) => setNewClient((p) => ({ ...p, email: e.target.value }))}
                                 />
                             </div>
                             <div>
-                                <label className="text-xs text-muted-foreground">Teléfono</label>
+                                <label className="text-[11px] uppercase tracking-wider text-stone-400">Teléfono</label>
                                 <Input
-                                    className="rounded-xl mt-1"
+                                    className="mt-1 border-stone-200"
                                     value={newClient.phone}
                                     onChange={(e) => setNewClient((p) => ({ ...p, phone: e.target.value }))}
                                 />
                             </div>
                         </div>
                         <div>
-                            <label className="text-xs text-muted-foreground">Empresa (opcional)</label>
+                            <label className="text-[11px] uppercase tracking-wider text-stone-400">Empresa</label>
                             <Input
-                                className="rounded-xl mt-1"
+                                className="mt-1 border-stone-200"
                                 value={newClient.companyName}
                                 onChange={(e) => setNewClient((p) => ({ ...p, companyName: e.target.value }))}
                             />
                         </div>
                     </div>
                     <DialogFooter className="gap-2">
-                        <Button variant="outline" className="rounded-xl" onClick={() => setCreateOpen(false)} disabled={creating}>
+                        <Button variant="outline" className="border-stone-200" onClick={() => setCreateOpen(false)} disabled={creating}>
                             Cancelar
                         </Button>
                         <Button
-                            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 gap-1"
+                            className="bg-teal-800 hover:bg-teal-900 text-white gap-1"
                             onClick={() => void createClientInline()}
                             disabled={creating || !newClient.name.trim()}
                         >

@@ -222,7 +222,13 @@ func RecalculateClientCost(db *gorm.DB, clientID string) {
 	db.Raw(`
 		SELECT
 			COALESCE(SUM(v.monthly_cost),0) as vps_cost,
-			COALESCE(SUM(s.monthly_cost),0) as service_cost
+			COALESCE(SUM(
+				CASE
+					WHEN s.billing_cycle = 'annual' AND COALESCE(s.annual_cost,0) > 0
+						THEN s.annual_cost / 12.0
+					ELSE COALESCE(s.monthly_cost,0)
+				END
+			),0) as service_cost
 		FROM clients c
 		LEFT JOIN vps v ON v.client_id = c.id
 		LEFT JOIN services s ON s.client_id = c.id
@@ -233,6 +239,10 @@ func RecalculateClientCost(db *gorm.DB, clientID string) {
 	if err := db.First(&client, "id = ?", clientID).Error; err != nil {
 		return
 	}
-	total := r.VPSCost + r.ServiceCost + client.MonthlyFee
+	base := client.MonthlyFee
+	if ClientBillingCycle(client) == BillingCycleAnnual && client.AnnualFee > 0 {
+		base = client.AnnualFee / 12
+	}
+	total := r.VPSCost + r.ServiceCost + base
 	db.Model(&models.Client{}).Where("id = ?", clientID).Update("total_monthly_cost", total)
 }

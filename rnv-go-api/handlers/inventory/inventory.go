@@ -47,12 +47,17 @@ func serviceRow(service models.Service, inheritedClient *models.Client) gin.H {
 	if service.Purpose != nil {
 		purpose = *service.Purpose
 	}
+	cycle := service.BillingCycle
+	if cycle != serviceslayer.BillingCycleAnnual {
+		cycle = serviceslayer.BillingCycleMonthly
+	}
 	return gin.H{
 		"id": service.ID, "name": service.Name, "type": service.Type,
 		"runtime": service.Runtime, "image": service.Image, "status": service.Status,
 		"port": service.Port, "url": service.URL, "domains": service.Domains,
 		"projectPath": service.ProjectPath, "configFile": service.ConfigFile,
 		"purpose": purpose, "clientId": clientID, "clientName": clientName,
+		"billingCycle": cycle, "monthlyCost": service.MonthlyCost, "annualCost": service.AnnualCost,
 		"monthlyRevenue": revenue, "generatesRevenue": revenue > 0,
 		"lastChecked": service.LastChecked, "discoveredAt": service.DiscoveredAt,
 	}

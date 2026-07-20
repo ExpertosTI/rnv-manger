@@ -85,17 +85,20 @@ func Update(db *gorm.DB) gin.HandlerFunc {
 }
 
 type bulkOrgItem struct {
-	ID          string   `json:"id"`
-	ClientID    *string  `json:"clientId"`
-	Purpose     *string  `json:"purpose"`
-	MonthlyCost *float64 `json:"monthlyCost"`
+	ID           string   `json:"id"`
+	ClientID     *string  `json:"clientId"`
+	Purpose      *string  `json:"purpose"`
+	BillingCycle *string  `json:"billingCycle"` // monthly | annual
+	MonthlyCost  *float64 `json:"monthlyCost"`
+	AnnualCost   *float64 `json:"annualCost"`
+	Amount       *float64 `json:"amount"` // cobro del ciclo elegido
 }
 
 type bulkOrgRequest struct {
 	Items []bulkOrgItem `json:"items" binding:"required"`
 }
 
-// BulkOrganize updates client/purpose/monthlyCost for many services in one request.
+// BulkOrganize updates client/purpose/billing for many services in one request.
 func BulkOrganize(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req bulkOrgRequest
@@ -131,10 +134,38 @@ func BulkOrganize(db *gorm.DB) gin.HandlerFunc {
 			if item.Purpose != nil {
 				updates["purpose"] = *item.Purpose
 			}
-			if item.MonthlyCost != nil {
-				updates["monthly_cost"] = *item.MonthlyCost
-				updates["billing_cycle"] = "monthly"
+
+			cycle := serviceslayer.BillingCycleMonthly
+			if item.BillingCycle != nil && *item.BillingCycle == serviceslayer.BillingCycleAnnual {
+				cycle = serviceslayer.BillingCycleAnnual
+			} else if item.BillingCycle == nil && item.AnnualCost != nil && (item.MonthlyCost == nil || *item.AnnualCost > 0) {
+				cycle = serviceslayer.BillingCycleAnnual
 			}
+
+			hasMoney := item.Amount != nil || item.MonthlyCost != nil || item.AnnualCost != nil || item.BillingCycle != nil
+			if hasMoney {
+				updates["billing_cycle"] = cycle
+				if cycle == serviceslayer.BillingCycleAnnual {
+					amt := 0.0
+					if item.Amount != nil {
+						amt = *item.Amount
+					} else if item.AnnualCost != nil {
+						amt = *item.AnnualCost
+					}
+					updates["annual_cost"] = amt
+					updates["monthly_cost"] = 0.0
+				} else {
+					amt := 0.0
+					if item.Amount != nil {
+						amt = *item.Amount
+					} else if item.MonthlyCost != nil {
+						amt = *item.MonthlyCost
+					}
+					updates["monthly_cost"] = amt
+					updates["annual_cost"] = 0.0
+				}
+			}
+
 			if len(updates) == 0 {
 				continue
 			}
