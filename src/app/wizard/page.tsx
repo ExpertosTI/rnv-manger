@@ -3,13 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-    CheckCircle2, CircleDollarSign, PackageSearch, RefreshCw, Sparkles, Wand2, Zap,
+    CheckCircle2, CircleDollarSign, PackageSearch, Plus, RefreshCw,
+    Sparkles, UserPlus, Wand2, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import {
+    Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
+import { clients as clientsApi } from "@/lib/api";
 
 type ClientOpt = { id: string; name: string; monthlyFee?: number };
 
@@ -70,6 +74,10 @@ function subdomainHint(svc: WizardService): string {
     } catch {
         return svc.name;
     }
+}
+
+function titleCase(s: string) {
+    return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function suggestPurpose(svc: WizardService): string {
@@ -147,6 +155,10 @@ export default function ServiceWizardPage() {
     const [defaultPrice, setDefaultPrice] = useState("100");
     const [bulkClientId, setBulkClientId] = useState("");
     const [onlyPublic, setOnlyPublic] = useState(true);
+    const [createOpen, setCreateOpen] = useState(false);
+    const [createForServiceId, setCreateForServiceId] = useState<string | null>(null);
+    const [creating, setCreating] = useState(false);
+    const [newClient, setNewClient] = useState({ name: "", email: "", phone: "", companyName: "" });
 
     const buildDrafts = useCallback((rows: WizardService[], clientList: ClientOpt[], priceDefault: number) => {
         const next: Record<string, Draft> = {};
@@ -301,17 +313,88 @@ export default function ServiceWizardPage() {
             const next = { ...prev };
             for (const id of selectedIds) {
                 const cur = next[id] || { clientId: "", purpose: "", monthlyCost: "", skip: false };
+                const svc = services.find((s) => s.id === id);
                 next[id] = {
                     ...cur,
                     clientId: bulkClientId || cur.clientId,
                     monthlyCost: Number.isFinite(price) && price >= 0 ? String(price) : cur.monthlyCost,
-                    purpose: cur.purpose || suggestPurpose(services.find((s) => s.id === id)!),
+                    purpose: cur.purpose || (svc ? suggestPurpose(svc) : cur.purpose),
                     skip: false,
                 };
             }
             return next;
         });
         addToast(`Aplicado a ${selectedIds.length} seleccionados`, "success");
+    };
+
+    const openCreateClient = (serviceId?: string) => {
+        const svc = serviceId ? services.find((s) => s.id === serviceId) : null;
+        setCreateForServiceId(serviceId || null);
+        setNewClient({
+            name: svc ? titleCase(subdomainHint(svc)) : "",
+            email: "",
+            phone: "",
+            companyName: "",
+        });
+        setCreateOpen(true);
+    };
+
+    const createClientInline = async () => {
+        if (!newClient.name.trim()) {
+            addToast("El nombre es requerido", "error");
+            return;
+        }
+        setCreating(true);
+        try {
+            const fee = parseFloat(defaultPrice) || 0;
+            const created = await clientsApi.create({
+                name: newClient.name.trim(),
+                email: newClient.email.trim() || undefined,
+                phone: newClient.phone.trim() || undefined,
+                companyName: newClient.companyName.trim() || undefined,
+                billingCycle: "monthly",
+                monthlyFee: fee,
+                paymentDay: 1,
+            });
+            const client = created.data;
+            setClients((prev) => [...prev, { id: client.id, name: client.name, monthlyFee: client.monthlyFee }]);
+
+            if (createForServiceId) {
+                setDrafts((prev) => ({
+                    ...prev,
+                    [createForServiceId]: {
+                        ...(prev[createForServiceId] || { purpose: "", monthlyCost: String(fee || 100), skip: false }),
+                        clientId: client.id,
+                        skip: false,
+                    },
+                }));
+                setSelected((prev) => ({ ...prev, [createForServiceId]: true }));
+            } else if (selectedIds.length > 0) {
+                setDrafts((prev) => {
+                    const next = { ...prev };
+                    for (const id of selectedIds) {
+                        next[id] = {
+                            ...(next[id] || { purpose: "", monthlyCost: String(fee || 100), skip: false }),
+                            clientId: client.id,
+                            skip: false,
+                        };
+                    }
+                    return next;
+                });
+                setBulkClientId(client.id);
+            } else {
+                setBulkClientId(client.id);
+            }
+
+            setCreateOpen(false);
+            setCreateForServiceId(null);
+            setNewClient({ name: "", email: "", phone: "", companyName: "" });
+            addToast(`Cliente «${client.name}» creado`, "success");
+        } catch (error) {
+            addToast(error instanceof Error ? error.message : "Error al crear cliente", "error");
+        } finally {
+            setCreating(false);
+        }
     };
 
     const saveBulk = async (ids: string[]) => {
@@ -386,18 +469,36 @@ export default function ServiceWizardPage() {
                                 onChange={(e) => setDefaultPrice(e.target.value)}
                             />
                         </div>
-                        <div className="min-w-[180px] flex-1">
+                        <div className="min-w-[200px] flex-1">
                             <label className="text-xs text-muted-foreground">Cliente para seleccionados</label>
-                            <select
-                                className="w-full border rounded-xl p-2 mt-1"
-                                value={bulkClientId}
-                                onChange={(e) => setBulkClientId(e.target.value)}
-                            >
-                                <option value="">— (mantener sugerido) —</option>
-                                {clients.map((c) => (
-                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                ))}
-                            </select>
+                            <div className="flex gap-1.5 mt-1">
+                                <select
+                                    className="w-full border rounded-xl p-2 bg-background"
+                                    value={bulkClientId}
+                                    onChange={(e) => {
+                                        if (e.target.value === "__create__") {
+                                            openCreateClient();
+                                            return;
+                                        }
+                                        setBulkClientId(e.target.value);
+                                    }}
+                                >
+                                    <option value="">— (mantener sugerido) —</option>
+                                    <option value="__create__">＋ Crear cliente nuevo…</option>
+                                    {clients.map((c) => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="rounded-xl shrink-0 px-3"
+                                    title="Crear cliente"
+                                    onClick={() => openCreateClient()}
+                                >
+                                    <UserPlus className="w-4 h-4" />
+                                </Button>
+                            </div>
                         </div>
                         <Button variant="outline" className="rounded-xl gap-1" onClick={autoFill}>
                             <Wand2 className="w-4 h-4" /> Autocompletar todo
@@ -460,53 +561,80 @@ export default function ServiceWizardPage() {
                 </Button>
             </div>
 
-            <div className="rounded-2xl border overflow-hidden">
-                <div className="grid grid-cols-[36px_1.2fr_1fr_1.2fr_100px] gap-2 px-3 py-2 bg-muted/40 text-xs font-medium text-muted-foreground border-b">
+            <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+                <div className="grid grid-cols-[36px_minmax(0,1.4fr)_minmax(160px,1.1fr)_minmax(0,1.2fr)_88px] gap-2 px-3 py-2.5 bg-muted/50 text-[11px] uppercase tracking-wide font-medium text-muted-foreground border-b">
                     <span />
                     <span>Servicio</span>
                     <span>Cliente</span>
                     <span>Propósito</span>
                     <span>USD/mes</span>
                 </div>
-                <div className="max-h-[62vh] overflow-auto divide-y">
+                <div className="max-h-[62vh] overflow-auto divide-y divide-border/60">
                     {visible.map((svc) => {
                         const d = drafts[svc.id] || { clientId: "", purpose: "", monthlyCost: "", skip: false };
                         const ready = draftReady(svc.id);
+                        const online = isOnline(svc.status);
                         return (
                             <div
                                 key={svc.id}
-                                className={`grid grid-cols-[36px_1.2fr_1fr_1.2fr_100px] gap-2 px-3 py-2 items-center text-sm ${
-                                    ready ? "bg-emerald-50/40" : ""
+                                className={`grid grid-cols-[36px_minmax(0,1.4fr)_minmax(160px,1.1fr)_minmax(0,1.2fr)_88px] gap-2 px-3 py-2.5 items-center text-sm transition-colors ${
+                                    ready ? "bg-emerald-50/50" : "hover:bg-muted/20"
                                 }`}
                             >
                                 <input
                                     type="checkbox"
+                                    className="accent-emerald-600"
                                     checked={!!selected[svc.id]}
                                     onChange={(e) => setSelected((prev) => ({ ...prev, [svc.id]: e.target.checked }))}
                                 />
                                 <div className="min-w-0">
-                                    <p className="font-medium truncate flex items-center gap-1">
+                                    <p className="font-medium truncate flex items-center gap-1.5">
+                                        <span
+                                            className={`w-2 h-2 rounded-full shrink-0 ${
+                                                online ? "bg-emerald-500" : "bg-amber-400"
+                                            }`}
+                                            title={online ? "En línea" : svc.status}
+                                        />
                                         {ready && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
                                         <span className="truncate">{svc.name}</span>
                                     </p>
-                                    <p className="text-xs text-muted-foreground truncate">
-                                        {svc.type} · {isOnline(svc.status) ? "online" : svc.status}
+                                    <p className="text-xs text-muted-foreground truncate pl-3.5">
+                                        {svc.type}
                                         {svc.url ? ` · ${svc.url.replace(/^https?:\/\//, "")}` : ""}
                                     </p>
                                 </div>
-                                <select
-                                    className="w-full border rounded-lg p-1.5 text-xs"
-                                    value={d.clientId}
-                                    onChange={(e) => setDrafts((prev) => ({
-                                        ...prev,
-                                        [svc.id]: { ...d, clientId: e.target.value, skip: false },
-                                    }))}
-                                >
-                                    <option value="">—</option>
-                                    {clients.map((c) => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
-                                    ))}
-                                </select>
+                                <div className="flex gap-1 items-center min-w-0">
+                                    <select
+                                        className={`w-full border rounded-lg p-1.5 text-xs bg-background ${
+                                            !d.clientId ? "border-amber-300 text-muted-foreground" : "border-input"
+                                        }`}
+                                        value={d.clientId}
+                                        onChange={(e) => {
+                                            if (e.target.value === "__create__") {
+                                                openCreateClient(svc.id);
+                                                return;
+                                            }
+                                            setDrafts((prev) => ({
+                                                ...prev,
+                                                [svc.id]: { ...d, clientId: e.target.value, skip: false },
+                                            }));
+                                        }}
+                                    >
+                                        <option value="">Sin cliente…</option>
+                                        <option value="__create__">＋ Crear «{titleCase(subdomainHint(svc))}»…</option>
+                                        {clients.map((c) => (
+                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        type="button"
+                                        className="shrink-0 h-8 w-8 inline-flex items-center justify-center rounded-lg border border-dashed border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                                        title="Crear cliente aquí"
+                                        onClick={() => openCreateClient(svc.id)}
+                                    >
+                                        <Plus className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
                                 <Input
                                     className="h-8 rounded-lg text-xs"
                                     value={d.purpose}
@@ -537,16 +665,90 @@ export default function ServiceWizardPage() {
                 </div>
             </div>
 
-            <Card className="rounded-2xl">
+            <Card className="rounded-2xl border-dashed">
                 <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Flujo de 30 segundos</CardTitle>
+                    <CardTitle className="text-base">Flujo rápido</CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground space-y-1">
-                    <p>1. Pon precio Odoo (ej. 100) → <b>Autocompletar todo</b></p>
-                    <p>2. Revisa pestaña <b>Listos</b> → <b>Guardar N listos</b></p>
-                    <p>3. En <b>Faltan datos</b>, selecciona varios, elige cliente y <b>Aplicar a selección</b></p>
+                    <p>1. Precio Odoo → <b>Autocompletar todo</b></p>
+                    <p>2. Si falta cliente: botón <b>+</b> o «Crear…» en el desplegable (nombre sugerido del dominio)</p>
+                    <p>3. Pestaña <b>Listos</b> → <b>Guardar N listos</b></p>
                 </CardContent>
             </Card>
+
+            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                <DialogContent className="sm:max-w-md rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <UserPlus className="w-5 h-5 text-emerald-600" />
+                            Nuevo cliente
+                        </DialogTitle>
+                        <DialogDescription>
+                            Se crea aquí mismo y queda asignado al servicio
+                            {createForServiceId
+                                ? ` «${services.find((s) => s.id === createForServiceId)?.name || ""}»`
+                                : selectedIds.length > 0
+                                    ? ` y a ${selectedIds.length} seleccionados`
+                                    : ""}.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 py-1">
+                        <div>
+                            <label className="text-xs text-muted-foreground">Nombre *</label>
+                            <Input
+                                className="rounded-xl mt-1"
+                                autoFocus
+                                placeholder="Ej. MVP Flow Boutique"
+                                value={newClient.name}
+                                onChange={(e) => setNewClient((p) => ({ ...p, name: e.target.value }))}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !creating) void createClientInline();
+                                }}
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="text-xs text-muted-foreground">Email</label>
+                                <Input
+                                    className="rounded-xl mt-1"
+                                    type="email"
+                                    value={newClient.email}
+                                    onChange={(e) => setNewClient((p) => ({ ...p, email: e.target.value }))}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-muted-foreground">Teléfono</label>
+                                <Input
+                                    className="rounded-xl mt-1"
+                                    value={newClient.phone}
+                                    onChange={(e) => setNewClient((p) => ({ ...p, phone: e.target.value }))}
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs text-muted-foreground">Empresa (opcional)</label>
+                            <Input
+                                className="rounded-xl mt-1"
+                                value={newClient.companyName}
+                                onChange={(e) => setNewClient((p) => ({ ...p, companyName: e.target.value }))}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" className="rounded-xl" onClick={() => setCreateOpen(false)} disabled={creating}>
+                            Cancelar
+                        </Button>
+                        <Button
+                            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 gap-1"
+                            onClick={() => void createClientInline()}
+                            disabled={creating || !newClient.name.trim()}
+                        >
+                            {creating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                            Crear y asignar
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
