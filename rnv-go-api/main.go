@@ -97,6 +97,9 @@ func main() {
 		api.POST("/auth/verify-otp", authHandler.VerifyOTP(db, cfg))
 		api.GET("/health", healthHandler.Check(db))
 		api.GET("/services/import", servicesHandler.Import(db))
+		// Evolution API Webhook for WhatsApp AI Assistant & Scheduling
+		api.POST("/whatsapp/webhook", whatsappHandler.EvolutionWebhook(db, cfg))
+		api.POST("/webhook/evolution", whatsappHandler.EvolutionWebhook(db, cfg))
 	}
 
 	// ─── Protected routes ─────────────────────────────────────────────
@@ -200,9 +203,12 @@ func main() {
 
 		// Calendar & scheduled tasks
 		auth.GET("/calendar", calendarHandler.Events(db))
+		auth.GET("/calendar/export/ics", calendarHandler.ExportICS(db))
+		auth.POST("/calendar/daily-summary", calendarHandler.DailySummary(db, cfg))
 		auth.GET("/calendar/tasks", calendarHandler.ListTasks(db))
 		auth.POST("/calendar/tasks", calendarHandler.CreateTask(db))
 		auth.PUT("/calendar/tasks/:id", calendarHandler.UpdateTask(db))
+		auth.POST("/calendar/tasks/:id/postpone", calendarHandler.PostponeTask(db))
 		auth.DELETE("/calendar/tasks/:id", calendarHandler.DeleteTask(db))
 
 		// History

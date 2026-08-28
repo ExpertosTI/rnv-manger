@@ -297,8 +297,17 @@ export const calendar = {
         request<{ success: boolean; data: ScheduledTask }>(`/calendar/tasks/${id}`, {
             method: "PUT", body: JSON.stringify(data),
         }),
+    postponeTask: (id: string, minutes: number = 15) =>
+        request<{ success: boolean; message: string; data: ScheduledTask }>(`/calendar/tasks/${id}/postpone`, {
+            method: "POST", body: JSON.stringify({ minutes }),
+        }),
     cancelTask: (id: string) =>
         request<{ success: boolean }>(`/calendar/tasks/${id}`, { method: "DELETE" }),
+    sendDailySummary: (phone?: string, date?: string) =>
+        request<{ success: boolean; message: string; tasksCount: number }>("/calendar/daily-summary", {
+            method: "POST", body: JSON.stringify({ phone, date }),
+        }),
+    getExportICSUrl: () => `${API_BASE}/calendar/export/ics`,
 };
 
 // ── Topology (infra map) ────────────────────────────────────────────────────

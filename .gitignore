@@ -26,6 +26,9 @@ tsc_errors.txt
 tsconfig.tsbuildinfo
 rnv_manager_backup_*.json
 !backups/rnv_manager_backup_2026-03-14.json
+rnv-go-api/rnv-go-api
+rnv-go-api/rnv-api
+*.exe
 
 # env files
 .env*
@@ -42,9 +45,18 @@ next-env.d.ts
 /src-tauri/target/
 /src-tauri/gen/
 
-# Desktop Builds
+# Desktop & Mobile Builds
 /dist/
 /dist-tauri/
+/dist-mac/
+/dist-android/
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+
+# Graphify cache (keep graph.json / report / html if you commit them)
+graphify-out/
 
 # Debug
 npm-debug.log*

@@ -55,33 +55,42 @@ export default function Home() {
     const { addToast } = useToast();
     const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
     const [showFilterMenu, setShowFilterMenu] = useState(false);
+    const [refreshRate, setRefreshRate] = useState<number>(30000); // 30s default
+    const [showRateMenu, setShowRateMenu] = useState(false);
     const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
     const { data: statsResponse, error: statsError, isLoading: statsLoading, mutate: mutateStats } = useSWR<{
         success: boolean;
         data: { totals: StatsData };
-    }>("/api/stats", fetcher, { refreshInterval: 30000, revalidateOnFocus: true });
+    }>("/api/stats", fetcher, { refreshInterval: refreshRate, revalidateOnFocus: true });
 
     const { data: vpsResponse, isLoading: vpsLoading, mutate: mutateVps } = useSWR<{
         success?: boolean;
         data?: VPSItem[];
-    }>("/api/vps", fetcher, { refreshInterval: 30000 });
+    }>("/api/vps", fetcher, { refreshInterval: refreshRate });
+
+    const { data: offlineServicesResponse, mutate: mutateOffline } = useSWR<{
+        success: boolean;
+        data: Array<{ id: string; name: string; type: string; status: string; url?: string }>;
+        count: number;
+    }>("/api/services/offline", fetcher, { refreshInterval: refreshRate });
 
     const { data: clientsResponse, mutate: mutateClients } = useSWR<ClientData[]>(
         "/api/clients",
         listFetcher,
-        { refreshInterval: 60000 }
+        { refreshInterval: refreshRate ? Math.max(refreshRate, 30000) : 0 }
     );
 
     const { data: billingData, isLoading: billingLoading, mutate: mutateBilling } = useSWR<BillingData[]>(
         "/api/billing",
         listFetcher,
-        { refreshInterval: 60000 }
+        { refreshInterval: refreshRate ? Math.max(refreshRate, 30000) : 0 }
     );
 
     const statsData = statsResponse?.data?.totals || { vps: 0, clients: 0, services: 0, monthlyRevenue: 0 };
     const vpsData = Array.isArray(vpsResponse?.data) ? vpsResponse.data : [];
     const onlineCount = vpsData.filter((v) => isVpsOnline(v.status)).length;
+    const offlineServices = offlineServicesResponse?.data || [];
 
     const billingChart = Array.isArray(billingData)
         ? billingData
@@ -111,10 +120,10 @@ export default function Home() {
     });
 
     const handleRefresh = useCallback(async () => {
-        await Promise.all([mutateStats(), mutateVps(), mutateClients(), mutateBilling()]);
+        await Promise.all([mutateStats(), mutateVps(), mutateOffline(), mutateClients(), mutateBilling()]);
         setLastRefresh(new Date());
-        addToast("Datos actualizados", "success");
-    }, [mutateStats, mutateVps, mutateClients, mutateBilling, addToast]);
+        addToast("Monitor actualizado", "success");
+    }, [mutateStats, mutateVps, mutateOffline, mutateClients, mutateBilling, addToast]);
 
     useEffect(() => {
         if (statsError) addToast("Error al cargar estadísticas", "error");
@@ -127,15 +136,71 @@ export default function Home() {
         { title: "VPS", value: statsData.vps, subtitle: `${onlineCount} en línea`, icon: Server, color: "from-violet-500 to-purple-600", href: "/vps" },
         { title: "Clientes", value: statsData.clients, subtitle: "activos", icon: Users, color: "from-blue-500 to-cyan-500", href: "/clients" },
         { title: "Ingresos", value: `$${(statsData.monthlyRevenue || 0).toLocaleString()}`, subtitle: "MRR", icon: DollarSign, color: "from-green-500 to-emerald-500", href: "/billing" },
-        { title: "Servicios", value: statsData.services, subtitle: "instancias", icon: Activity, color: "from-orange-500 to-rose-500", href: "/services" },
+        { title: "Servicios", value: statsData.services, subtitle: `${offlineServices.length} caídos`, icon: Activity, color: offlineServices.length > 0 ? "from-amber-500 to-rose-500" : "from-orange-500 to-rose-500", href: "/services" },
     ];
+
+    const refreshLabels: Record<number, string> = {
+        10000: "10s (En vivo)",
+        30000: "30s (Normal)",
+        60000: "60s (Ahorro)",
+        0: "Pausado",
+    };
 
     return (
         <div className="space-y-6">
-            {/* Barra de estado — sin duplicar título (ya está en TopHeader) */}
+            {/* Barra de estado de monitoreo */}
             <div className="flex items-center justify-between flex-wrap gap-3">
-                <p className="text-sm text-gray-500">Resumen de infraestructura · auto-refresh 30s</p>
                 <div className="flex items-center gap-2">
+                    <span className="relative flex h-2.5 w-2.5">
+                        {refreshRate > 0 && (
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        )}
+                        <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${hasError ? "bg-red-500" : refreshRate > 0 ? "bg-emerald-500" : "bg-gray-400"}`}></span>
+                    </span>
+                    <p className="text-sm font-medium text-gray-700">
+                        Monitor de Infraestructura {refreshRate > 0 ? `· cada ${refreshRate / 1000}s` : "· Pausado"}
+                    </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    {/* Cadencia selector */}
+                    <div className="relative">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowRateMenu(!showRateMenu)}
+                            className="h-8 text-xs gap-1 border-gray-200"
+                        >
+                            <Clock size={12} />
+                            {refreshLabels[refreshRate] || `${refreshRate / 1000}s`}
+                            <ChevronDown size={12} />
+                        </Button>
+                        <AnimatePresence>
+                            {showRateMenu && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -6 }}
+                                    className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 min-w-[130px]"
+                                >
+                                    {[10000, 30000, 60000, 0].map((rate) => (
+                                        <button
+                                            key={rate}
+                                            onClick={() => {
+                                                setRefreshRate(rate);
+                                                setShowRateMenu(false);
+                                                addToast(`Frecuencia: ${refreshLabels[rate]}`, "info");
+                                            }}
+                                            className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50 ${refreshRate === rate ? "text-violet-600 font-semibold" : "text-gray-600"}`}
+                                        >
+                                            {refreshLabels[rate]}
+                                        </button>
+                                    ))}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
                         hasError ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"
                     }`}>
@@ -143,15 +208,43 @@ export default function Home() {
                         {hasError ? "Desconectado" : "En línea"}
                     </span>
                     <span className="text-xs text-gray-400 flex items-center gap-1">
-                        <Clock size={12} />
-                        {lastRefresh.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                        {lastRefresh.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                     </span>
-                    <Button variant="outline" size="icon" onClick={handleRefresh} className="h-8 w-8 border-gray-200">
-                        <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
+                    <Button variant="outline" size="icon" onClick={handleRefresh} className="h-8 w-8 border-gray-200" title="Actualizar ahora">
+                        <RefreshCw size={14} className={isLoading ? "animate-spin text-violet-600" : ""} />
                     </Button>
                 </div>
             </div>
 
+            {/* Alert: Servicios Caídos */}
+            {offlineServices.length > 0 && (
+                <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 shadow-sm"
+                >
+                    <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-amber-900 text-sm flex items-center gap-2">
+                                {offlineServices.length} servicio{offlineServices.length > 1 ? "s" : ""} no responde{offlineServices.length > 1 ? "n" : ""}
+                            </h3>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                {offlineServices.slice(0, 6).map((s) => (
+                                    <Link key={s.id} href={`/services/${s.id}`}>
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/80 border border-amber-300/60 text-xs font-medium text-amber-900 hover:bg-amber-100 transition-colors">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                            {s.name}
+                                        </span>
+                                    </Link>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
+
+            {/* Alert: Clientes con pago vencido */}
             {overdueClients.length > 0 && (
                 <motion.div
                     initial={{ opacity: 0, y: -8 }}

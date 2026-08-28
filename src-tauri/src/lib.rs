@@ -1,7 +1,7 @@
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, WebviewUrl, WebviewWindowBuilder,
+    Manager,
 };
 
 #[tauri::command]
@@ -31,16 +31,27 @@ pub fn run() {
             let sep  = PredefinedMenuItem::separator(handle)?;
 
             // Navegación rápida desde el tray
-            let nav_dashboard = MenuItem::with_id(handle, "nav_dashboard", "Panel Principal", true, None::<&str>)?;
-            let nav_vps       = MenuItem::with_id(handle, "nav_vps",       "Servidores VPS",  true, None::<&str>)?;
-            let nav_clients   = MenuItem::with_id(handle, "nav_clients",   "Clientes",        true, None::<&str>)?;
-            let nav_billing   = MenuItem::with_id(handle, "nav_billing",   "Facturación",     true, None::<&str>)?;
-            let nav_audit     = MenuItem::with_id(handle, "nav_audit",     "Auditoría",       true, None::<&str>)?;
+            let nav_dashboard = MenuItem::with_id(handle, "nav_dashboard", "⚡ Monitor Principal", true, None::<&str>)?;
+            let nav_vps       = MenuItem::with_id(handle, "nav_vps",       "🖥️ Servidores VPS",   true, None::<&str>)?;
+            let nav_services  = MenuItem::with_id(handle, "nav_services",  "🌐 Servicios & Endpoints", true, None::<&str>)?;
+            let nav_clients   = MenuItem::with_id(handle, "nav_clients",   "👥 Clientes",         true, None::<&str>)?;
+            let nav_billing   = MenuItem::with_id(handle, "nav_billing",   "💳 Facturación",      true, None::<&str>)?;
+            let nav_whatsapp  = MenuItem::with_id(handle, "nav_whatsapp",  "💬 WhatsApp / EvoAPI", true, None::<&str>)?;
+            let nav_map       = MenuItem::with_id(handle, "nav_map",       "🗺️ Mapa Topología",   true, None::<&str>)?;
+            let nav_audit     = MenuItem::with_id(handle, "nav_audit",     "🛡️ Auditoría",        true, None::<&str>)?;
+            let nav_settings  = MenuItem::with_id(handle, "nav_settings",  "⚙️ Ajustes",          true, None::<&str>)?;
+            let nav_reload    = MenuItem::with_id(handle, "nav_reload",    "🔄 Recargar Panel",   true, None::<&str>)?;
             let nav_sep       = PredefinedMenuItem::separator(handle)?;
 
             let tray_menu = Menu::with_items(
                 handle,
-                &[&show, &sep, &nav_dashboard, &nav_vps, &nav_clients, &nav_billing, &nav_audit, &nav_sep, &quit],
+                &[
+                    &show, &nav_reload, &sep,
+                    &nav_dashboard, &nav_vps, &nav_services,
+                    &nav_clients, &nav_billing, &nav_whatsapp,
+                    &nav_map, &nav_audit, &nav_settings,
+                    &nav_sep, &quit
+                ],
             )?;
 
             let _tray = TrayIconBuilder::new()
@@ -53,11 +64,18 @@ pub fn run() {
                         "show" => {
                             if let Some(w) = &win { let _ = w.show(); let _ = w.set_focus(); }
                         }
+                        "nav_reload" => {
+                            if let Some(w) = &win { let _ = w.eval("window.location.reload()"); }
+                        }
                         "nav_dashboard" => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/".parse().unwrap()); } }
                         "nav_vps"       => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/vps".parse().unwrap()); } }
+                        "nav_services"  => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/services".parse().unwrap()); } }
                         "nav_clients"   => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/clients".parse().unwrap()); } }
                         "nav_billing"   => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/billing".parse().unwrap()); } }
+                        "nav_whatsapp"  => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/whatsapp".parse().unwrap()); } }
+                        "nav_map"       => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/map".parse().unwrap()); } }
                         "nav_audit"     => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/audit".parse().unwrap()); } }
+                        "nav_settings"  => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/settings".parse().unwrap()); } }
                         _ => {}
                     }
                 })

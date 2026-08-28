@@ -12,14 +12,16 @@ import (
 	"gorm.io/gorm"
 )
 
-type chatMessage struct {
+type ChatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
+type chatMessage = ChatMessage
+
 type chatRequest struct {
 	Message string        `json:"message"`
-	History []chatMessage `json:"history"`
+	History []ChatMessage `json:"history"`
 	URL     string        `json:"url"`
 }
 
@@ -236,3 +238,13 @@ func pageContext(db *gorm.DB, url string) string {
 	b.WriteString("\nUsa este contexto para responder sin pedir IDs que ya conoces.")
 	return b.String()
 }
+
+// ProcessChatMessage allows other packages (e.g. WhatsApp webhook) to process AI messages directly
+func ProcessChatMessage(db *gorm.DB, cfg *config.Config, message string, history []ChatMessage, url string) (string, []executedFunction, error) {
+	return runChat(db, cfg, chatRequest{
+		Message: message,
+		History: history,
+		URL:     url,
+	})
+}
+

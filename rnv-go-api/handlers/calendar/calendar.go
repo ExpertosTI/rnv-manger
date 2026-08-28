@@ -1,10 +1,13 @@
 package calendar
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/renace/rnv-go-api/config"
 	"github.com/renace/rnv-go-api/middleware"
 	"github.com/renace/rnv-go-api/models"
 	"github.com/renace/rnv-go-api/serviceslayer"
@@ -267,3 +270,166 @@ func DeleteTask(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"success": true, "message": "Tarea cancelada"})
 	}
 }
+
+// ExportICS exports calendar events to standard iCalendar (.ics) format
+func ExportICS(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var tasks []models.ScheduledTask
+		db.Preload("Client").Preload("Service").
+			Where("status != ?", "cancelled").
+			Order("scheduled_at asc").
+			Find(&tasks)
+
+		var b strings.Builder
+		b.WriteString("BEGIN:VCALENDAR\r\n")
+		b.WriteString("VERSION:2.0\r\n")
+		b.WriteString("PRODID:-//RENACE Tech//RNV Manager Calendar//ES\r\n")
+		b.WriteString("CALSCALE:GREGORIAN\r\n")
+		b.WriteString("METHOD:PUBLISH\r\n")
+		b.WriteString("X-WR-CALNAME:RNV Manager Agenda\r\n")
+		b.WriteString("X-WR-TIMEZONE:America/Santo_Domingo\r\n")
+
+		for _, t := range tasks {
+			dtStart := t.ScheduledAt.UTC().Format("20060102T150405Z")
+			dtEnd := t.ScheduledAt.Add(1 * time.Hour).UTC().Format("20060102T150405Z")
+			desc := ""
+			if t.Description != nil {
+				desc = *t.Description
+			}
+
+			b.WriteString("BEGIN:VEVENT\r\n")
+			b.WriteString(fmt.Sprintf("UID:%s@rnv.renace.tech\r\n", t.ID))
+			b.WriteString(fmt.Sprintf("DTSTAMP:%s\r\n", dtStart))
+			b.WriteString(fmt.Sprintf("DTSTART:%s\r\n", dtStart))
+			b.WriteString(fmt.Sprintf("DTEND:%s\r\n", dtEnd))
+			b.WriteString(fmt.Sprintf("SUMMARY:%s\r\n", t.Title))
+			if desc != "" {
+				b.WriteString(fmt.Sprintf("DESCRIPTION:%s\r\n", desc))
+			}
+			b.WriteString(fmt.Sprintf("STATUS:%s\r\n", strings.ToUpper(t.Status)))
+			b.WriteString("END:VEVENT\r\n")
+		}
+
+		b.WriteString("END:VCALENDAR\r\n")
+
+		c.Header("Content-Type", "text/calendar; charset=utf-8")
+		c.Header("Content-Disposition", "attachment; filename=\"rnv_agenda.ics\"")
+		c.String(http.StatusOK, b.String())
+	}
+}
+
+// DailySummary formats and sends a daily morning agenda summary via WhatsApp
+func DailySummary(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Phone string `json:"phone"`
+			Date  string `json:"date"`
+		}
+		_ = c.ShouldBindJSON(&req)
+
+		targetDate := time.Now()
+		if req.Date != "" {
+			if parsed, err := time.Parse("2006-01-02", req.Date); err == nil {
+				targetDate = parsed
+			}
+		}
+
+		startOfDay := time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 0, 0, 0, 0, targetDate.Location())
+		endOfDay := startOfDay.Add(24*time.Hour - time.Second)
+
+		var tasks []models.ScheduledTask
+		db.Preload("Client").Preload("Service").
+			Where("scheduled_at >= ? AND scheduled_at <= ? AND status != ?", startOfDay, endOfDay, "cancelled").
+			Order("scheduled_at asc").
+			Find(&tasks)
+
+		dateFormatted := targetDate.Format("02/01/2006")
+		var msg strings.Builder
+		msg.WriteString("🌟 *AGENDA RNV MANAGER · RESUMEN DEL DÍA*\n")
+		msg.WriteString("📅 *Fecha:* " + dateFormatted + "\n")
+		msg.WriteString("━━━━━━━━━━━━━━━━━━━━━\n\n")
+
+		if len(tasks) == 0 {
+			msg.WriteString("🌴 _No hay compromisos ni tareas programadas para esta fecha._\n\n")
+		} else {
+			msg.WriteString(fmt.Sprintf("Tienes *%d compromisos* agendados para la jornada:\n\n", len(tasks)))
+			for i, t := range tasks {
+				timeStr := t.ScheduledAt.Format("03:04 PM")
+				typeIcon := "📌"
+				switch t.Type {
+				case "meeting":
+					typeIcon = "🤝"
+				case "maintenance":
+					typeIcon = "🔧"
+				case "billing":
+					typeIcon = "💳"
+				case "reminder":
+					typeIcon = "⏰"
+				}
+				msg.WriteString(fmt.Sprintf("*%d. %s %s*\n", i+1, typeIcon, t.Title))
+				msg.WriteString(fmt.Sprintf("   🕒 *Hora:* %s\n", timeStr))
+				if t.Client != nil {
+					msg.WriteString(fmt.Sprintf("   👥 *Cliente:* %s\n", t.Client.Name))
+				}
+				if t.Service != nil {
+					msg.WriteString(fmt.Sprintf("   🌐 *Servicio:* %s\n", t.Service.Name))
+				}
+				if t.Description != nil && *t.Description != "" {
+					msg.WriteString(fmt.Sprintf("   📝 *Notas:* %s\n", *t.Description))
+				}
+				msg.WriteString("\n")
+			}
+		}
+
+		msg.WriteString("━━━━━━━━━━━━━━━━━━━━━\n")
+		msg.WriteString("🔔 *Sistema de Alertas:* Notificaciones automáticas activas 10m y 5m antes.\n")
+		msg.WriteString("🌐 *Abrir RNV Manager:* https://rnv.renace.tech/calendar")
+
+		recipient := req.Phone
+		if recipient == "" {
+			recipient = cfg.WhatsAppOwnerNumber
+			if recipient == "" {
+				recipient = cfg.WhatsAppNotifyNumbers
+			}
+			if recipient == "" {
+				recipient = "18093487921"
+			}
+		}
+
+		if err := serviceslayer.SendWhatsApp(db, cfg, recipient, msg.String()); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "Resumen diario enviado a " + recipient, "tasksCount": len(tasks)})
+	}
+}
+
+// PostponeTask delays a task by given minutes (+15, +30, +60)
+func PostponeTask(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		var req struct {
+			Minutes int `json:"minutes"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.Minutes <= 0 {
+			req.Minutes = 15
+		}
+
+		var task models.ScheduledTask
+		if err := db.First(&task, "id = ?", id).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Tarea no encontrada"})
+			return
+		}
+
+		newTime := task.ScheduledAt.Add(time.Duration(req.Minutes) * time.Minute)
+		db.Model(&task).Updates(map[string]interface{}{
+			"scheduled_at": newTime,
+			"status":       "pending",
+		})
+
+		db.Preload("Client").Preload("Service").First(&task, "id = ?", id)
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": fmt.Sprintf("Compromiso pospuesto +%d minutos", req.Minutes), "data": task})
+	}
+}
+

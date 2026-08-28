@@ -13,8 +13,8 @@ import (
 
 // StartTaskScheduler fires pending scheduled tasks (reminders, reactivations, etc.)
 func StartTaskScheduler(db *gorm.DB, cfg *config.Config) {
-	log.Println("[Scheduler] Task scheduler started (interval: 5m)")
-	ticker := time.NewTicker(5 * time.Minute)
+	log.Println("[Scheduler] Task scheduler started (interval: 1m)")
+	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 
 	runPendingTasks(db, cfg)
@@ -27,7 +27,7 @@ func StartTaskScheduler(db *gorm.DB, cfg *config.Config) {
 func runPendingTasks(db *gorm.DB, cfg *config.Config) {
 	now := time.Now()
 	var tasks []models.ScheduledTask
-	db.Preload("Client").
+	db.Preload("Client").Preload("Service").
 		Where("status = ? AND scheduled_at <= ?", "pending", now).
 		Order("scheduled_at asc").
 		Limit(50).
@@ -57,6 +57,26 @@ func processTask(db *gorm.DB, cfg *config.Config, task models.ScheduledTask) {
 	}
 
 	serviceslayer.CreateNotification(db, notifType, "📅 "+task.Title, msg, meta)
+
+	// Send WhatsApp notification
+	whatsappTarget := cfg.WhatsAppOwnerNumber
+	if whatsappTarget == "" {
+		whatsappTarget = cfg.WhatsAppNotifyNumbers
+	}
+	if task.Client != nil && task.Client.Phone != nil && *task.Client.Phone != "" {
+		whatsappTarget = *task.Client.Phone
+	}
+	if whatsappTarget != "" {
+		waText := fmt.Sprintf("⏰ *RECORDATORIO DE COMPROMISO RNV*\n\n📌 *%s*\n🕒 *Hora:* %s\n", task.Title, task.ScheduledAt.Format("03:04 PM"))
+		if task.Client != nil {
+			waText += fmt.Sprintf("👥 *Cliente:* %s\n", task.Client.Name)
+		}
+		if task.Description != nil && *task.Description != "" {
+			waText += fmt.Sprintf("📝 *Detalles:* %s\n", *task.Description)
+		}
+		waText += "\n🌐 https://rnv.renace.tech/calendar"
+		_ = serviceslayer.SendWhatsApp(db, cfg, whatsappTarget, waText)
+	}
 
 	if task.NotifyEmail && cfg.NotificationEmail != "" {
 		body := fmt.Sprintf("<p><b>%s</b></p><p>%s</p>", task.Title, msg)

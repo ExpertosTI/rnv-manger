@@ -1,27 +1,11 @@
 import type { Metadata } from "next";
-import { Inter, Outfit, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { ToastProvider } from "@/components/ui/toast";
 
-const inter = Inter({
-    subsets: ["latin"],
-    variable: "--font-inter",
-});
-
-const outfit = Outfit({
-    subsets: ["latin"],
-    variable: "--font-outfit",
-});
-
-const jetbrains = JetBrains_Mono({
-    subsets: ["latin"],
-    variable: "--font-mono-map",
-});
-
 export const metadata: Metadata = {
-    title: "RNV Manager",
-    description: "Panel de Control de Infraestructura",
+    title: "RNV Manager — Centro de Control de Infraestructura",
+    description: "Panel de Monitoreo y Gestión en Tiempo Real de VPS, Servicios, Clientes y Odoo",
 };
 
 export default function RootLayout({
@@ -30,8 +14,8 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="es" className={`light ${inter.variable} ${outfit.variable} ${jetbrains.variable}`} suppressHydrationWarning>
-            <body className="font-sans antialiased min-h-screen bg-[#f8f7fc] text-gray-900">
+        <html lang="es" className="light" suppressHydrationWarning>
+            <body className="font-sans antialiased min-h-screen bg-[#f8f7fc] text-gray-900 selection:bg-violet-500 selection:text-white">
                 <ToastProvider>
                     <AppShell>{children}</AppShell>
                 </ToastProvider>

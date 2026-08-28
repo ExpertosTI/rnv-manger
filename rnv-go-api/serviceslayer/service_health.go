@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/renace/rnv-go-api/config"
@@ -47,55 +48,75 @@ func CheckServiceReachable(svc models.Service, vps *models.VPS) (online bool, me
 	return false, "skip"
 }
 
-// RunServiceHealthChecks probes all services, updates DB, notifies on status change.
+// RunServiceHealthChecks probes all services concurrently, updates DB, notifies on status change.
 func RunServiceHealthChecks(db *gorm.DB, cfg *config.Config) []ServiceHealthResult {
 	var services []models.Service
 	db.Preload("VPS").Find(&services)
 
 	now := time.Now()
 	results := make([]ServiceHealthResult, 0, len(services))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	// Concurrency limiter (max 12 simultaneous probes)
+	sem := make(chan struct{}, 12)
 
 	for _, svc := range services {
-		oldStatus := normalizeServiceStatus(svc.Status)
-		online, method := CheckServiceReachable(svc, svc.VPS)
+		wg.Add(1)
+		go func(s models.Service) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
-		if method == "skip" {
-			continue
-		}
+			oldStatus := normalizeServiceStatus(s.Status)
+			online, method := CheckServiceReachable(s, s.VPS)
 
-		newStatus := "stopped"
-		if online {
-			newStatus = "running"
-		}
+			if method == "skip" {
+				return
+			}
 
-		vpsName := ""
-		if svc.VPS != nil {
-			vpsName = svc.VPS.Name
-		}
-		urlStr := ""
-		if svc.URL != nil {
-			urlStr = *svc.URL
-		}
+			newStatus := "stopped"
+			if online {
+				newStatus = "running"
+			}
 
-		res := ServiceHealthResult{
-			ServiceID: svc.ID, ServiceName: svc.Name,
-			OldStatus: oldStatus, NewStatus: newStatus,
-			Online: online, Method: method, VPSName: vpsName, URL: urlStr,
-		}
+			vpsName := ""
+			if s.VPS != nil {
+				vpsName = s.VPS.Name
+			}
+			urlStr := ""
+			if s.URL != nil {
+				urlStr = *s.URL
+			}
 
-		if oldStatus != newStatus {
-			res.Changed = true
-			db.Model(&svc).Updates(map[string]interface{}{
-				"status":       newStatus,
-				"last_checked": now,
-			})
-			notifyServiceStatusChange(db, cfg, svc, oldStatus, newStatus, vpsName, method)
-		} else {
-			db.Model(&svc).Update("last_checked", now)
-		}
+			res := ServiceHealthResult{
+				ServiceID:   s.ID,
+				ServiceName: s.Name,
+				OldStatus:   oldStatus,
+				NewStatus:   newStatus,
+				Online:      online,
+				Method:      method,
+				VPSName:     vpsName,
+				URL:         urlStr,
+			}
 
-		results = append(results, res)
+			mu.Lock()
+			if oldStatus != newStatus {
+				res.Changed = true
+				db.Model(&s).Updates(map[string]interface{}{
+					"status":       newStatus,
+					"last_checked": now,
+				})
+				notifyServiceStatusChange(db, cfg, s, oldStatus, newStatus, vpsName, method)
+			} else {
+				db.Model(&s).Update("last_checked", now)
+			}
+			results = append(results, res)
+			mu.Unlock()
+		}(svc)
 	}
+
+	wg.Wait()
 	return results
 }
 

@@ -179,7 +179,7 @@ func subdomainName(hostname string) string {
 }
 
 func fetchProbeHTML(target string) (body string, statusCode int, reachable bool) {
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: 7 * time.Second}
 	for _, method := range []string{"GET", "HEAD"} {
 		req, err := http.NewRequest(method, target, nil)
 		if err != nil {

@@ -67,21 +67,12 @@ func Exec(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// GET - Quick connection test via query params
+// GET - Connection test endpoint (rejects plaintext passwords in query params)
 func Test(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		host := c.Query("host")
-		username := c.Query("username")
-		password := c.Query("password")
-		port := 22
-
-		if host == "" || username == "" || password == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Faltan parámetros"})
-			return
-		}
-
-		cfg := serviceslayer.SSHConfig{Host: host, Port: port, Username: username, Password: password}
-		ok, msg, latency := serviceslayer.SSHTest(cfg)
-		c.JSON(http.StatusOK, gin.H{"success": ok, "message": msg, "latency": latency})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Usa POST /api/ssh con action='test' y payload JSON para proteger las credenciales",
+		})
 	}
 }

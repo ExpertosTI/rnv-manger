@@ -1,0 +1,12 @@
+# Vendor / bundled apps — not RNV Manager source
+public/whiteboard-app/
+public/whiteboard-app/**
+
+# Build & deps noise
+.next/
+node_modules/
+src-tauri/target/
+dist/
+dist-tauri/
+backups/
+data/

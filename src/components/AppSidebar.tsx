@@ -62,12 +62,16 @@ export function AppSidebar() {
             <div className="p-4 border-b border-gray-100">
                 <div className="flex items-center justify-between gap-2">
                     <Link href="/" className="flex items-center gap-3 group min-w-0" onClick={closeMobile}>
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-200/60 shrink-0">
-                            <Zap className="w-5 h-5 text-white" />
+                        <div className="w-10 h-10 rounded-xl overflow-hidden shadow-md shadow-violet-500/20 shrink-0 bg-[#0f0e17] flex items-center justify-center p-0.5 border border-violet-500/30 group-hover:border-violet-500/60 transition-colors">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src="/logo.png" alt="RENACE" className="w-full h-full object-contain rounded-lg" />
                         </div>
                         <div className="min-w-0">
-                            <h2 className="text-base font-bold text-gray-900 truncate">RNV Manager</h2>
-                            <p className="text-[11px] text-gray-500">Renace Tech</p>
+                            <h2 className="text-base font-bold text-gray-900 truncate tracking-tight">RNV Manager</h2>
+                            <div className="flex items-center gap-1.5">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                <p className="text-[11px] font-medium text-violet-600">RENACE.tech</p>
+                            </div>
                         </div>
                     </Link>
                     {!mobile && (

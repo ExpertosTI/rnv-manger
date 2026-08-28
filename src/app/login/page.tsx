@@ -212,21 +212,26 @@ export default function LoginPage() {
                 transition={{ duration: 0.5 }}
                 className="w-full max-w-md"
             >
-                <div className="flex justify-center mb-8">
+                <div className="flex flex-col items-center justify-center mb-6">
                     <motion.div
                         initial={{ scale: 0.8 }}
                         animate={{ scale: 1 }}
                         transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                        className="w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-2xl shadow-purple-300"
+                        className="w-24 h-24 rounded-3xl p-1 bg-[#0f0e17] border border-violet-500/40 shadow-2xl shadow-violet-500/30 flex items-center justify-center"
                     >
-                        <Zap className="w-10 h-10 text-white" />
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src="/logo.png" alt="RENACE" className="w-full h-full object-contain rounded-2xl" />
                     </motion.div>
+                    <span className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-violet-100/80 text-violet-700 border border-violet-200">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        RENACE INFRASTRUCTURE OS
+                    </span>
                 </div>
 
-                <Card className="border-2 border-gray-100 shadow-2xl backdrop-blur-sm bg-white/90">
-                    <CardHeader className="space-y-1 text-center pb-2">
-                        <CardTitle className="text-2xl font-bold">RNV Manager</CardTitle>
-                        <CardDescription>Panel de Control de Infraestructura</CardDescription>
+                <Card className="border-2 border-gray-100 shadow-2xl backdrop-blur-sm bg-white/90 rounded-3xl overflow-hidden">
+                    <CardHeader className="space-y-1 text-center pb-2 pt-6">
+                        <CardTitle className="text-2xl font-bold tracking-tight text-gray-900">RNV Manager</CardTitle>
+                        <CardDescription className="text-sm text-gray-500">Panel Central de Monitoreo & Operaciones</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <Suspense fallback={<div className="h-32 animate-pulse bg-gray-50 rounded-xl" />}>

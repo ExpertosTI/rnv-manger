@@ -29,6 +29,13 @@ func RequireAuth(jwtSecret string) gin.HandlerFunc {
 			}
 		}
 
+		// 3. Fall back to query param ?token=... (for WebSockets / SSE / Desktop sockets)
+		if tokenStr == "" {
+			if qToken := c.Query("token"); qToken != "" {
+				tokenStr = qToken
+			}
+		}
+
 		if tokenStr == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"success": false,
