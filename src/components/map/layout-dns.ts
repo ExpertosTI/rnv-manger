@@ -1,27 +1,50 @@
 import type { Node, Edge } from "@xyflow/react";
-import type { DNSIPGroup, DNSZoneAudit } from "@/lib/api";
+import type { DNSIPGroup, DNSZoneAudit, TopologyCluster, TopologyNode, TopologyEdge } from "@/lib/api";
 
 const ROOT_X = 480;
 const ROOT_Y = 20;
 const IP_Y = 200;
 const SVC_Y = 400;
-const IP_COL_W = 260;
-const SVC_GAP = 52;
-const MAX_SVC = 12;
-
-function str(v: unknown, fallback = ""): string {
-    return typeof v === "string" ? v : fallback;
-}
+const IP_COL_W = 280;
+const SVC_GAP = 54;
+const MAX_SVC = 15;
 
 function isOnline(status?: string) {
     return ["running", "online", "active"].includes((status || "").toLowerCase());
 }
 
-/** DNS Cloud: renace.tech → IPs → subdominios */
-export function buildDNSCloudGraph(audit: DNSZoneAudit): { nodes: Node[]; edges: Edge[] } {
+/** DNS Cloud: renace.tech → IPs → subdominios/servicios (con fallback automático a clusters VPS) */
+export function buildDNSCloudGraph(
+    audit: DNSZoneAudit | null,
+    clusters: TopologyCluster[] = [],
+    topoNodes: TopologyNode[] = []
+): { nodes: Node[]; edges: Edge[] } {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
-    const groups = audit.byIp || [];
+
+    // If audit has byIp records, use them
+    let groups = audit?.byIp || [];
+
+    // Fallback: derive IP groups from clusters / topoNodes if audit is empty
+    if (groups.length === 0 && clusters.length > 0) {
+        groups = clusters.map((c) => ({
+            ip: c.ip || "127.0.0.1",
+            vpsName: c.name,
+            vpsStatus: c.status,
+            label: c.name,
+            recordCount: c.services?.length || 0,
+            proxiedCount: 0,
+            records: (c.services || []).map((s) => ({
+                host: s.name,
+                fqdn: `${s.name.toLowerCase().replace(/\s+/g, "-")}.renace.tech`,
+                type: "A",
+                proxied: true,
+                status: s.status,
+                inRnv: true,
+            })),
+        }));
+    }
+
     const totalW = Math.max(groups.length * IP_COL_W, 600);
     const startX = ROOT_X - totalW / 2 + IP_COL_W / 2;
 
@@ -30,14 +53,14 @@ export function buildDNSCloudGraph(audit: DNSZoneAudit): { nodes: Node[]; edges:
         type: "dnsRoot",
         position: { x: ROOT_X - 110, y: ROOT_Y },
         data: {
-            label: audit.domain || "renace.tech",
-            recordCount: audit.totalRecords,
-            ipCount: audit.uniqueIPs,
+            label: audit?.domain || "renace.tech",
+            recordCount: audit?.totalRecords || groups.reduce((acc, g) => acc + (g.recordCount || 0), 0),
+            ipCount: audit?.uniqueIPs || groups.length,
         },
     });
 
     groups.forEach((g, gi) => {
-        const ipId = `ip-${g.ip}`;
+        const ipId = `ip-${g.ip || gi}`;
         const x = startX + gi * IP_COL_W;
         nodes.push({
             id: ipId,
@@ -48,8 +71,8 @@ export function buildDNSCloudGraph(audit: DNSZoneAudit): { nodes: Node[]; edges:
                 label: g.label || g.vpsName || g.ip,
                 vpsName: g.vpsName,
                 vpsStatus: g.vpsStatus,
-                recordCount: g.recordCount,
-                proxiedCount: g.proxiedCount,
+                recordCount: g.recordCount || (g.records?.length || 0),
+                proxiedCount: g.proxiedCount || 0,
             },
         });
         edges.push({
@@ -70,7 +93,7 @@ export function buildDNSCloudGraph(audit: DNSZoneAudit): { nodes: Node[]; edges:
                 type: "service",
                 position: { x: x - 85, y: SVC_Y + si * SVC_GAP },
                 data: {
-                    label: rec.host === "@" ? audit.domain : rec.host,
+                    label: rec.host === "@" ? (audit?.domain || "renace.tech") : rec.host,
                     status: rec.inRnv ? rec.status || "running" : "unknown",
                     type: rec.inRnv ? "registered" : "dns-only",
                     url: `https://${rec.fqdn}`,
@@ -119,15 +142,39 @@ export function buildDNSCloudGraph(audit: DNSZoneAudit): { nodes: Node[]; edges:
     return { nodes, edges };
 }
 
-/** Por IP: columnas de servidor sin capa cliente */
-export function buildByIPGraph(audit: DNSZoneAudit): { nodes: Node[]; edges: Edge[] } {
+/** Por IP: columnas de servidor sin capa cliente (soporta fallback directo de VPS y servicios) */
+export function buildByIPGraph(
+    audit: DNSZoneAudit | null,
+    clusters: TopologyCluster[] = [],
+    topoNodes: TopologyNode[] = []
+): { nodes: Node[]; edges: Edge[] } {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
     let y = 40;
     const IP_X = 80;
     const SVC_X = 420;
 
-    for (const g of audit.byIp || []) {
+    let groups = audit?.byIp || [];
+    if (groups.length === 0 && clusters.length > 0) {
+        groups = clusters.map((c) => ({
+            ip: c.ip || "127.0.0.1",
+            vpsName: c.name,
+            vpsStatus: c.status,
+            label: c.name,
+            recordCount: c.services?.length || 0,
+            proxiedCount: 0,
+            records: (c.services || []).map((s) => ({
+                host: s.name,
+                fqdn: `${s.name.toLowerCase().replace(/\s+/g, "-")}.renace.tech`,
+                type: "A",
+                proxied: false,
+                status: s.status,
+                inRnv: true,
+            })),
+        }));
+    }
+
+    for (const g of groups) {
         const ipId = `ip-${g.ip}`;
         const visible = (g.records || []).slice(0, MAX_SVC);
         const blockH = Math.max(120, visible.length * SVC_GAP + 20);
@@ -142,8 +189,8 @@ export function buildByIPGraph(audit: DNSZoneAudit): { nodes: Node[]; edges: Edg
                 label: g.label || g.vpsName || g.ip,
                 vpsName: g.vpsName,
                 vpsStatus: g.vpsStatus,
-                recordCount: g.recordCount,
-                proxiedCount: g.proxiedCount,
+                recordCount: g.recordCount || visible.length,
+                proxiedCount: g.proxiedCount || 0,
             },
         });
 
@@ -158,7 +205,7 @@ export function buildByIPGraph(audit: DNSZoneAudit): { nodes: Node[]; edges: Edg
                     status: rec.inRnv ? rec.status : "stopped",
                     type: rec.proxied ? "cf-proxy" : "direct",
                     url: `https://${rec.fqdn}`,
-                    clientName: rec.proxied ? "CF proxy" : "DNS directo",
+                    clientName: rec.proxied ? "CF proxy" : "Servicio",
                 },
             });
             edges.push({

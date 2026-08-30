@@ -216,9 +216,8 @@ export default function MapPage() {
             audit: DNSZoneAudit | null,
             opts?: MapLayoutOptions
         ) => {
-            if (mode === "dns-cloud" && audit) return buildDNSCloudGraph(audit);
-            if (mode === "by-ip" && audit) return buildByIPGraph(audit);
-            if (needsDnsData(mode) && !audit) return { nodes: [], edges: [] };
+            if (mode === "dns-cloud") return buildDNSCloudGraph(audit, cls, nodes);
+            if (mode === "by-ip") return buildByIPGraph(audit, cls, nodes);
             return buildFlowGraph(mode, nodes, edges, cls, opts);
         },
         []

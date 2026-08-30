@@ -326,34 +326,39 @@ export default function WhatsAppWizardPage() {
                                     </div>
                                 ) : (
                                     <div className="grid gap-3">
-                                        {instances.map((inst) => {
-                                            const isOpen = inst.state === "open" || inst.state === "connected";
+                                        {instances.map((inst, idx) => {
+                                            const name = inst.name || (inst as any).Name || `Instancia-${idx + 1}`;
+                                            const isCurrent = inst.isCurrent ?? (inst as any).IsCurrent ?? false;
+                                            const isCompany = inst.isCompany ?? (inst as any).IsCompany ?? false;
+                                            const ownerNumber = inst.ownerNumber || (inst as any).OwnerNumber || "";
+                                            const state = (inst.state || (inst as any).State || "unknown").toLowerCase();
+                                            const isOpen = state === "open" || state === "connected";
                                             return (
                                                 <div
-                                                    key={inst.Name}
+                                                    key={name}
                                                     className={`p-4 rounded-2xl border-2 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                                                        inst.IsCurrent
+                                                        isCurrent
                                                             ? "border-emerald-500 bg-emerald-50/50 shadow-sm"
                                                             : "border-gray-100 bg-white hover:border-gray-200"
                                                     }`}
                                                 >
                                                     <div className="flex items-center gap-3.5">
                                                         <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm ${
-                                                            inst.IsCurrent
+                                                            isCurrent
                                                                 ? "bg-emerald-600 text-white"
                                                                 : "bg-gray-100 text-gray-700"
                                                         }`}>
-                                                            {inst.Name.slice(0, 2).toUpperCase()}
+                                                            {name.slice(0, 2).toUpperCase()}
                                                         </div>
                                                         <div>
                                                             <div className="flex items-center gap-2">
-                                                                <p className="font-bold text-sm text-gray-900">{inst.Name}</p>
-                                                                {inst.IsCurrent && (
+                                                                <p className="font-bold text-sm text-gray-900">{name}</p>
+                                                                {isCurrent && (
                                                                     <Badge className="bg-emerald-600 text-white text-[10px]">
                                                                         Activa en RNV
                                                                     </Badge>
                                                                 )}
-                                                                {inst.IsCompany && (
+                                                                {isCompany && (
                                                                     <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-300 text-[10px] gap-1">
                                                                         <ShieldCheck size={11} /> Línea Empresa
                                                                     </Badge>
@@ -362,19 +367,19 @@ export default function WhatsAppWizardPage() {
                                                             <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                                                                 <span>
                                                                     Número: <span className="font-semibold text-gray-800">
-                                                                        {inst.OwnerNumber ? `+${inst.OwnerNumber}` : "Sin vincular"}
+                                                                        {ownerNumber ? `+${ownerNumber}` : "Sin vincular"}
                                                                     </span>
                                                                 </span>
                                                                 <span>·</span>
                                                                 <span className={isOpen ? "text-emerald-600 font-semibold" : "text-amber-600 font-medium"}>
-                                                                    {isOpen ? "🟢 Conectado" : `🔴 ${inst.State}`}
+                                                                    {isOpen ? "🟢 Conectado" : `🔴 ${state}`}
                                                                 </span>
                                                             </div>
                                                         </div>
                                                     </div>
 
                                                     <div className="flex items-center gap-2">
-                                                        {inst.IsCurrent ? (
+                                                        {isCurrent ? (
                                                             <Button size="sm" disabled className="bg-emerald-100 text-emerald-800 rounded-xl text-xs gap-1.5 h-8">
                                                                 <Check size={13} /> Seleccionada
                                                             </Button>
@@ -383,7 +388,7 @@ export default function WhatsAppWizardPage() {
                                                                 size="sm"
                                                                 variant="outline"
                                                                 disabled={busy}
-                                                                onClick={() => handleSelectInstance(inst.Name)}
+                                                                onClick={() => handleSelectInstance(name)}
                                                                 className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 rounded-xl text-xs h-8"
                                                             >
                                                                 Usar esta Instancia
