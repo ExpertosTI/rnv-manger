@@ -109,6 +109,11 @@ export const clients = {
     update: (id: string, data: Partial<Client>) =>
         request<ApiItem<Client>>(`/clients/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) => request<ApiSuccess>(`/clients/${id}`, { method: "DELETE" }),
+    recordPayment: (clientId: string, data?: { amount?: number; notes?: string; date?: string }) =>
+        request<{ success: boolean; data: Payment; invoiceName?: string; totalAmount?: number }>("/billing", {
+            method: "POST",
+            body: JSON.stringify({ clientId, ...data }),
+        }),
 };
 
 // ── Services ─────────────────────────────────────────────────────────────────
@@ -175,6 +180,19 @@ export const services = {
             `/services/${id}/health-check`,
             { method: "POST" }
         ),
+    bulkOrganize: (items: Array<{
+        id: string;
+        clientId?: string | null;
+        purpose?: string;
+        billingCycle?: "monthly" | "annual";
+        monthlyCost?: number;
+        annualCost?: number;
+        amount?: number;
+    }>) =>
+        request<{ success: boolean; updated: number; failed: number; message: string }>("/services/bulk-organize", {
+            method: "POST",
+            body: JSON.stringify({ items }),
+        }),
 };
 
 // ── SSH ─────────────────────────────────────────────────────────────────────
@@ -444,6 +462,15 @@ export interface Client {
     payments?: Payment[];
     calculatedCosts?: { vps: number; services: number; baseFee: number; total: number };
     syncedWithOdoo?: boolean;
+    isOverdue?: boolean;
+    daysLate?: number;
+    amountDue?: number;
+    paidThisPeriod?: boolean;
+    billingStatus?: "paid" | "due_today" | "overdue" | "pending" | "unconfigured" | "inactive";
+    healthIssues?: string[];
+    lastPaymentDate?: string;
+    serviceCount?: number;
+    vpsCount?: number;
     createdAt: string;
     updatedAt: string;
 }

@@ -2,6 +2,7 @@ package clients
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/renace/rnv-go-api/middleware"
@@ -20,10 +21,20 @@ func List(db *gorm.DB) gin.HandlerFunc {
 
 		type EnrichedClient struct {
 			models.Client
-			CalculatedCosts gin.H `json:"calculatedCosts"`
-			SyncedWithOdoo  bool  `json:"syncedWithOdoo"`
+			CalculatedCosts gin.H      `json:"calculatedCosts"`
+			SyncedWithOdoo  bool       `json:"syncedWithOdoo"`
+			IsOverdue       bool       `json:"isOverdue"`
+			DaysLate        int        `json:"daysLate"`
+			AmountDue       float64    `json:"amountDue"`
+			PaidThisPeriod  bool       `json:"paidThisPeriod"`
+			BillingStatus   string     `json:"billingStatus"`
+			HealthIssues    []string   `json:"healthIssues"`
+			LastPaymentDate *string    `json:"lastPaymentDate,omitempty"`
+			ServiceCount    int        `json:"serviceCount"`
+			VPSCount        int        `json:"vpsCount"`
 		}
 
+		now := time.Now()
 		var enriched []EnrichedClient
 		for _, cl := range clientList {
 			vpsCost := 0.0
@@ -35,6 +46,47 @@ func List(db *gorm.DB) gin.HandlerFunc {
 				svcCost += s.MonthlyCost
 			}
 			total := vpsCost + svcCost + cl.MonthlyFee
+
+			paidThisPeriod := serviceslayer.ClientPaidForPeriod(db, cl, now)
+			isOverdue, daysLate, amountDue := serviceslayer.ClientOverdueInfo(db, cl, now)
+			isDueToday := serviceslayer.ClientDueToday(db, cl, now)
+
+			billingStatus := "pending"
+			if !cl.IsActive {
+				billingStatus = "inactive"
+			} else if total <= 0 && cl.AnnualFee <= 0 {
+				billingStatus = "unconfigured"
+			} else if paidThisPeriod {
+				billingStatus = "paid"
+			} else if isOverdue {
+				billingStatus = "overdue"
+			} else if isDueToday {
+				billingStatus = "due_today"
+			}
+
+			var healthIssues []string
+			if (cl.Email == nil || *cl.Email == "") && (cl.Phone == nil || *cl.Phone == "") {
+				healthIssues = append(healthIssues, "sin_contacto")
+			}
+			if len(cl.Services) == 0 && len(cl.VPSList) == 0 {
+				healthIssues = append(healthIssues, "sin_servicios")
+			}
+			if (len(cl.Services) > 0 || len(cl.VPSList) > 0) && total <= 0 && cl.AnnualFee <= 0 {
+				healthIssues = append(healthIssues, "tarifa_cero")
+			}
+			if cl.OdooPartnerID == nil {
+				healthIssues = append(healthIssues, "sin_odoo")
+			}
+			if isOverdue {
+				healthIssues = append(healthIssues, "en_mora")
+			}
+
+			var lastPayDate *string
+			if len(cl.Payments) > 0 {
+				formatted := cl.Payments[0].Date.Format("2006-01-02")
+				lastPayDate = &formatted
+			}
+
 			enriched = append(enriched, EnrichedClient{
 				Client: cl,
 				CalculatedCosts: gin.H{
@@ -43,7 +95,16 @@ func List(db *gorm.DB) gin.HandlerFunc {
 					"baseFee":  cl.MonthlyFee,
 					"total":    total,
 				},
-				SyncedWithOdoo: cl.OdooPartnerID != nil,
+				SyncedWithOdoo:  cl.OdooPartnerID != nil,
+				IsOverdue:       isOverdue,
+				DaysLate:        daysLate,
+				AmountDue:       amountDue,
+				PaidThisPeriod:  paidThisPeriod,
+				BillingStatus:   billingStatus,
+				HealthIssues:    healthIssues,
+				LastPaymentDate: lastPayDate,
+				ServiceCount:    len(cl.Services),
+				VPSCount:        len(cl.VPSList),
 			})
 		}
 		if enriched == nil {
