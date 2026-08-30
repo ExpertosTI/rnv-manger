@@ -141,7 +141,27 @@ ensure_swarm() {
     fi
 }
 
+clean_disk() {
+    log "🧹 Liberando espacio en disco (Docker build cache, logs y temporales)..."
+    rm -f "$ROOT/.git/index.lock"
+    # Liberar cache de compilación de Docker BuildKit
+    docker builder prune -af 2>/dev/null || true
+    # Eliminar imágenes Docker huérfanas
+    docker image prune -f 2>/dev/null || true
+    # Limpiar logs del sistema mayores a 2 días
+    journalctl --vacuum-time=2d 2>/dev/null || true
+    # Limpiar temporales acumulados
+    rm -rf /tmp/go-build* /tmp/npm-* /tmp/next-* /tmp/v8-compile-cache* 2>/dev/null || true
+    # Conservar solo los 3 backups más recientes
+    if [ -d "$ROOT/backups" ]; then
+        find "$ROOT/backups" -type f -name "*.dump" -mtime +3 -delete 2>/dev/null || true
+    fi
+    log "✅ Espacio en disco recuperado:"
+    df -h / | awk 'NR==1 || NR==2'
+}
+
 git_sync() {
+    rm -f "$ROOT/.git/index.lock"
     if ! git rev-parse --git-dir >/dev/null 2>&1; then
         warn "No es repositorio git — omitiendo pull"
         return 0
@@ -297,6 +317,7 @@ deploy_production() {
 
 deploy_update() {
     local target="${1:-all}"
+    clean_disk
     ensure_docker
     ensure_env_file
     load_env
@@ -326,6 +347,9 @@ case "$CMD" in
         ;;
     update)
         deploy_update "$TARGET"
+        ;;
+    clean)
+        clean_disk
         ;;
     bootstrap)
         if [ -x "$ROOT/scripts/bootstrap-vps.sh" ]; then
