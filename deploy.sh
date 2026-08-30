@@ -99,9 +99,6 @@ ensure_env_file() {
     if [ -f "$ENV_FILE" ]; then
         cp "$ENV_FILE" "$ROOT/.env"
     fi
-    if [ -x "$ROOT/scripts/bootstrap-vps.sh" ]; then
-        "$ROOT/scripts/bootstrap-vps.sh" || true
-    fi
 }
 
 validate_env() {
@@ -158,11 +155,25 @@ build_images() {
     validate_env
     export GIT_SHA
     GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-    log "🔨 Construyendo imágenes (app + go-api) @ ${GIT_SHA}..."
-    GIT_SHA="$GIT_SHA" docker compose -f "$COMPOSE_FILE" build
-    # Etiquetar también como :latest para compatibilidad local
-    docker tag "rnv-manger-app:${GIT_SHA}" rnv-manger-app:latest 2>/dev/null || true
-    docker tag "rnv-manger-go-api:${GIT_SHA}" rnv-manger-go-api:latest 2>/dev/null || true
+    local target="${1:-all}"
+    case "$target" in
+        api|go-api)
+            log "🔨 Construyendo únicamente rnv-go-api @ ${GIT_SHA}..."
+            GIT_SHA="$GIT_SHA" docker compose -f "$COMPOSE_FILE" build go-api
+            docker tag "rnv-manger-go-api:${GIT_SHA}" rnv-manger-go-api:latest 2>/dev/null || true
+            ;;
+        app|frontend)
+            log "🔨 Construyendo únicamente app (Next.js) @ ${GIT_SHA}..."
+            GIT_SHA="$GIT_SHA" docker compose -f "$COMPOSE_FILE" build app
+            docker tag "rnv-manger-app:${GIT_SHA}" rnv-manger-app:latest 2>/dev/null || true
+            ;;
+        *)
+            log "🔨 Construyendo imágenes (app + go-api) @ ${GIT_SHA}..."
+            GIT_SHA="$GIT_SHA" docker compose -f "$COMPOSE_FILE" build
+            docker tag "rnv-manger-app:${GIT_SHA}" rnv-manger-app:latest 2>/dev/null || true
+            docker tag "rnv-manger-go-api:${GIT_SHA}" rnv-manger-go-api:latest 2>/dev/null || true
+            ;;
+    esac
 }
 
 stack_deploy() {
@@ -177,9 +188,22 @@ stack_deploy() {
 
 force_rollout() {
     use_swarm || return 0
-    log "♻️  Recreando contenedores app + go-api (imagen @ ${GIT_SHA:-?})..."
-    docker service update --force --image "rnv-manger-go-api:${GIT_SHA}" "$(swarm_service go-api)" >/dev/null
-    docker service update --force --image "rnv-manger-app:${GIT_SHA}" "$(swarm_service app)" >/dev/null
+    local target="${1:-all}"
+    case "$target" in
+        api|go-api)
+            log "♻️  Recreando solo contenedor go-api (imagen @ ${GIT_SHA:-?})..."
+            docker service update --force --image "rnv-manger-go-api:${GIT_SHA}" "$(swarm_service go-api)" >/dev/null
+            ;;
+        app|frontend)
+            log "♻️  Recreando solo contenedor app (imagen @ ${GIT_SHA:-?})..."
+            docker service update --force --image "rnv-manger-app:${GIT_SHA}" "$(swarm_service app)" >/dev/null
+            ;;
+        *)
+            log "♻️  Recreando contenedores app + go-api (imagen @ ${GIT_SHA:-?})..."
+            docker service update --force --image "rnv-manger-go-api:${GIT_SHA}" "$(swarm_service go-api)" >/dev/null
+            docker service update --force --image "rnv-manger-app:${GIT_SHA}" "$(swarm_service app)" >/dev/null
+            ;;
+    esac
 }
 
 compose_up() {
@@ -208,10 +232,15 @@ wait_for_service() {
 
 wait_for_stack() {
     use_swarm || return 0
+    local target="${1:-all}"
     log "⏳ Esperando servicios..."
     wait_for_service "$(swarm_service db)" 60 || die "PostgreSQL no arrancó"
-    wait_for_service "$(swarm_service go-api)" 120 || die "go-api no arrancó — revisa: ./deploy.sh logs-api"
-    wait_for_service "$(swarm_service app)" 90 || die "app no arrancó"
+    if [ "$target" != "app" ]; then
+        wait_for_service "$(swarm_service go-api)" 120 || die "go-api no arrancó — revisa: ./deploy.sh logs-api"
+    fi
+    if [ "$target" != "api" ] && [ "$target" != "go-api" ]; then
+        wait_for_service "$(swarm_service app)" 90 || die "app no arrancó"
+    fi
 }
 
 health_check() {
@@ -247,16 +276,17 @@ health_check() {
 }
 
 deploy_production() {
+    local target="${1:-all}"
     ensure_docker
     ensure_env_file
     export GIT_SHA
     GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo latest)"
     if use_swarm; then
         ensure_swarm
-        build_images
+        build_images "$target"
         stack_deploy
-        force_rollout
-        wait_for_stack
+        force_rollout "$target"
+        wait_for_stack "$target"
         health_check
         log "✅ Desplegado: ${APP_URL}"
     else
@@ -266,32 +296,41 @@ deploy_production() {
 }
 
 deploy_update() {
+    local target="${1:-all}"
     ensure_docker
     ensure_env_file
     load_env
     git_sync
-    mkdir -p backups
-    local db_cid
-    db_cid="$(db_container_id)"
-    if [ -n "$db_cid" ]; then
-        log "💾 Backup previo al deploy..."
-        docker exec -i "$db_cid" pg_dump -U "${DB_USER:-rnvadmin}" -Fc "${DB_NAME:-rnv_manager}" \
-            > "backups/pre_deploy_$(date +%Y%m%d_%H%M%S).dump" 2>/dev/null || true
+    if [ "$target" = "all" ]; then
+        mkdir -p backups
+        local db_cid
+        db_cid="$(db_container_id)"
+        if [ -n "$db_cid" ]; then
+            log "💾 Backup previo al deploy..."
+            docker exec -i "$db_cid" pg_dump -U "${DB_USER:-rnvadmin}" -Fc "${DB_NAME:-rnv_manager}" \
+                > "backups/pre_deploy_$(date +%Y%m%d_%H%M%S).dump" 2>/dev/null || true
+        fi
     fi
-    deploy_production
+    deploy_production "$target"
 }
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 banner
 
 CMD="${1:-update}"
+TARGET="${2:-all}"
 
 case "$CMD" in
     start|deploy|up)
-        deploy_production
+        deploy_production "$TARGET"
         ;;
     update)
-        deploy_update
+        deploy_update "$TARGET"
+        ;;
+    bootstrap)
+        if [ -x "$ROOT/scripts/bootstrap-vps.sh" ]; then
+            "$ROOT/scripts/bootstrap-vps.sh"
+        fi
         ;;
     stop)
         if use_swarm; then

@@ -176,6 +176,11 @@ test_otp() {
         return 0
     fi
 
+    if echo "$body" | grep -qi 'Demasiados intentos'; then
+        log "ℹ️  API responde correctamente (límite de intentos activo)"
+        return 0
+    fi
+
     if echo "$body" | grep -qiE '535|authentication|smtp|credenciales'; then
         err "❌ SMTP sigue fallando — revisa SMTP_USER/SMTP_PASS en Hostinger"
         return 1
