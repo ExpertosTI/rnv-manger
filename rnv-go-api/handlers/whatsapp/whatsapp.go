@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/renace/rnv-go-api/config"
@@ -184,6 +185,52 @@ func NotifyService(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			models.JSON{"to": to, "source": source, "serviceId": req.ServiceID, "clientId": req.ClientID},
 			middleware.GetClientIP(c), middleware.GetUserID(c))
 		c.JSON(http.StatusOK, gin.H{"success": true, "to": to, "source": source})
+	}
+}
+
+// ListInstances returns all instances on the Evolution API server
+func ListInstances(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		instances, err := serviceslayer.FetchAllEvolutionInstances(db, cfg)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": instances})
+	}
+}
+
+type SelectInstanceRequest struct {
+	Instance string `json:"instance" binding:"required"`
+}
+
+// SelectInstance saves the active instance name in app_settings
+func SelectInstance(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req SelectInstanceRequest
+		if err := c.ShouldBindJSON(&req); err != nil || req.Instance == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "instance requerida"})
+			return
+		}
+
+		req.Instance = strings.TrimSpace(req.Instance)
+		var setting models.AppSettings
+		if err := db.Where("key = ?", "evolution_instance").First(&setting).Error; err != nil {
+			setting = models.AppSettings{
+				Key:      "evolution_instance",
+				Value:    req.Instance,
+				Category: "whatsapp",
+			}
+			db.Create(&setting)
+		} else {
+			setting.Value = req.Instance
+			db.Save(&setting)
+		}
+
+		serviceslayer.LogAudit(db, "UPDATE", "system", "Instancia WhatsApp seleccionada: "+req.Instance,
+			models.JSON{"instance": req.Instance}, middleware.GetClientIP(c), middleware.GetUserID(c))
+
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "Instancia WhatsApp actualizada", "instance": req.Instance})
 	}
 }
 

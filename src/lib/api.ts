@@ -275,6 +275,35 @@ export const settings = {
     delete: (key: string) => request<ApiSuccess>(`/settings?key=${key}`, { method: "DELETE" }),
 };
 
+// ── WhatsApp (Evolution API) ──────────────────────────────────────────────────
+
+export interface EvolutionInstanceInfo {
+    name: string;
+    state: string;
+    ownerNumber?: string;
+    isCompany: boolean;
+    isCurrent: boolean;
+}
+
+export const whatsapp = {
+    config: () => request<{ success: boolean; data: any }>("/whatsapp"),
+    instances: () => request<{ success: boolean; data: EvolutionInstanceInfo[] }>("/whatsapp/instances"),
+    selectInstance: (instance: string) =>
+        request<{ success: boolean; message: string; instance: string }>("/whatsapp/select-instance", {
+            method: "POST",
+            body: JSON.stringify({ instance }),
+        }),
+    qr: () => request<{ success: boolean; data: any }>("/whatsapp/qr"),
+    logout: () => request<{ success: boolean; message: string }>("/whatsapp/logout", { method: "POST" }),
+    contacts: () => request<{ success: boolean; data: any }>("/whatsapp/contacts"),
+    send: (to: string, text: string) =>
+        request<{ success: boolean; message: string }>("/whatsapp/send", {
+            method: "POST",
+            body: JSON.stringify({ to, text }),
+        }),
+    test: () => request<{ success: boolean; message: string; [key: string]: any }>("/whatsapp/test", { method: "POST" }),
+};
+
 // ── Billing ───────────────────────────────────────────────────────────────────
 
 export const billing = {

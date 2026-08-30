@@ -101,9 +101,7 @@ func ResolveWhatsAppConfig(db *gorm.DB, cfg *config.Config) WhatsAppConfig {
 				wc.APIKey = s.Value
 			}
 		case "evolution_instance":
-			if wc.Instance == "" {
-				wc.Instance = s.Value
-			}
+			wc.Instance = s.Value
 		case "whatsapp_notify_numbers":
 			if len(wc.NotifyNums) == 0 {
 				for _, n := range strings.Split(s.Value, ",") {
@@ -205,19 +203,28 @@ func stringField(m map[string]interface{}, keys ...string) string {
 	return ""
 }
 
-// FetchEvolutionOwnerNumber returns the WhatsApp phone connected to the RNV Evolution instance.
-func FetchEvolutionOwnerNumber(db *gorm.DB, cfg *config.Config) (string, error) {
+// EvolutionInstanceInfo represents a running instance in Evolution API.
+type EvolutionInstanceInfo struct {
+	Name        string `json:"name"`
+	State       string `json:"state"`
+	OwnerNumber string `json:"ownerNumber,omitempty"`
+	IsCompany   bool   `json:"isCompany"`
+	IsCurrent   bool   `json:"isCurrent"`
+}
+
+// FetchAllEvolutionInstances retrieves all instances running in Evolution API with their status and connected numbers.
+func FetchAllEvolutionInstances(db *gorm.DB, cfg *config.Config) ([]EvolutionInstanceInfo, error) {
 	wc := ResolveWhatsAppConfig(db, cfg)
 	if !wc.IsConfigured() {
-		return "", fmt.Errorf("WhatsApp/Evolution API no configurado")
+		return nil, fmt.Errorf("WhatsApp/Evolution API no configurado")
 	}
-	url := fmt.Sprintf("%s/instance/fetchInstances?instanceName=%s", wc.APIURL, instancePath(wc.Instance))
+	url := fmt.Sprintf("%s/instance/fetchInstances", wc.APIURL)
 	raw, code, err := evolutionHTTP(http.MethodGet, url, wc.APIKey, nil)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if code < 200 || code >= 300 {
-		return "", fmt.Errorf("%s", humanizeEvolutionError(code, string(raw)))
+		return nil, fmt.Errorf("%s", humanizeEvolutionError(code, string(raw)))
 	}
 
 	var list []map[string]interface{}
@@ -234,20 +241,68 @@ func FetchEvolutionOwnerNumber(db *gorm.DB, cfg *config.Config) (string, error) 
 			}
 		}
 	}
+
+	expected := FormatWhatsAppRecipient(wc.OwnerNumber)
+	if expected == "" {
+		expected = "18494577463"
+	}
+
+	var results []EvolutionInstanceInfo
 	for _, item := range list {
 		inst := item
 		if nested, ok := item["instance"].(map[string]interface{}); ok {
 			inst = nested
 		}
-		rawOwner := stringField(inst, "ownerJid", "owner", "wuid", "number", "phone")
-		if rawOwner == "" {
+		name := stringField(inst, "instanceName", "name", "instance")
+		if name == "" {
 			continue
 		}
-		if num := FormatWhatsAppRecipient(rawOwner); num != "" {
-			return num, nil
+		rawOwner := stringField(inst, "ownerJid", "owner", "wuid", "number", "phone")
+		ownerNum := FormatWhatsAppRecipient(rawOwner)
+		state := stringField(inst, "connectionStatus", "state", "status")
+		if state == "" {
+			state = "unknown"
+		}
+
+		results = append(results, EvolutionInstanceInfo{
+			Name:        name,
+			State:       strings.ToLower(state),
+			OwnerNumber: ownerNum,
+			IsCompany:   ownerNum != "" && ownerNum == expected,
+			IsCurrent:   strings.EqualFold(strings.TrimSpace(name), strings.TrimSpace(wc.Instance)),
+		})
+	}
+	return results, nil
+}
+
+// FetchEvolutionOwnerNumber returns the WhatsApp phone connected to the RNV Evolution instance.
+func FetchEvolutionOwnerNumber(db *gorm.DB, cfg *config.Config) (string, error) {
+	wc := ResolveWhatsAppConfig(db, cfg)
+	if !wc.IsConfigured() {
+		return "", fmt.Errorf("WhatsApp/Evolution API no configurado")
+	}
+
+	instances, err := FetchAllEvolutionInstances(db, cfg)
+	if err != nil {
+		return "", err
+	}
+
+	// 1. Look for EXACT matching instance name (wc.Instance)
+	for _, inst := range instances {
+		if strings.EqualFold(strings.TrimSpace(inst.Name), strings.TrimSpace(wc.Instance)) {
+			if inst.OwnerNumber != "" {
+				return inst.OwnerNumber, nil
+			}
+			return "", fmt.Errorf("la instancia '%s' está en estado '%s' sin número conectado", wc.Instance, inst.State)
 		}
 	}
-	return "", fmt.Errorf("no se pudo leer el número conectado en la instancia %s", wc.Instance)
+
+	// 2. If configured instance name was not found, list available instance names to guide user
+	var names []string
+	for _, inst := range instances {
+		names = append(names, fmt.Sprintf("%s (%s)", inst.Name, inst.State))
+	}
+	return "", fmt.Errorf("la instancia '%s' no existe en Evolution API. Instancias detectadas: [%s]", wc.Instance, strings.Join(names, ", "))
 }
 
 // AssertCompanyWhatsAppSender blocks sends when Evolution is logged into a non-company (client) line.
@@ -263,8 +318,8 @@ func AssertCompanyWhatsAppSender(db *gorm.DB, cfg *config.Config) (owner string,
 	}
 	if owner != expected {
 		return owner, fmt.Errorf(
-			"PRIVACIDAD: la instancia '%s' está conectada al número +%s (posible línea de cliente). RNV solo puede enviar desde la línea empresa +%s. Desconecta ese QR en evoapi y escanea el WhatsApp de Renace (%s)",
-			wc.Instance, owner, expected, expected,
+			"PRIVACIDAD: la instancia activa '%s' está conectada a la línea +%s (línea de cliente). RNV solo puede enviar desde la línea empresa +%s. Ve a Ajustes > WhatsApp y selecciona la instancia correspondiente a Renace",
+			wc.Instance, owner, expected,
 		)
 	}
 	return owner, nil

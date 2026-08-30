@@ -244,7 +244,10 @@ func main() {
 
 		// WhatsApp (Evolution API — canal central Renace)
 		auth.GET("/whatsapp", whatsappHandler.Config(db, cfg))
+		auth.GET("/whatsapp/instances", whatsappHandler.ListInstances(db, cfg))
+		auth.POST("/whatsapp/select-instance", middleware.RequireRole("superadmin", "admin"), whatsappHandler.SelectInstance(db, cfg))
 		auth.POST("/whatsapp", whatsappHandler.Send(db, cfg))
+		auth.POST("/whatsapp/send", whatsappHandler.Send(db, cfg))
 		auth.POST("/whatsapp/test", whatsappHandler.Test(db, cfg))
 		auth.GET("/whatsapp/qr", middleware.RequireRole("superadmin", "admin"), whatsappHandler.QR(db, cfg))
 		auth.POST("/whatsapp/logout", middleware.RequireRole("superadmin", "admin"), whatsappHandler.Logout(db, cfg))

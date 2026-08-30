@@ -49,6 +49,12 @@ func EvolutionWebhook(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 		// Process asynchronously in goroutine
 		go func(p EvolutionWebhookPayload) {
+			wc := serviceslayer.ResolveWhatsAppConfig(db, cfg)
+			if p.Instance != "" && wc.Instance != "" && !strings.EqualFold(strings.TrimSpace(p.Instance), strings.TrimSpace(wc.Instance)) {
+				// Message belongs to another client instance on Evolution API, ignore gracefully
+				return
+			}
+
 			if p.Data.Key.FromMe {
 				// Don't process self-sent messages to avoid infinite feedback loop
 				return
