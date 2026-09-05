@@ -36,6 +36,7 @@ export const MAIN_NAV: NavItem[] = [
     { icon: MessageCircle, label: "WhatsApp", href: "/whatsapp", headerTitle: "WhatsApp Renace" },
     { icon: Network, label: "Mapa", href: "/map", headerTitle: "Mapa de Infraestructura" },
     { icon: Users, label: "Clientes", href: "/clients", headerTitle: "Clientes" },
+    { icon: UsersRound, label: "Colaboradores", href: "/afiliados", headerTitle: "Colaboradores y Afiliados" },
     { icon: DollarSign, label: "Facturación", href: "/billing", headerTitle: "Facturación" },
     { icon: Calendar, label: "Calendario", href: "/calendar", headerTitle: "Calendario" },
     { icon: Palette, label: "Pizarra", href: "/whiteboard", headerTitle: "Pizarra" },

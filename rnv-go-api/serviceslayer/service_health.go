@@ -131,7 +131,7 @@ func CheckServiceReachable(svc models.Service, vps *models.VPS) (online bool, me
 // RunServiceHealthChecks probes all services concurrently, updates DB, notifies only on confirmed outages (2+ consecutive cycles).
 func RunServiceHealthChecks(db *gorm.DB, cfg *config.Config) []ServiceHealthResult {
 	var services []models.Service
-	db.Preload("VPS").Find(&services)
+	db.Preload("VPS").Preload("Client").Find(&services)
 
 	now := time.Now()
 	results := make([]ServiceHealthResult, 0, len(services))
@@ -243,7 +243,214 @@ func RunServiceHealthChecks(db *gorm.DB, cfg *config.Config) []ServiceHealthResu
 	}
 
 	wg.Wait()
+
+	// Consolidated digest of offline services instead of sending an individual email per service
+	go processConsolidatedOfflineDigest(db, cfg, services)
+
 	return results
+}
+
+type OfflineServiceSummary struct {
+	ID         string
+	Name       string
+	Type       string
+	VPSName    string
+	VPSIP      string
+	URL        string
+	ClientName string
+	Method     string
+	Failures   int
+}
+
+var (
+	digestMu               sync.Mutex
+	lastDigestSentAt       time.Time
+	lastReportedOfflineIDs = make(map[string]bool)
+)
+
+func processConsolidatedOfflineDigest(db *gorm.DB, cfg *config.Config, allServices []models.Service) {
+	if cfg == nil || cfg.NotificationEmail == "" {
+		return
+	}
+
+	var activeOffline []OfflineServiceSummary
+	for _, s := range allServices {
+		// Ignore Swarm replicas and inactive clients
+		if isSwarmReplicaName(s.Name) || (s.URL != nil && isSwarmReplicaName(*s.URL)) {
+			continue
+		}
+		if s.Client != nil && !s.Client.IsActive {
+			continue
+		}
+
+		serviceStateMu.Lock()
+		failures := serviceFailures[s.ID]
+		isAlertActive := serviceAlertActive[s.ID]
+		serviceStateMu.Unlock()
+
+		// Only services that failed actively in the monitor (2+ failures or alert active)
+		if normalizeServiceStatus(s.Status) == "stopped" && (isAlertActive || failures >= 2) {
+			vpsName := "VPS"
+			vpsIP := "—"
+			if s.VPS != nil {
+				vpsName = s.VPS.Name
+				vpsIP = s.VPS.IPAddress
+			}
+			clientName := "—"
+			if s.Client != nil {
+				clientName = s.Client.Name
+			}
+			urlStr := "—"
+			if s.URL != nil && *s.URL != "" {
+				urlStr = *s.URL
+			}
+			activeOffline = append(activeOffline, OfflineServiceSummary{
+				ID:         s.ID,
+				Name:       s.Name,
+				Type:       s.Type,
+				VPSName:    vpsName,
+				VPSIP:      vpsIP,
+				URL:        urlStr,
+				ClientName: clientName,
+				Method:     "http/tcp",
+				Failures:   failures,
+			})
+		}
+	}
+
+	sendConsolidatedDigestEmail(db, cfg, activeOffline)
+}
+
+func sendConsolidatedDigestEmail(db *gorm.DB, cfg *config.Config, offlineList []OfflineServiceSummary) {
+	if cfg == nil || cfg.NotificationEmail == "" {
+		return
+	}
+
+	digestMu.Lock()
+	defer digestMu.Unlock()
+
+	now := time.Now()
+
+	// Case 1: All services healthy
+	if len(offlineList) == 0 {
+		if len(lastReportedOfflineIDs) > 0 {
+			subject := "🟢 RNV Monitor — Todos los servicios están ONLINE (Sistema Recuperado)"
+			body := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:24px;background-color:#0b0f19;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e2e8f0;">
+  <div style="max-width:620px;margin:0 auto;background:#131b2e;border:1px solid #1e293b;border-radius:16px;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+    <div style="background:linear-gradient(135deg,#059669,#10b981);padding:24px;text-align:center;">
+      <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">🟢 Incidentes Resueltos</h1>
+      <p style="margin:6px 0 0;color:#d1fae5;font-size:14px;">Todos los servicios se han recuperado y están respondiendo con normalidad.</p>
+    </div>
+    <div style="padding:24px;">
+      <p style="margin:0 0 16px;font-size:14px;color:#94a3b8;line-height:1.6;">
+        El monitor de alta disponibilidad de <b>RNV Manager</b> confirma que no quedan servicios con fallas activas.
+      </p>
+      <div style="text-align:center;margin-top:24px;">
+        <a href="https://rnv.renace.tech/services" style="display:inline-block;padding:12px 24px;background:#10b981;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:600;font-size:14px;">Ver Estado en RNV Manager</a>
+      </div>
+    </div>
+    <div style="padding:16px;background:#0d1322;border-top:1px solid #1e293b;text-align:center;font-size:12px;color:#64748b;">
+      RNV Manager · Monitor Automático de Alta Disponibilidad · RENACE.tech
+    </div>
+  </div>
+</body>
+</html>`)
+			_ = SendEmail(db, cfg, cfg.NotificationEmail, subject, body)
+			lastReportedOfflineIDs = make(map[string]bool)
+		}
+		return
+	}
+
+	// Case 2: Offline services detected
+	hasNewOffline := false
+	for _, item := range offlineList {
+		if !lastReportedOfflineIDs[item.ID] {
+			hasNewOffline = true
+			break
+		}
+	}
+
+	// Cooldown: only notify if new services failed OR at least 2 hours elapsed
+	if !hasNewOffline && time.Since(lastDigestSentAt) < 2*time.Hour {
+		return
+	}
+
+	lastDigestSentAt = now
+	lastReportedOfflineIDs = make(map[string]bool)
+	for _, item := range offlineList {
+		lastReportedOfflineIDs[item.ID] = true
+	}
+
+	count := len(offlineList)
+	subject := fmt.Sprintf("⚠️ RNV Monitor — Resumen de Incidentes (%d servicio%s offline)", count, map[bool]string{true: "s", false: ""}[count > 1])
+
+	rowsHTML := ""
+	for _, s := range offlineList {
+		rowsHTML += fmt.Sprintf(`
+<tr style="border-bottom:1px solid #1e293b;">
+  <td style="padding:12px 8px;font-weight:600;color:#f8fafc;font-size:13px;">
+    %s <span style="font-size:10px;padding:2px 6px;border-radius:6px;background:#334155;color:#94a3b8;font-weight:normal;margin-left:4px;">%s</span>
+  </td>
+  <td style="padding:12px 8px;color:#cbd5e1;font-size:12px;">%s <span style="color:#64748b;font-size:11px;">(%s)</span></td>
+  <td style="padding:12px 8px;color:#93c5fd;font-size:12px;">%s</td>
+  <td style="padding:12px 8px;font-size:11px;color:#a855f7;word-break:break-all;">%s</td>
+  <td style="padding:12px 8px;text-align:right;">
+    <span style="display:inline-block;padding:3px 8px;border-radius:12px;background:#ef444420;color:#f87171;border:1px solid #ef444440;font-size:11px;font-weight:600;">OFFLINE</span>
+  </td>
+</tr>`, s.Name, s.Type, s.VPSName, s.VPSIP, s.ClientName, s.URL)
+	}
+
+	body := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:24px;background-color:#0b0f19;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e2e8f0;">
+  <div style="max-width:700px;margin:0 auto;background:#131b2e;border:1px solid #1e293b;border-radius:16px;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+    <div style="background:linear-gradient(135deg,#dc2626,#991b1b);padding:24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">⚠️ Resumen de Servicios Offline</h1>
+        <span style="background:#ffffff25;color:#ffffff;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;">%d CAÍDO%s</span>
+      </div>
+      <p style="margin:6px 0 0;color:#fecaca;font-size:13px;">Se detectaron fallas de conectividad en los siguientes servicios tras múltiples verificaciones consecutivas.</p>
+    </div>
+
+    <div style="padding:20px;">
+      <table style="width:100%%;border-collapse:collapse;text-align:left;">
+        <thead>
+          <tr style="border-bottom:2px solid #334155;color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">
+            <th style="padding:8px;">Servicio</th>
+            <th style="padding:8px;">Servidor VPS</th>
+            <th style="padding:8px;">Cliente</th>
+            <th style="padding:8px;">URL / Destino</th>
+            <th style="padding:8px;text-align:right;">Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          %s
+        </tbody>
+      </table>
+
+      <div style="margin-top:20px;padding:12px 16px;background:#1e293b60;border-radius:10px;border:1px solid #334155;font-size:12px;color:#94a3b8;line-height:1.5;">
+        ℹ️ <b>Reporte Consolidado:</b> Todas las incidencias se agrupan en este resumen único para evitar saturación de correos. Recibirás una actualización si hay nuevas caídas o cuando todos los servicios se recuperen.
+      </div>
+
+      <div style="text-align:center;margin-top:24px;">
+        <a href="https://rnv.renace.tech/services" style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#7c3aed,#6366f1);color:#ffffff;text-decoration:none;border-radius:10px;font-weight:600;font-size:13px;box-shadow:0 4px 12px rgba(124,58,237,0.3);">
+          Gestionar Servicios en RNV Manager →
+        </a>
+      </div>
+    </div>
+
+    <div style="padding:14px;background:#0d1322;border-top:1px solid #1e293b;text-align:center;font-size:11px;color:#64748b;">
+      RNV Manager · Monitor Consolidado · %s
+    </div>
+  </div>
+</body>
+</html>`, count, map[bool]string{true: "S", false: ""}[count > 1], rowsHTML, now.Format("02/01/2006 15:04:05 MST"))
+
+	_ = SendEmail(db, cfg, cfg.NotificationEmail, subject, body)
 }
 
 func notifyServiceOffline(db *gorm.DB, cfg *config.Config, svc models.Service, oldStatus, vpsName, method string) {
@@ -269,16 +476,7 @@ func notifyServiceOffline(db *gorm.DB, cfg *config.Config, svc models.Service, o
 		msg += " · " + strings.TrimPrefix(strings.TrimPrefix(*svc.URL, "https://"), "http://")
 	}
 	CreateNotification(db, "alert", "Servicio caído", msg, meta)
-
-	if cfg != nil && cfg.NotificationEmail != "" {
-		body := fmt.Sprintf(`<div style="font-family:sans-serif;max-width:520px;padding:20px">
-			<h2 style="color:#dc2626">⚠️ Servicio offline</h2>
-			<p><b>%s</b> no respondió tras múltiples verificaciones consecutivas (%s).</p>
-			<p>VPS: %s<br>Estado anterior: %s</p>
-			<p style="color:#6b7280;font-size:13px">RNV Manager — monitor de alta disponibilidad</p>
-		</div>`, svc.Name, method, vpsName, oldStatus)
-		_ = SendEmail(db, cfg, cfg.NotificationEmail, "RNV Alert — "+svc.Name+" OFFLINE", body)
-	}
+	// Note: Individual email alert removed in favor of consolidated digest email
 }
 
 func notifyServiceRecovery(db *gorm.DB, cfg *config.Config, svc models.Service, vpsName, method string) {
@@ -298,15 +496,7 @@ func notifyServiceRecovery(db *gorm.DB, cfg *config.Config, svc models.Service, 
 		msg += " · " + vpsName
 	}
 	CreateNotification(db, "success", "Servicio recuperado", msg, meta)
-
-	if cfg != nil && cfg.NotificationEmail != "" {
-		body := fmt.Sprintf(`<div style="font-family:sans-serif;max-width:520px;padding:20px">
-			<h2 style="color:#16a34a">🟢 Servicio recuperado</h2>
-			<p><b>%s</b> está online y respondiendo con normalidad (%s).</p>
-			<p style="color:#6b7280;font-size:13px">RNV Manager — monitor de alta disponibilidad</p>
-		</div>`, svc.Name, method)
-		_ = SendEmail(db, cfg, cfg.NotificationEmail, "RNV — "+svc.Name+" recuperado", body)
-	}
+	// Note: Individual email alert removed in favor of consolidated recovery email
 }
 
 func notifyServiceStatusChange(db *gorm.DB, cfg *config.Config, svc models.Service, oldStatus, newStatus, vpsName, method string) {

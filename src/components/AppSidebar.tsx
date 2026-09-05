@@ -67,7 +67,7 @@ export function AppSidebar() {
 
     // Filter navigation for affiliates
     const visibleMainNav = isAffiliate
-        ? MAIN_NAV.filter(item => ["/", "/clients", "/billing", "/calendar", "/workflow"].includes(item.href))
+        ? MAIN_NAV.filter(item => ["/", "/clients", "/afiliados", "/billing", "/calendar", "/workflow"].includes(item.href))
         : MAIN_NAV;
 
     const visibleAdminNav = isAffiliate ? [] : ADMIN_NAV;
