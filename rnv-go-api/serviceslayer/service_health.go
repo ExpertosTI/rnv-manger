@@ -349,7 +349,7 @@ func sendConsolidatedDigestEmail(db *gorm.DB, cfg *config.Config, offlineList []
         El monitor de alta disponibilidad de <b>RNV Manager</b> confirma que no quedan servicios con fallas activas.
       </p>
       <div style="text-align:center;margin-top:24px;">
-        <a href="https://rnv.renace.tech/services" style="display:inline-block;padding:12px 24px;background:#10b981;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:600;font-size:14px;">Ver Estado en RNV Manager</a>
+        <a href="https://rnv.renace.tech/services?assistant=true" style="display:inline-block;padding:12px 24px;background:#10b981;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:600;font-size:14px;">Ver Estado en RNV Manager</a>
       </div>
     </div>
     <div style="padding:16px;background:#0d1322;border-top:1px solid #1e293b;text-align:center;font-size:12px;color:#64748b;">
@@ -437,7 +437,7 @@ func sendConsolidatedDigestEmail(db *gorm.DB, cfg *config.Config, offlineList []
       </div>
 
       <div style="text-align:center;margin-top:24px;">
-        <a href="https://rnv.renace.tech/services" style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#7c3aed,#6366f1);color:#ffffff;text-decoration:none;border-radius:10px;font-weight:600;font-size:13px;box-shadow:0 4px 12px rgba(124,58,237,0.3);">
+        <a href="https://rnv.renace.tech/services?assistant=true" style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#7c3aed,#6366f1);color:#ffffff;text-decoration:none;border-radius:10px;font-weight:600;font-size:13px;box-shadow:0 4px 12px rgba(124,58,237,0.3);">
           Gestionar Servicios en RNV Manager →
         </a>
       </div>

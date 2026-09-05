@@ -62,6 +62,9 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
     useEffect(() => {
         const handleOpen = () => setIsOpen(true);
         window.addEventListener("rnv-ai-open", handleOpen);
+        if (typeof window !== "undefined" && window.location.search.includes("assistant=true")) {
+            setIsOpen(true);
+        }
         return () => window.removeEventListener("rnv-ai-open", handleOpen);
     }, []);
 
