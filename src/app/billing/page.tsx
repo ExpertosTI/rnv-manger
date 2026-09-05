@@ -14,6 +14,8 @@ import {
 import { motion } from "framer-motion";
 import { useToast } from "@/components/ui/toast";
 import { billing as billingApi, type OverdueClient } from "@/lib/api";
+import { useCurrency } from "@/lib/currency";
+import { CurrencyToggle } from "@/components/CurrencyToggle";
 
 interface ClientBilling {
     id: string;
@@ -35,6 +37,7 @@ interface BillingTotals {
 }
 
 export default function BillingPage() {
+    const { mode, rate, format, formatUSD, formatDOP } = useCurrency();
     const [clients, setClients] = useState<ClientBilling[]>([]);
     const [totals, setTotals] = useState<BillingTotals | null>(null);
     const [isLoading, setIsLoading] = useState(true);

@@ -12,17 +12,21 @@ import {
     RefreshCw, Building, FileText, CheckCircle2, Clock, Sparkles, Layers,
     Send, MessageSquare, ExternalLink, Edit2, Trash2,
     Wrench, Check, Copy, Download,
-    Server, ArrowRight
+    Server, ArrowRight, UsersRound
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/components/ui/toast";
-import { clients as clientsApi, services as servicesApi, billing as billingApi, type Client, type Service } from "@/lib/api";
+import { clients as clientsApi, services as servicesApi, billing as billingApi, auth, type Client, type Service, type User } from "@/lib/api";
 import { ServiceIcon } from "@/components/ServiceIcon";
+import { useCurrency } from "@/lib/currency";
+import { CurrencyToggle } from "@/components/CurrencyToggle";
+import { AffiliatesModal } from "@/components/AffiliatesModal";
 
 type FilterTab = "all" | "overdue" | "paid" | "pending" | "no_services" | "zero_fee" | "no_odoo" | "inactive";
 type ViewMode = "directory" | "cleanup";
 
 export default function ClientsPage() {
+    const { mode, rate, format, formatUSD, formatDOP, toDOP, toUSD } = useCurrency();
     const [clients, setClients] = useState<Client[]>([]);
     const [allServices, setAllServices] = useState<Service[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -33,6 +37,10 @@ export default function ClientsPage() {
     const [viewMode, setViewMode] = useState<ViewMode>("directory");
     const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
 
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [isAffiliatesModalOpen, setIsAffiliatesModalOpen] = useState(false);
+    const [affiliateFilter, setAffiliateFilter] = useState<string>("all");
+
     // Modals
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -42,6 +50,7 @@ export default function ClientsPage() {
     const [whatsAppMessage, setWhatsAppMessage] = useState("");
 
     // Quick Pay Form
+    const [payCurrency, setPayCurrency] = useState<"USD" | "DOP">("USD");
     const [payAmount, setPayAmount] = useState("");
     const [payNotes, setPayNotes] = useState("");
     const [isPaying, setIsPaying] = useState(false);
@@ -71,12 +80,16 @@ export default function ClientsPage() {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const [clientsRes, servicesRes] = await Promise.all([
+            const [clientsRes, servicesRes, authRes] = await Promise.all([
                 clientsApi.list(),
                 servicesApi.list().catch(() => ({ data: [] })),
+                auth.me().catch(() => null),
             ]);
             setClients(Array.isArray(clientsRes.data) ? clientsRes.data : []);
             setAllServices(Array.isArray(servicesRes.data) ? servicesRes.data : []);
+            if (authRes && authRes.success && authRes.user) {
+                setCurrentUser(authRes.user);
+            }
         } catch (err) {
             console.error("Error fetching data:", err);
             addToast("Error al cargar datos", "error");
@@ -88,6 +101,9 @@ export default function ClientsPage() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    const isMaster = !currentUser || currentUser.role === "superadmin" || currentUser.role === "admin";
+    const isAffiliate = currentUser?.role === "affiliate" || currentUser?.role === "collaborator";
 
     // Orphan Services (services without client)
     const orphanServices = useMemo(() => {
@@ -149,6 +165,15 @@ export default function ClientsPage() {
             if (cycleFilter === "monthly" && c.billingCycle === "annual") return false;
             if (cycleFilter === "annual" && c.billingCycle !== "annual") return false;
 
+            // Affiliate filter (for Master view)
+            if (isMaster && affiliateFilter !== "all") {
+                if (affiliateFilter === "unassigned") {
+                    if (c.affiliateId) return false;
+                } else if (c.affiliateId !== affiliateFilter) {
+                    return false;
+                }
+            }
+
             // Tab filter
             switch (filterTab) {
                 case "overdue":
@@ -184,7 +209,7 @@ export default function ClientsPage() {
             }
             return a.name.localeCompare(b.name);
         });
-    }, [clients, searchTerm, filterTab, cycleFilter, sortBy]);
+    }, [clients, searchTerm, filterTab, cycleFilter, sortBy, affiliateFilter, isMaster]);
 
     // Handle Form change
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -291,6 +316,7 @@ export default function ClientsPage() {
     // Open Quick Pay Modal
     const openQuickPay = (client: Client) => {
         setQuickPayClient(client);
+        setPayCurrency("USD");
         const total = client.amountDue && client.amountDue > 0
             ? client.amountDue
             : (client.calculatedCosts?.total ?? client.monthlyFee ?? 0);
@@ -301,20 +327,27 @@ export default function ClientsPage() {
     // Submit Quick Payment
     const handleQuickPaySubmit = async () => {
         if (!quickPayClient) return;
-        const amt = parseFloat(payAmount);
-        if (isNaN(amt) || amt < 0) {
+        const rawAmt = parseFloat(payAmount);
+        if (isNaN(rawAmt) || rawAmt < 0) {
             addToast("Monto inválido", "error");
             return;
         }
 
+        // Always normalize amount in USD for backend storage
+        const amtInUSD = payCurrency === "DOP" && rate > 0 ? rawAmt / rate : rawAmt;
+
         setIsPaying(true);
         try {
+            const formattedNote = payCurrency === "DOP"
+                ? `${payNotes} (Cobrado en DOP: RD$ ${rawAmt.toLocaleString("es-DO", { minimumFractionDigits: 2 })} a tasa ${rate})`
+                : payNotes;
+
             const res = await clientsApi.recordPayment(quickPayClient.id, {
-                amount: amt,
-                notes: payNotes,
+                amount: amtInUSD,
+                notes: formattedNote,
             });
             if (res.success) {
-                addToast(`¡Pago de $${amt.toFixed(2)} registrado exitosamente! Comprobante: ${res.invoiceName || "OK"}`, "success");
+                addToast(`¡Pago de $${amtInUSD.toFixed(2)} USD (≈ RD$ ${(amtInUSD * rate).toFixed(2)} DOP) registrado exitosamente!`, "success");
                 setQuickPayClient(null);
                 fetchData();
             } else {
@@ -330,9 +363,10 @@ export default function ClientsPage() {
     // Open WhatsApp Assistant
     const openWhatsApp = (client: Client) => {
         setWhatsAppModalClient(client);
-        const total = client.amountDue && client.amountDue > 0
+        const totalUSD = client.amountDue && client.amountDue > 0
             ? client.amountDue
             : (client.calculatedCosts?.total ?? client.monthlyFee ?? 0);
+        const totalDOP = (totalUSD * rate).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const serviceNames = (client.services && client.services.length > 0)
             ? client.services.map(s => s.name).join(", ")
             : "Servicios Cloud / Hosting";
@@ -343,7 +377,7 @@ export default function ClientsPage() {
 
         const msg = `Hola *${client.name}*, te saludamos cordialmente del equipo de *RNV*. Te recordamos el estado de tu servicio:\n\n` +
             `📌 *Servicios:* ${serviceNames}\n` +
-            `💵 *Total ${cycle}:* $${total.toFixed(2)} USD\n` +
+            `💵 *Total ${cycle}:* $${totalUSD.toFixed(2)} USD (≈ RD$ ${totalDOP} DOP a tasa ${rate})\n` +
             `📅 *Fecha de vencimiento:* ${dueText}\n\n` +
             `Agradecemos tu confirmación una vez realizado el pago para emitir tu comprobante. ¡Quedamos a tu disposición!`;
 
@@ -514,7 +548,7 @@ export default function ClientsPage() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 flex-wrap">
                     {/* View mode switcher */}
                     <div className="flex bg-gray-100/80 p-1 rounded-2xl border border-gray-200/80">
                         <button
@@ -546,15 +580,53 @@ export default function ClientsPage() {
                         </button>
                     </div>
 
+                    {/* Quick Currency Switcher */}
+                    <CurrencyToggle />
+
+                    {/* Master Affiliates & Collaborators Modal */}
+                    {isMaster && (
+                        <Button
+                            variant="outline"
+                            onClick={() => setIsAffiliatesModalOpen(true)}
+                            className="gap-2 bg-white/90 hover:bg-violet-50 text-violet-700 border-violet-200 hover:border-violet-300 rounded-2xl shadow-sm text-xs font-semibold h-10 px-3.5"
+                        >
+                            <UsersRound size={15} />
+                            Afiliados & Colaboradores
+                        </Button>
+                    )}
+
                     <Button
                         onClick={openCreateModal}
-                        className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-2xl shadow-md shadow-violet-200"
+                        className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-2xl shadow-md shadow-violet-200 text-xs font-semibold h-10 px-4"
                     >
                         <Plus size={16} />
                         Nuevo Cliente
                     </Button>
                 </div>
             </div>
+
+            {/* Collaborator Portfolio Banner if user is affiliate */}
+            {isAffiliate && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 text-white shadow-lg shadow-violet-500/15 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center text-white shrink-0">
+                            <UsersRound size={20} />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-sm tracking-tight">Panel de Colaborador · {currentUser?.name || "Afiliado"}</h3>
+                            <p className="text-xs text-violet-100">Visualizando tu cartera exclusiva de clientes, partidas y cobros asignados.</p>
+                        </div>
+                    </div>
+                    <Button
+                        onClick={openCreateModal}
+                        size="sm"
+                        className="bg-white hover:bg-white/90 text-violet-800 font-semibold rounded-xl text-xs shadow self-end sm:self-center"
+                    >
+                        <Plus size={14} className="mr-1" />
+                        Registrar Cliente
+                    </Button>
+                </div>
+            )}
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -564,11 +636,11 @@ export default function ClientsPage() {
                             <div>
                                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Ingresos Proyectados</p>
                                 <p className="text-2xl font-black text-gray-900 mt-1">
-                                    ${metrics.monthlyRevenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {format(metrics.monthlyRevenue)}
                                     <span className="text-xs font-medium text-gray-400"> /mes</span>
                                 </p>
-                                <p className="text-xs text-emerald-600 font-medium mt-1">
-                                    {metrics.activeClients} cuentas activas
+                                <p className="text-xs text-emerald-600 font-bold mt-1">
+                                    ≈ {formatDOP(metrics.monthlyRevenue)} <span className="text-gray-400 font-normal">({metrics.activeClients} activas)</span>
                                 </p>
                             </div>
                             <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100">
@@ -606,10 +678,12 @@ export default function ClientsPage() {
                                 <p className="text-2xl font-black text-red-700 mt-1">
                                     {metrics.overdueCount}
                                     <span className="text-xs font-bold text-red-500 ml-2">
-                                        (${metrics.overdueAmount.toFixed(2)})
+                                        ({format(metrics.overdueAmount)})
                                     </span>
                                 </p>
-                                <p className="text-xs text-red-600/80 font-medium mt-1">Requieren recordatorio</p>
+                                <p className="text-xs text-red-600/80 font-bold mt-1">
+                                    ≈ {formatDOP(metrics.overdueAmount)} en mora
+                                </p>
                             </div>
                             <div className="p-3 rounded-2xl bg-red-100 text-red-600 border border-red-200">
                                 <AlertTriangle className="h-6 w-6" />
@@ -678,6 +752,22 @@ export default function ClientsPage() {
                                 <option value="daysLate">Ordenar: Más Días de Mora</option>
                                 <option value="paymentDay">Ordenar: Día de Pago</option>
                             </select>
+
+                            {/* Affiliate Selector (Master view) */}
+                            {isMaster && (
+                                <select
+                                    value={affiliateFilter}
+                                    onChange={(e) => setAffiliateFilter(e.target.value)}
+                                    className="h-9 px-3 rounded-xl border border-violet-200 text-xs bg-violet-50/60 text-violet-900 font-semibold focus:outline-none"
+                                >
+                                    <option value="all">👥 Todos los afiliados</option>
+                                    <option value="unassigned">Sin asignar</option>
+                                    {Array.from(new Map(clients.filter(c => c.affiliate).map(c => [c.affiliate!.id, c.affiliate!.name])).entries())
+                                        .map(([id, name]) => (
+                                            <option key={id} value={id}>👤 {name}</option>
+                                        ))}
+                                </select>
+                            )}
                         </div>
 
                         {/* Export & Refresh */}
@@ -844,9 +934,10 @@ export default function ClientsPage() {
                             {filteredClients.map((client, index) => {
                                 const totalMonthly = client.calculatedCosts?.total ?? client.monthlyFee ?? 0;
                                 const isAnnual = client.billingCycle === "annual";
-                                const totalDisplay = isAnnual
-                                    ? `$${(client.annualFee || totalMonthly * 12).toFixed(2)}/año`
-                                    : `$${totalMonthly.toFixed(2)}/mes`;
+                                const amountUSD = isAnnual ? (client.annualFee || totalMonthly * 12) : totalMonthly;
+                                const totalDisplay = `${format(amountUSD)}${isAnnual ? "/año" : "/mes"}`;
+                                const dopEquivalent = formatDOP(amountUSD);
+                                const usdEquivalent = formatUSD(amountUSD);
 
                                 const isSelected = selectedClientIds.includes(client.id);
 
@@ -900,6 +991,12 @@ export default function ClientsPage() {
                                                                 ) : (
                                                                     <Badge variant="outline" className="text-[10px] text-gray-400 bg-gray-50 border-gray-200">
                                                                         Sin Odoo
+                                                                    </Badge>
+                                                                )}
+                                                                {client.affiliate && (
+                                                                    <Badge variant="outline" className="text-[10px] text-violet-700 bg-violet-50 border-violet-200 gap-1 font-medium">
+                                                                        <UsersRound size={10} />
+                                                                        {client.affiliate.name}
                                                                     </Badge>
                                                                 )}
                                                             </div>
@@ -957,7 +1054,7 @@ export default function ClientsPage() {
                                                                             <span>{s.name}</span>
                                                                             {s.monthlyCost > 0 && (
                                                                                 <span className="text-violet-600 font-bold ml-0.5">
-                                                                                    ${s.monthlyCost}
+                                                                                    {formatUSD(s.monthlyCost)}
                                                                                 </span>
                                                                             )}
                                                                         </div>
@@ -973,6 +1070,15 @@ export default function ClientsPage() {
                                                             <p className="text-lg font-black text-gray-900 leading-tight">
                                                                 {totalDisplay}
                                                             </p>
+                                                            {mode === "USD" ? (
+                                                                <p className="text-[11px] font-bold text-emerald-600">
+                                                                    ≈ {dopEquivalent}
+                                                                </p>
+                                                            ) : mode === "DOP" ? (
+                                                                <p className="text-[11px] font-bold text-emerald-600">
+                                                                    Base: {usdEquivalent}
+                                                                </p>
+                                                            ) : null}
                                                             <p className="text-[11px] text-gray-500">
                                                                 {client.services?.length || 0} servicio(s) · {client.vpsList?.length || 0} VPS
                                                             </p>
@@ -1310,49 +1416,111 @@ export default function ClientsPage() {
                         </DialogDescription>
                     </DialogHeader>
 
-                    {quickPayClient && (
-                        <div className="space-y-4 my-2">
-                            {/* Summary Card */}
-                            <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 space-y-2">
-                                <div className="flex justify-between text-xs text-gray-600">
-                                    <span>Ciclo de cobro:</span>
-                                    <span className="font-bold capitalize">{quickPayClient.billingCycle || "Mensual"}</span>
-                                </div>
-                                <div className="flex justify-between text-xs text-gray-600">
-                                    <span>Servicios activos:</span>
-                                    <span className="font-bold">{quickPayClient.services?.length || 0} servicio(s)</span>
-                                </div>
-                                <div className="border-t border-emerald-200 pt-2 flex justify-between items-center text-sm font-bold text-emerald-950">
-                                    <span>Total calculado:</span>
-                                    <span className="text-lg text-emerald-700">${(quickPayClient.calculatedCosts?.total ?? quickPayClient.monthlyFee ?? 0).toFixed(2)}</span>
-                                </div>
-                            </div>
+                    {quickPayClient && (() => {
+                        const calculatedUSD = quickPayClient.amountDue && quickPayClient.amountDue > 0
+                            ? quickPayClient.amountDue
+                            : (quickPayClient.calculatedCosts?.total ?? quickPayClient.monthlyFee ?? 0);
+                        const calculatedDOP = calculatedUSD * rate;
 
-                            {/* Payment Amount input */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-700">Monto Recibido ($ USD)</label>
-                                <Input
-                                    type="number"
-                                    step="0.01"
-                                    value={payAmount}
-                                    onChange={(e) => setPayAmount(e.target.value)}
-                                    placeholder="0.00"
-                                    className="rounded-xl border-gray-300 font-bold text-base h-11"
-                                />
-                            </div>
+                        return (
+                            <div className="space-y-4 my-2">
+                                {/* Summary Card */}
+                                <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 space-y-2">
+                                    <div className="flex justify-between text-xs text-gray-600">
+                                        <span>Ciclo de cobro:</span>
+                                        <span className="font-bold capitalize">{quickPayClient.billingCycle || "Mensual"}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs text-gray-600">
+                                        <span>Servicios activos:</span>
+                                        <span className="font-bold">{quickPayClient.services?.length || 0} servicio(s)</span>
+                                    </div>
+                                    <div className="border-t border-emerald-200 pt-2 flex justify-between items-center text-sm font-bold text-emerald-950">
+                                        <span>Total Tarifa Base (USD):</span>
+                                        <span className="text-lg text-emerald-700">${calculatedUSD.toFixed(2)} USD</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs font-bold text-emerald-800">
+                                        <span>Equivalente en Pesos (DOP):</span>
+                                        <span className="font-mono text-emerald-800">
+                                            RD$ {calculatedDOP.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                    <p className="text-[10px] text-gray-400 text-right">Tasa de cambio actual: 1 USD = RD$ {rate.toFixed(2)}</p>
+                                </div>
 
-                            {/* Notes */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-700">Notas / Referencia de Pago</label>
-                                <Input
-                                    value={payNotes}
-                                    onChange={(e) => setPayNotes(e.target.value)}
-                                    placeholder="Ej: Transferencia Zelle / Banco #12345"
-                                    className="rounded-xl border-gray-300 text-xs h-10"
-                                />
+                                {/* Moneda selector */}
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-gray-700">Moneda del Pago Recibido</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setPayCurrency("USD");
+                                                setPayAmount(String(calculatedUSD));
+                                            }}
+                                            className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                                payCurrency === "USD"
+                                                    ? "border-emerald-500 bg-emerald-50 text-emerald-800 shadow-sm"
+                                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                                            }`}
+                                        >
+                                            <span>💵</span> USD ($) Dólares
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setPayCurrency("DOP");
+                                                setPayAmount(String(calculatedDOP.toFixed(2)));
+                                            }}
+                                            className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                                payCurrency === "DOP"
+                                                    ? "border-blue-500 bg-blue-50 text-blue-800 shadow-sm"
+                                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                                            }`}
+                                        >
+                                            <span>🇩🇴</span> DOP (RD$) Pesos
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Payment Amount input */}
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-semibold text-gray-700">
+                                            Monto Cobrado ({payCurrency === "USD" ? "$ USD" : "RD$ DOP"})
+                                        </label>
+                                        {payCurrency === "USD" ? (
+                                            <span className="text-[11px] font-bold text-emerald-700">
+                                                ≈ RD$ {((parseFloat(payAmount) || 0) * rate).toLocaleString("es-DO", { minimumFractionDigits: 2 })} DOP
+                                            </span>
+                                        ) : (
+                                            <span className="text-[11px] font-bold text-blue-700">
+                                                ≈ ${(((parseFloat(payAmount) || 0) / rate) || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} USD
+                                            </span>
+                                        )}
+                                    </div>
+                                    <Input
+                                        type="number"
+                                        step="0.01"
+                                        value={payAmount}
+                                        onChange={(e) => setPayAmount(e.target.value)}
+                                        placeholder="0.00"
+                                        className="rounded-xl border-gray-300 font-bold text-base h-11"
+                                    />
+                                </div>
+
+                                {/* Notes */}
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-gray-700">Notas / Referencia de Pago</label>
+                                    <Input
+                                        value={payNotes}
+                                        onChange={(e) => setPayNotes(e.target.value)}
+                                        placeholder="Ej: Transferencia Zelle / Banco Popular #12345"
+                                        className="rounded-xl border-gray-300 text-xs h-10"
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     <DialogFooter className="gap-2 sm:gap-0 mt-4">
                         <Button variant="outline" onClick={() => setQuickPayClient(null)} className="rounded-xl">
@@ -1563,7 +1731,7 @@ export default function ClientsPage() {
                             />
                         </div>
 
-                        {/* Billing Cycle */}
+                        {/* Billing Cycle & Rates in USD + Real-time DOP Conversion */}
                         <div className="grid grid-cols-2 gap-3 bg-gray-50 p-3.5 rounded-2xl border border-gray-200">
                             <div className="space-y-1.5">
                                 <label className="text-xs font-bold text-gray-700">Ciclo de Facturación</label>
@@ -1580,31 +1748,77 @@ export default function ClientsPage() {
 
                             {formData.billingCycle === "monthly" ? (
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-bold text-gray-700">Tarifa Base Mensual ($)</label>
-                                    <Input
-                                        name="monthlyFee"
-                                        type="number"
-                                        step="0.01"
-                                        placeholder="0.00"
-                                        value={formData.monthlyFee}
-                                        onChange={handleInputChange}
-                                        className="rounded-xl border-gray-300 text-xs font-bold bg-white"
-                                    />
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-bold text-gray-700">Tarifa Base Mensual ($ USD)</label>
+                                        {parseFloat(formData.monthlyFee) > 0 && (
+                                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                                ≈ {formatDOP(parseFloat(formData.monthlyFee))}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+                                        <Input
+                                            name="monthlyFee"
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="0.00"
+                                            value={formData.monthlyFee}
+                                            onChange={handleInputChange}
+                                            className="pl-7 rounded-xl border-gray-300 text-xs font-bold bg-white"
+                                        />
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-bold text-gray-700">Tarifa Base Anual ($)</label>
-                                    <Input
-                                        name="annualFee"
-                                        type="number"
-                                        step="0.01"
-                                        placeholder="0.00"
-                                        value={formData.annualFee}
-                                        onChange={handleInputChange}
-                                        className="rounded-xl border-gray-300 text-xs font-bold bg-white"
-                                    />
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-bold text-gray-700">Tarifa Base Anual ($ USD)</label>
+                                        {parseFloat(formData.annualFee) > 0 && (
+                                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                                ≈ {formatDOP(parseFloat(formData.annualFee))}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+                                        <Input
+                                            name="annualFee"
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="0.00"
+                                            value={formData.annualFee}
+                                            onChange={handleInputChange}
+                                            className="pl-7 rounded-xl border-gray-300 text-xs font-bold bg-white"
+                                        />
+                                    </div>
                                 </div>
                             )}
+
+                            {/* Real-time Converter Tool inside Form */}
+                            <div className="col-span-2 bg-white/90 p-2.5 rounded-xl border border-gray-200 flex flex-wrap items-center justify-between gap-2 shadow-inner">
+                                <div className="flex items-center gap-1.5 text-xs text-gray-700 font-medium">
+                                    <span>🇩🇴 Calcular desde DOP (RD$):</span>
+                                    <input
+                                        type="number"
+                                        placeholder="Ej: 3000"
+                                        className="w-24 h-7 text-xs px-2 border border-gray-300 rounded-lg font-bold"
+                                        onChange={(e) => {
+                                            const dop = parseFloat(e.target.value);
+                                            if (!isNaN(dop) && dop > 0 && rate > 0) {
+                                                const usd = (dop / rate).toFixed(2);
+                                                if (formData.billingCycle === "monthly") {
+                                                    setFormData(prev => ({ ...prev, monthlyFee: usd }));
+                                                } else {
+                                                    setFormData(prev => ({ ...prev, annualFee: usd }));
+                                                }
+                                            }
+                                        }}
+                                    />
+                                </div>
+                                <span className="text-[11px] text-emerald-700 font-bold font-mono bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                                    1 USD = RD$ {rate.toFixed(2)}
+                                </span>
+                            </div>
 
                             <div className="space-y-1.5">
                                 <label className="text-xs font-bold text-gray-700">Día de Pago (1 - 28)</label>
@@ -1681,6 +1895,16 @@ export default function ClientsPage() {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Master Affiliates & Collaborators Modal */}
+            {isMaster && (
+                <AffiliatesModal
+                    isOpen={isAffiliatesModalOpen}
+                    onClose={() => setIsAffiliatesModalOpen(false)}
+                    clientsList={clients}
+                    onClientsUpdated={fetchData}
+                />
+            )}
         </div>
     );
 }

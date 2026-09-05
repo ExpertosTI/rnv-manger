@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X, Zap, ChevronLeft } from "lucide-react";
@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useSidebar } from "@/contexts/SidebarContext";
 import { FloatingNavDock } from "@/components/FloatingNavDock";
 import { MAIN_NAV, ADMIN_NAV } from "@/config/nav";
+import { auth, type User } from "@/lib/api";
 
 function NavSection({
     items,
@@ -54,6 +55,22 @@ export function AppSidebar() {
     const pathname = usePathname();
     const { collapsed, toggle, setCollapsed } = useSidebar();
     const [isOpen, setIsOpen] = useState(false);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+    useEffect(() => {
+        auth.me().then(res => {
+            if (res.success && res.user) setCurrentUser(res.user);
+        }).catch(() => {});
+    }, []);
+
+    const isAffiliate = currentUser?.role === "affiliate" || currentUser?.role === "collaborator";
+
+    // Filter navigation for affiliates
+    const visibleMainNav = isAffiliate
+        ? MAIN_NAV.filter(item => ["/", "/clients", "/billing", "/calendar", "/workflow"].includes(item.href))
+        : MAIN_NAV;
+
+    const visibleAdminNav = isAffiliate ? [] : ADMIN_NAV;
 
     const closeMobile = () => setIsOpen(false);
 
@@ -70,7 +87,9 @@ export function AppSidebar() {
                             <h2 className="text-base font-bold text-gray-900 truncate tracking-tight">RNV Manager</h2>
                             <div className="flex items-center gap-1.5">
                                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                <p className="text-[11px] font-medium text-violet-600">RENACE.tech</p>
+                                <p className="text-[11px] font-medium text-violet-600">
+                                    {isAffiliate ? "Colaborador" : "RENACE.tech"}
+                                </p>
                             </div>
                         </div>
                     </Link>
@@ -89,13 +108,17 @@ export function AppSidebar() {
 
             <nav className="flex-1 p-2 space-y-4 overflow-y-auto">
                 <div className="space-y-0.5">
-                    <p className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Operaciones</p>
-                    <NavSection items={MAIN_NAV} pathname={pathname} onNavigate={closeMobile} />
+                    <p className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                        {isAffiliate ? "Mi Espacio" : "Operaciones"}
+                    </p>
+                    <NavSection items={visibleMainNav} pathname={pathname} onNavigate={closeMobile} />
                 </div>
-                <div className="space-y-0.5">
-                    <p className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Admin</p>
-                    <NavSection items={ADMIN_NAV} pathname={pathname} onNavigate={closeMobile} />
-                </div>
+                {visibleAdminNav.length > 0 && (
+                    <div className="space-y-0.5">
+                        <p className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Admin</p>
+                        <NavSection items={visibleAdminNav} pathname={pathname} onNavigate={closeMobile} />
+                    </div>
+                )}
             </nav>
         </>
     );

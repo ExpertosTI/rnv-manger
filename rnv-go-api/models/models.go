@@ -90,6 +90,8 @@ type Client struct {
 	OdooLastSync     *time.Time `json:"odooLastSync,omitempty"`
 	OdooData         JSON       `gorm:"type:jsonb" json:"odooData,omitempty"`
 	TotalMonthlyCost float64    `gorm:"default:0" json:"totalMonthlyCost"`
+	AffiliateID      *string    `gorm:"index" json:"affiliateId,omitempty"`
+	Affiliate        *User      `gorm:"foreignKey:AffiliateID" json:"affiliate,omitempty"`
 	VPSList          []VPS      `gorm:"foreignKey:ClientID" json:"vpsList,omitempty"`
 	Services         []Service  `gorm:"foreignKey:ClientID" json:"services,omitempty"`
 	Payments         []Payment  `gorm:"foreignKey:ClientID" json:"payments,omitempty"`
@@ -287,6 +289,7 @@ type User struct {
 	Name        string     `gorm:"not null" json:"name"`
 	Role        string     `gorm:"default:'admin'" json:"role"`
 	Avatar      *string    `json:"avatar,omitempty"`
+	Phone       *string    `json:"phone,omitempty"`
 	IsActive    bool       `gorm:"default:true" json:"isActive"`
 	LastLoginAt *time.Time `json:"lastLoginAt,omitempty"`
 	Sessions    []Session  `gorm:"foreignKey:UserID" json:"-"`
@@ -298,6 +301,29 @@ type User struct {
 func (u *User) BeforeCreate(tx *gorm.DB) error {
 	if u.ID == "" {
 		u.ID = cuid.New()
+	}
+	return nil
+}
+
+// AffiliateInvite model — secure registration links for collaborators/affiliates
+type AffiliateInvite struct {
+	ID        string     `gorm:"type:text;primaryKey" json:"id"`
+	Token     string     `gorm:"uniqueIndex;not null" json:"token"`
+	Name      *string    `json:"name,omitempty"`
+	Email     *string    `json:"email,omitempty"`
+	Note      *string    `json:"note,omitempty"`
+	CreatedBy string     `gorm:"not null" json:"createdBy"`
+	ExpiresAt time.Time  `gorm:"not null" json:"expiresAt"`
+	Used      bool       `gorm:"default:false" json:"used"`
+	UsedAt    *time.Time `json:"usedAt,omitempty"`
+	UsedByID  *string    `json:"usedById,omitempty"`
+	UsedBy    *User      `gorm:"foreignKey:UsedByID" json:"usedBy,omitempty"`
+	CreatedAt time.Time  `json:"createdAt"`
+}
+
+func (ai *AffiliateInvite) BeforeCreate(tx *gorm.DB) error {
+	if ai.ID == "" {
+		ai.ID = cuid.New()
 	}
 	return nil
 }

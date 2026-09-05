@@ -166,14 +166,26 @@ func SSHGetMetrics(cfg SSHConfig) map[string]interface{} {
 
 // Check if a TCP port is open
 func CheckPortOpen(host string, port int, timeoutSec int) bool {
-	conn, err := net.DialTimeout("tcp",
-		fmt.Sprintf("%s:%d", host, port),
-		time.Duration(timeoutSec)*time.Second)
-	if err != nil {
-		return false
+	return CheckPortOpenWithRetries(host, port, 1, time.Duration(timeoutSec)*time.Second)
+}
+
+// CheckPortOpenWithRetries checks TCP port with multiple attempts to avoid false alerts
+func CheckPortOpenWithRetries(host string, port int, retries int, timeout time.Duration) bool {
+	if retries <= 0 {
+		retries = 1
 	}
-	conn.Close()
-	return true
+	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
+	for i := 0; i < retries; i++ {
+		conn, err := net.DialTimeout("tcp", addr, timeout)
+		if err == nil {
+			conn.Close()
+			return true
+		}
+		if i < retries-1 {
+			time.Sleep(time.Duration(1500*(i+1)) * time.Millisecond)
+		}
+	}
+	return false
 }
 
 func splitFields(s string, n int) []string {

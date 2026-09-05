@@ -17,6 +17,8 @@ import { motion } from "framer-motion";
 import { useToast } from "@/components/ui/toast";
 import { clients as clientsApi, services as servicesApi, billing as billingApi, type Service } from "@/lib/api";
 import { ServiceIcon } from "@/components/ServiceIcon";
+import { useCurrency } from "@/lib/currency";
+import { CurrencyToggle } from "@/components/CurrencyToggle";
 
 interface ClientDetail {
     id: string;
@@ -42,6 +44,7 @@ interface ClientDetail {
 }
 
 export default function ClientDetailPage() {
+    const { mode, rate, format, formatUSD, formatDOP } = useCurrency();
     const params = useParams();
     const router = useRouter();
     const clientId = params.id as string;
@@ -54,6 +57,7 @@ export default function ClientDetailPage() {
 
     // Modals
     const [isQuickPayOpen, setIsQuickPayOpen] = useState(false);
+    const [payCurrency, setPayCurrency] = useState<"USD" | "DOP">("USD");
     const [payAmount, setPayAmount] = useState("");
     const [payNotes, setPayNotes] = useState("");
     const [isPaying, setIsPaying] = useState(false);
@@ -184,6 +188,7 @@ export default function ClientDetailPage() {
     // Quick Payment
     const openQuickPayModal = () => {
         if (!client) return;
+        setPayCurrency("USD");
         const total = (client.monthlyFee || 0) + (client.totalMonthlyCost || 0);
         setPayAmount(String(total));
         setPayNotes(`Cobro mensual ${new Date().toLocaleDateString("es-ES", { month: "long", year: "numeric" })}`);
@@ -192,20 +197,26 @@ export default function ClientDetailPage() {
 
     const handleQuickPaySubmit = async () => {
         if (!client) return;
-        const amt = parseFloat(payAmount);
-        if (isNaN(amt) || amt < 0) {
+        const rawAmt = parseFloat(payAmount);
+        if (isNaN(rawAmt) || rawAmt < 0) {
             addToast("Monto inválido", "error");
             return;
         }
 
+        const amtInUSD = payCurrency === "DOP" && rate > 0 ? rawAmt / rate : rawAmt;
+
         setIsPaying(true);
         try {
+            const formattedNote = payCurrency === "DOP"
+                ? `${payNotes} (Cobrado en DOP: RD$ ${rawAmt.toLocaleString("es-DO", { minimumFractionDigits: 2 })} a tasa ${rate})`
+                : payNotes;
+
             const res = await clientsApi.recordPayment(client.id, {
-                amount: amt,
-                notes: payNotes,
+                amount: amtInUSD,
+                notes: formattedNote,
             });
             if (res.success) {
-                addToast(`¡Pago de $${amt.toFixed(2)} registrado! Factura: ${res.invoiceName || "OK"}`, "success");
+                addToast(`¡Pago de $${amtInUSD.toFixed(2)} USD (≈ RD$ ${(amtInUSD * rate).toFixed(2)} DOP) registrado!`, "success");
                 setIsQuickPayOpen(false);
                 fetchClient();
             } else {
@@ -221,7 +232,8 @@ export default function ClientDetailPage() {
     // WhatsApp
     const openWhatsAppModal = () => {
         if (!client) return;
-        const total = (client.monthlyFee || 0) + (client.totalMonthlyCost || 0);
+        const totalUSD = (client.monthlyFee || 0) + (client.totalMonthlyCost || 0);
+        const totalDOP = (totalUSD * rate).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const serviceNames = (client.services && client.services.length > 0)
             ? client.services.map(s => s.name).join(", ")
             : "Servicios Cloud / Hosting";
@@ -232,7 +244,7 @@ export default function ClientDetailPage() {
 
         const msg = `Hola *${client.name}*, te saludamos de *RNV*. Te recordamos el estado de tu suscripción:\n\n` +
             `📌 *Servicios:* ${serviceNames}\n` +
-            `💵 *Total ${cycle}:* $${total.toFixed(2)} USD\n` +
+            `💵 *Total ${cycle}:* $${totalUSD.toFixed(2)} USD (≈ RD$ ${totalDOP} DOP a tasa ${rate})\n` +
             `📅 *Fecha de vencimiento:* ${dueText}\n\n` +
             `Agradecemos tu confirmación una vez realizado el pago para emitir tu comprobante. ¡Muchas gracias!`;
 
@@ -374,6 +386,9 @@ export default function ClientDetailPage() {
 
                 {/* Main Action Buttons */}
                 <div className="flex flex-wrap items-center gap-2">
+                    {/* Quick Currency Switcher */}
+                    <CurrencyToggle />
+
                     {/* ⚡ Cobro Rápido */}
                     <Button
                         onClick={openQuickPayModal}
@@ -433,11 +448,14 @@ export default function ClientDetailPage() {
                         <div>
                             <p className="text-xs text-violet-200 uppercase tracking-wider font-semibold">Total a Cobrar</p>
                             <p className="text-3xl font-black mt-1">
-                                ${calculatedTotalMonthly.toFixed(2)}
+                                {format(calculatedTotalMonthly)}
                                 <span className="text-xs font-normal text-violet-200"> /mes</span>
                             </p>
-                            <p className="text-xs text-violet-200 mt-1">
-                                {client.billingCycle === "annual" ? `Plan Anual: $${(client.annualFee || calculatedTotalMonthly * 12).toFixed(2)}/año` : "Plan Mensual"}
+                            <p className="text-xs text-violet-200 font-bold mt-1">
+                                ≈ {formatDOP(calculatedTotalMonthly)}
+                            </p>
+                            <p className="text-[11px] text-violet-300 mt-0.5">
+                                {client.billingCycle === "annual" ? `Plan Anual: ${format(client.annualFee || calculatedTotalMonthly * 12)}/año` : "Plan Mensual"}
                             </p>
                         </div>
                         <div className="p-3 rounded-2xl bg-white/10 backdrop-blur">
@@ -450,8 +468,9 @@ export default function ClientDetailPage() {
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Tarifa Base</p>
-                            <p className="text-2xl font-black text-gray-900 mt-1">${(client.monthlyFee || 0).toFixed(2)}</p>
-                            <p className="text-xs text-gray-400 mt-1">Suscripción fija</p>
+                            <p className="text-2xl font-black text-gray-900 mt-1">{format(client.monthlyFee || 0)}</p>
+                            <p className="text-xs text-emerald-600 font-bold mt-0.5">≈ {formatDOP(client.monthlyFee || 0)}</p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">Suscripción fija</p>
                         </div>
                         <div className="p-3 rounded-2xl bg-gray-100 text-gray-600">
                             <Building className="h-6 w-6" />
@@ -464,8 +483,11 @@ export default function ClientDetailPage() {
                         <div>
                             <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Servicios Activos</p>
                             <p className="text-2xl font-black text-purple-700 mt-1">{client.services.length}</p>
-                            <p className="text-xs text-purple-600 mt-1">
-                                Costo: ${(client.serviceCost || client.services.reduce((sum, s) => sum + (s.monthlyCost || 0), 0)).toFixed(2)}/mes
+                            <p className="text-xs text-purple-700 font-bold mt-0.5">
+                                Costo: {format(client.serviceCost || client.services.reduce((sum, s) => sum + (s.monthlyCost || 0), 0))}/mes
+                            </p>
+                            <p className="text-[10px] text-purple-600 mt-0.5">
+                                ≈ {formatDOP(client.serviceCost || client.services.reduce((sum, s) => sum + (s.monthlyCost || 0), 0))}
                             </p>
                         </div>
                         <div className="p-3 rounded-2xl bg-purple-50 text-purple-600">
@@ -817,13 +839,70 @@ export default function ClientDetailPage() {
                     </DialogHeader>
 
                     <div className="space-y-4 my-2">
-                        <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 flex justify-between items-center text-sm font-bold text-emerald-950">
-                            <span>Monto Sugerido:</span>
-                            <span className="text-xl text-emerald-700">${calculatedTotalMonthly.toFixed(2)}</span>
+                        <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 space-y-2">
+                            <div className="flex justify-between items-center text-sm font-bold text-emerald-950">
+                                <span>Tarifa Sugerida (USD):</span>
+                                <span className="text-xl text-emerald-700">${calculatedTotalMonthly.toFixed(2)} USD</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs font-bold text-emerald-800">
+                                <span>Equivalente en Pesos (DOP):</span>
+                                <span className="font-mono text-emerald-800">
+                                    RD$ {(calculatedTotalMonthly * rate).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                            </div>
+                            <p className="text-[10px] text-gray-400 text-right">Tasa: 1 USD = RD$ {rate.toFixed(2)}</p>
+                        </div>
+
+                        {/* Moneda selector */}
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-gray-700">Moneda del Pago</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setPayCurrency("USD");
+                                        setPayAmount(String(calculatedTotalMonthly));
+                                    }}
+                                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                        payCurrency === "USD"
+                                            ? "border-emerald-500 bg-emerald-50 text-emerald-800 shadow-sm"
+                                            : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                                    }`}
+                                >
+                                    <span>💵</span> USD ($) Dólares
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setPayCurrency("DOP");
+                                        setPayAmount(String((calculatedTotalMonthly * rate).toFixed(2)));
+                                    }}
+                                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                        payCurrency === "DOP"
+                                            ? "border-blue-500 bg-blue-50 text-blue-800 shadow-sm"
+                                            : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                                    }`}
+                                >
+                                    <span>🇩🇴</span> DOP (RD$) Pesos
+                                </button>
+                            </div>
                         </div>
 
                         <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-gray-700">Monto Recibido ($ USD)</label>
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-semibold text-gray-700">
+                                    Monto Recibido ({payCurrency === "USD" ? "$ USD" : "RD$ DOP"})
+                                </label>
+                                {payCurrency === "USD" ? (
+                                    <span className="text-[11px] font-bold text-emerald-700">
+                                        ≈ RD$ {((parseFloat(payAmount) || 0) * rate).toLocaleString("es-DO", { minimumFractionDigits: 2 })} DOP
+                                    </span>
+                                ) : (
+                                    <span className="text-[11px] font-bold text-blue-700">
+                                        ≈ ${(((parseFloat(payAmount) || 0) / rate) || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} USD
+                                    </span>
+                                )}
+                            </div>
                             <Input
                                 type="number"
                                 step="0.01"
@@ -838,7 +917,7 @@ export default function ClientDetailPage() {
                             <Input
                                 value={payNotes}
                                 onChange={(e) => setPayNotes(e.target.value)}
-                                placeholder="Ej: Transferencia / Zelle"
+                                placeholder="Ej: Transferencia / Zelle / Banco Popular #123"
                                 className="rounded-xl border-gray-300 text-xs h-10"
                             />
                         </div>

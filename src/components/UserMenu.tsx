@@ -46,6 +46,8 @@ export function UserMenu() {
     superadmin: "Super Admin",
     admin: "Administrador",
     viewer: "Visor",
+    affiliate: "Afiliado / Colaborador",
+    collaborator: "Colaborador",
   };
 
   return (

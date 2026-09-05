@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { Activity, Maximize2, Minimize2, Radio } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
 import { UserMenu } from "./UserMenu";
-import { SidebarToggle } from "./SidebarToggle";
+import { CurrencyToggle } from "./CurrencyToggle";
 import { pageTitleForPath } from "@/config/nav";
 
 export function TopHeader() {
@@ -54,6 +54,9 @@ export function TopHeader() {
             </div>
 
             <div className="flex items-center gap-2.5 ml-auto shrink-0">
+                {/* Global Currency Switcher */}
+                <CurrencyToggle className="hidden md:flex" />
+
                 {/* Live Monitor HUD */}
                 <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-50/80 border border-violet-200/60 text-xs font-medium text-violet-700">
                     <span className="relative flex h-2 w-2">

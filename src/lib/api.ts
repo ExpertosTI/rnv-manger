@@ -116,6 +116,38 @@ export const clients = {
         }),
 };
 
+// ── Affiliates & Collaborators ────────────────────────────────────────────────
+
+export const affiliates = {
+    list: () => request<ApiList<Affiliate>>("/affiliates"),
+    createInvite: (data: { name?: string; email?: string; note?: string; daysValid?: number }) =>
+        request<{ success: boolean; data: AffiliateInvite; inviteUrl: string; whatsappMessage: string }>("/affiliates/invites", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    listInvites: () => request<ApiList<AffiliateInvite>>("/affiliates/invites"),
+    revokeInvite: (id: string) => request<ApiSuccess>(`/affiliates/invites/${id}`, { method: "DELETE" }),
+    getInviteInfo: (token: string) =>
+        request<{ success: boolean; data: { token: string; name?: string; email?: string; note?: string; expiresAt: string } }>(
+            `/affiliates/invite-info?token=${encodeURIComponent(token)}`
+        ),
+    register: (data: { token: string; name: string; email: string; phone?: string; password: string }) =>
+        request<{ success: boolean; token: string; user: User }>("/affiliates/register", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    assignClients: (affiliateId: string, clientIds: string[], action: "assign" | "unassign" = "assign") =>
+        request<{ success: boolean; updated: number }>(`/affiliates/${affiliateId}/assign-clients`, {
+            method: "POST",
+            body: JSON.stringify({ clientIds, action }),
+        }),
+    toggleStatus: (id: string, isActive: boolean) =>
+        request<{ success: boolean; isActive: boolean }>(`/affiliates/${id}/status`, {
+            method: "PUT",
+            body: JSON.stringify({ isActive }),
+        }),
+};
+
 // ── Services ─────────────────────────────────────────────────────────────────
 
 export interface ProbeResult {
@@ -463,10 +495,41 @@ export interface User {
     username: string;
     email: string;
     name: string;
-    role: "superadmin" | "admin" | "viewer";
+    role: "superadmin" | "admin" | "viewer" | "affiliate" | "collaborator";
     avatar?: string;
+    phone?: string;
     isActive: boolean;
     lastLoginAt?: string;
+    createdAt: string;
+}
+
+export interface Affiliate {
+    id: string;
+    username: string;
+    email: string;
+    name: string;
+    phone?: string;
+    role: string;
+    isActive: boolean;
+    lastLoginAt?: string;
+    createdAt: string;
+    clientCount: number;
+    activeClients: number;
+    monthlyRevenue: number;
+}
+
+export interface AffiliateInvite {
+    id: string;
+    token: string;
+    name?: string;
+    email?: string;
+    note?: string;
+    createdBy: string;
+    expiresAt: string;
+    used: boolean;
+    usedAt?: string;
+    usedById?: string;
+    usedBy?: User;
     createdAt: string;
 }
 
@@ -478,6 +541,8 @@ export interface Client {
     companyName?: string;
     notes?: string;
     isActive: boolean;
+    affiliateId?: string;
+    affiliate?: User;
     billingCycle?: "monthly" | "annual";
     monthlyFee: number;
     annualFee?: number;

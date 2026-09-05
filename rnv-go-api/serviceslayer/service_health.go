@@ -1,7 +1,9 @@
 package serviceslayer
 
 import (
+	"crypto/tls"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -36,19 +38,87 @@ func normalizeServiceStatus(s string) string {
 	}
 }
 
-// CheckServiceReachable probes a single service (HTTP URL or TCP port on VPS).
+var (
+	serviceStateMu     sync.Mutex
+	serviceFailures    = make(map[string]int)       // serviceID -> consecutive failure count
+	serviceAlertActive = make(map[string]bool)      // serviceID -> true if OFFLINE alert was sent
+	serviceLastAlert   = make(map[string]time.Time) // serviceID -> timestamp of last email alert
+)
+
+// CheckHTTPHealthFast executes a lightweight, resilient HTTP probe with retries, SSL tolerance, and fallback.
+func CheckHTTPHealthFast(rawURL string, maxRetries int, timeout time.Duration) (online bool, statusCode int) {
+	if maxRetries <= 0 {
+		maxRetries = 3
+	}
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+
+	target := NormalizeURL(rawURL)
+	targets := []string{target}
+	if strings.HasPrefix(target, "https://") {
+		targets = append(targets, strings.Replace(target, "https://", "http://", 1))
+	}
+
+	tr := &http.Transport{
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+		ResponseHeaderTimeout: timeout,
+		DisableKeepAlives:     true,
+	}
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
+
+	for _, t := range targets {
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			req, err := http.NewRequest(http.MethodGet, t, nil)
+			if err == nil {
+				req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+				req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+				resp, err := client.Do(req)
+				if err == nil {
+					statusCode = resp.StatusCode
+					if resp.Body != nil {
+						_, _ = io.CopyN(io.Discard, resp.Body, 2048)
+						resp.Body.Close()
+					}
+					// Any HTTP code < 500 means the server is reachable and active.
+					// Only 502/503/504 represent gateway/downstream outages.
+					if statusCode > 0 && statusCode != 502 && statusCode != 503 && statusCode != 504 {
+						return true, statusCode
+					}
+				}
+			}
+
+			if attempt < maxRetries {
+				time.Sleep(time.Duration(1000*attempt) * time.Millisecond)
+			}
+		}
+	}
+
+	return false, statusCode
+}
+
+// CheckServiceReachable probes a single service with 3 retries (HTTP URL or TCP port on VPS).
 func CheckServiceReachable(svc models.Service, vps *models.VPS) (online bool, method string) {
 	if svc.URL != nil && strings.TrimSpace(*svc.URL) != "" {
-		pr := ProbeURL(*svc.URL)
-		return pr.Reachable && pr.StatusCode > 0 && pr.StatusCode < 500, "http"
+		isOnline, _ := CheckHTTPHealthFast(*svc.URL, 3, 10*time.Second)
+		return isOnline, "http"
 	}
 	if svc.Port != nil && *svc.Port > 0 && vps != nil && vps.IPAddress != "" {
-		return CheckPortOpen(vps.IPAddress, *svc.Port, 5), "tcp"
+		return CheckPortOpenWithRetries(vps.IPAddress, *svc.Port, 3, 5*time.Second), "tcp"
 	}
 	return false, "skip"
 }
 
-// RunServiceHealthChecks probes all services concurrently, updates DB, notifies on status change.
+// RunServiceHealthChecks probes all services concurrently, updates DB, notifies only on confirmed outages (2+ consecutive cycles).
 func RunServiceHealthChecks(db *gorm.DB, cfg *config.Config) []ServiceHealthResult {
 	var services []models.Service
 	db.Preload("VPS").Find(&services)
@@ -58,8 +128,8 @@ func RunServiceHealthChecks(db *gorm.DB, cfg *config.Config) []ServiceHealthResu
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	// Concurrency limiter (max 12 simultaneous probes)
-	sem := make(chan struct{}, 12)
+	// Concurrency limiter (max 10 simultaneous probes)
+	sem := make(chan struct{}, 10)
 
 	for _, svc := range services {
 		wg.Add(1)
@@ -75,11 +145,6 @@ func RunServiceHealthChecks(db *gorm.DB, cfg *config.Config) []ServiceHealthResu
 				return
 			}
 
-			newStatus := "stopped"
-			if online {
-				newStatus = "running"
-			}
-
 			vpsName := ""
 			if s.VPS != nil {
 				vpsName = s.VPS.Name
@@ -88,6 +153,42 @@ func RunServiceHealthChecks(db *gorm.DB, cfg *config.Config) []ServiceHealthResu
 			if s.URL != nil {
 				urlStr = *s.URL
 			}
+
+			serviceStateMu.Lock()
+			shouldChangeStatus := false
+			shouldNotifyOffline := false
+			shouldNotifyRecovery := false
+			newStatus := oldStatus
+
+			if online {
+				wasAlerted := serviceAlertActive[s.ID]
+				serviceFailures[s.ID] = 0
+				serviceAlertActive[s.ID] = false
+				newStatus = "running"
+
+				if oldStatus != "running" {
+					shouldChangeStatus = true
+					if wasAlerted {
+						shouldNotifyRecovery = true
+					}
+				}
+			} else {
+				serviceFailures[s.ID]++
+				// Debounce: Require at least 2 consecutive failure cycles before marking offline / alerting
+				if serviceFailures[s.ID] >= 2 {
+					newStatus = "stopped"
+					if oldStatus != "stopped" {
+						shouldChangeStatus = true
+					}
+					lastAlert := serviceLastAlert[s.ID]
+					if !serviceAlertActive[s.ID] || time.Since(lastAlert) > 1*time.Hour {
+						shouldNotifyOffline = true
+						serviceAlertActive[s.ID] = true
+						serviceLastAlert[s.ID] = now
+					}
+				}
+			}
+			serviceStateMu.Unlock()
 
 			res := ServiceHealthResult{
 				ServiceID:   s.ID,
@@ -101,16 +202,22 @@ func RunServiceHealthChecks(db *gorm.DB, cfg *config.Config) []ServiceHealthResu
 			}
 
 			mu.Lock()
-			if oldStatus != newStatus {
+			if shouldChangeStatus {
 				res.Changed = true
 				db.Model(&s).Updates(map[string]interface{}{
 					"status":       newStatus,
 					"last_checked": now,
 				})
-				notifyServiceStatusChange(db, cfg, s, oldStatus, newStatus, vpsName, method)
 			} else {
 				db.Model(&s).Update("last_checked", now)
 			}
+
+			if shouldNotifyOffline {
+				notifyServiceOffline(db, cfg, s, oldStatus, vpsName, method)
+			} else if shouldNotifyRecovery {
+				notifyServiceRecovery(db, cfg, s, vpsName, method)
+			}
+
 			results = append(results, res)
 			mu.Unlock()
 		}(svc)
@@ -120,10 +227,10 @@ func RunServiceHealthChecks(db *gorm.DB, cfg *config.Config) []ServiceHealthResu
 	return results
 }
 
-func notifyServiceStatusChange(db *gorm.DB, cfg *config.Config, svc models.Service, oldStatus, newStatus, vpsName, method string) {
+func notifyServiceOffline(db *gorm.DB, cfg *config.Config, svc models.Service, oldStatus, vpsName, method string) {
 	meta := models.JSON{
 		"serviceId": svc.ID, "serviceName": svc.Name, "type": "service_status",
-		"oldStatus": oldStatus, "newStatus": newStatus, "checkMethod": method,
+		"oldStatus": oldStatus, "newStatus": "stopped", "checkMethod": method,
 	}
 	if svc.VpsID != nil {
 		meta["vpsId"] = *svc.VpsID
@@ -132,39 +239,62 @@ func notifyServiceStatusChange(db *gorm.DB, cfg *config.Config, svc models.Servi
 		meta["url"] = *svc.URL
 	}
 
-	if newStatus == "stopped" {
-		msg := fmt.Sprintf("🔴 %s está OFFLINE", svc.Name)
-		if vpsName != "" {
-			msg += " · VPS " + vpsName
-		}
-		if svc.URL != nil && *svc.URL != "" {
-			msg += " · " + strings.TrimPrefix(strings.TrimPrefix(*svc.URL, "https://"), "http://")
-		}
-		CreateNotification(db, "alert", "Servicio caído", msg, meta)
+	msg := fmt.Sprintf("🔴 %s está OFFLINE", svc.Name)
+	if vpsName != "" {
+		msg += " · VPS " + vpsName
+	}
+	if svc.URL != nil && *svc.URL != "" {
+		msg += " · " + strings.TrimPrefix(strings.TrimPrefix(*svc.URL, "https://"), "http://")
+	}
+	CreateNotification(db, "alert", "Servicio caído", msg, meta)
 
-		if cfg != nil && cfg.NotificationEmail != "" {
-			body := fmt.Sprintf(`<div style="font-family:sans-serif;max-width:520px;padding:20px">
-				<h2 style="color:#dc2626">⚠️ Servicio offline</h2>
-				<p><b>%s</b> dejó de responder (%s).</p>
-				<p>VPS: %s<br>Estado anterior: %s</p>
-				<p style="color:#6b7280;font-size:13px">RNV Manager — monitor automático</p>
-			</div>`, svc.Name, method, vpsName, oldStatus)
-			_ = SendEmail(db, cfg, cfg.NotificationEmail, "RNV Alert — "+svc.Name+" OFFLINE", body)
-		}
-		return
+	if cfg != nil && cfg.NotificationEmail != "" {
+		body := fmt.Sprintf(`<div style="font-family:sans-serif;max-width:520px;padding:20px">
+			<h2 style="color:#dc2626">⚠️ Servicio offline</h2>
+			<p><b>%s</b> no respondió tras múltiples verificaciones consecutivas (%s).</p>
+			<p>VPS: %s<br>Estado anterior: %s</p>
+			<p style="color:#6b7280;font-size:13px">RNV Manager — monitor de alta disponibilidad</p>
+		</div>`, svc.Name, method, vpsName, oldStatus)
+		_ = SendEmail(db, cfg, cfg.NotificationEmail, "RNV Alert — "+svc.Name+" OFFLINE", body)
+	}
+}
+
+func notifyServiceRecovery(db *gorm.DB, cfg *config.Config, svc models.Service, vpsName, method string) {
+	meta := models.JSON{
+		"serviceId": svc.ID, "serviceName": svc.Name, "type": "service_status",
+		"oldStatus": "stopped", "newStatus": "running", "checkMethod": method,
+	}
+	if svc.VpsID != nil {
+		meta["vpsId"] = *svc.VpsID
+	}
+	if svc.URL != nil {
+		meta["url"] = *svc.URL
 	}
 
-	if newStatus == "running" && (oldStatus == "stopped" || oldStatus == "unknown") {
-		msg := fmt.Sprintf("🟢 %s volvió ONLINE", svc.Name)
-		if vpsName != "" {
-			msg += " · " + vpsName
-		}
-		CreateNotification(db, "success", "Servicio recuperado", msg, meta)
+	msg := fmt.Sprintf("🟢 %s volvió ONLINE", svc.Name)
+	if vpsName != "" {
+		msg += " · " + vpsName
+	}
+	CreateNotification(db, "success", "Servicio recuperado", msg, meta)
 
-		if cfg != nil && cfg.NotificationEmail != "" && oldStatus == "stopped" {
-			body := fmt.Sprintf(`<p><b>%s</b> está online de nuevo (%s).</p>`, svc.Name, method)
-			_ = SendEmail(db, cfg, cfg.NotificationEmail, "RNV — "+svc.Name+" recuperado", body)
-		}
+	if cfg != nil && cfg.NotificationEmail != "" {
+		body := fmt.Sprintf(`<div style="font-family:sans-serif;max-width:520px;padding:20px">
+			<h2 style="color:#16a34a">🟢 Servicio recuperado</h2>
+			<p><b>%s</b> está online y respondiendo con normalidad (%s).</p>
+			<p style="color:#6b7280;font-size:13px">RNV Manager — monitor de alta disponibilidad</p>
+		</div>`, svc.Name, method)
+		_ = SendEmail(db, cfg, cfg.NotificationEmail, "RNV — "+svc.Name+" recuperado", body)
+	}
+}
+
+func notifyServiceStatusChange(db *gorm.DB, cfg *config.Config, svc models.Service, oldStatus, newStatus, vpsName, method string) {
+	if oldStatus == "unknown" && newStatus == "running" {
+		return
+	}
+	if newStatus == "stopped" && oldStatus != "stopped" {
+		notifyServiceOffline(db, cfg, svc, oldStatus, vpsName, method)
+	} else if newStatus == "running" && oldStatus == "stopped" {
+		notifyServiceRecovery(db, cfg, svc, vpsName, method)
 	}
 }
 

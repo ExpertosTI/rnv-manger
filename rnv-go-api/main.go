@@ -11,6 +11,7 @@ import (
 	"github.com/renace/rnv-go-api/config"
 	"github.com/renace/rnv-go-api/database"
 	aiHandler "github.com/renace/rnv-go-api/handlers/ai"
+	affiliatesHandler "github.com/renace/rnv-go-api/handlers/affiliates"
 	auditHandler "github.com/renace/rnv-go-api/handlers/audit"
 	authHandler "github.com/renace/rnv-go-api/handlers/auth"
 	backupHandler "github.com/renace/rnv-go-api/handlers/backup"
@@ -100,6 +101,10 @@ func main() {
 		// Evolution API Webhook for WhatsApp AI Assistant & Scheduling
 		api.POST("/whatsapp/webhook", whatsappHandler.EvolutionWebhook(db, cfg))
 		api.POST("/webhook/evolution", whatsappHandler.EvolutionWebhook(db, cfg))
+
+		// Affiliates Public Registration & Token Verification
+		api.GET("/affiliates/invite-info", affiliatesHandler.GetInviteInfo(db))
+		api.POST("/affiliates/register", affiliatesHandler.Register(db, cfg))
 	}
 
 	// ─── Protected routes ─────────────────────────────────────────────
@@ -109,6 +114,14 @@ func main() {
 		// Auth
 		auth.GET("/auth/me", authHandler.Me(db))
 		auth.POST("/auth/logout", authHandler.Logout(db))
+
+		// Affiliates Management (Master / Admin)
+		auth.GET("/affiliates", middleware.RequireRole("superadmin", "admin"), affiliatesHandler.List(db))
+		auth.POST("/affiliates/invites", middleware.RequireRole("superadmin", "admin"), affiliatesHandler.CreateInvite(db, cfg))
+		auth.GET("/affiliates/invites", middleware.RequireRole("superadmin", "admin"), affiliatesHandler.ListInvites(db))
+		auth.DELETE("/affiliates/invites/:id", middleware.RequireRole("superadmin", "admin"), affiliatesHandler.RevokeInvite(db))
+		auth.POST("/affiliates/:id/assign-clients", middleware.RequireRole("superadmin", "admin"), affiliatesHandler.AssignClients(db))
+		auth.PUT("/affiliates/:id/status", middleware.RequireRole("superadmin", "admin"), affiliatesHandler.ToggleStatus(db))
 
 		// Service Tokens (superadmin only)
 		auth.POST("/auth/service-tokens", middleware.RequireRole("superadmin"), authHandler.CreateServiceToken(db))

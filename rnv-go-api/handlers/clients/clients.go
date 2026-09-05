@@ -11,13 +11,47 @@ import (
 	"gorm.io/gorm"
 )
 
+func getEffectiveUser(c *gin.Context, db *gorm.DB) (userID string, role string) {
+	userRole, _ := c.Get("userRole")
+	role, _ = userRole.(string)
+
+	if uid := middleware.GetUserID(c); uid != nil && *uid != "" {
+		return *uid, role
+	}
+	if email := middleware.GetActorEmail(c); email != nil && *email != "" {
+		var u models.User
+		if err := db.Where("email = ?", *email).First(&u).Error; err == nil {
+			return u.ID, role
+		}
+	}
+	return "", role
+}
+
 func List(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var clientList []models.Client
-		db.Preload("VPSList.Services").Preload("Services").
+		currentUserID, role := getEffectiveUser(c, db)
+
+		query := db.Model(&models.Client{}).
+			Preload("Affiliate").
+			Preload("VPSList.Services").Preload("Services").
 			Preload("Payments", func(db *gorm.DB) *gorm.DB {
 				return db.Order("date desc").Limit(5)
-			}).Order("created_at desc").Find(&clientList)
+			})
+
+		// Strict Scoping: Affiliates can ONLY see their assigned clients
+		if role == "affiliate" || role == "collaborator" {
+			query = query.Where("affiliate_id = ?", currentUserID)
+		} else if affID := c.Query("affiliateId"); affID != "" {
+			// Master filter by specific affiliate
+			if affID == "unassigned" {
+				query = query.Where("affiliate_id IS NULL OR affiliate_id = ''")
+			} else {
+				query = query.Where("affiliate_id = ?", affID)
+			}
+		}
+
+		var clientList []models.Client
+		query.Order("created_at desc").Find(&clientList)
 
 		type EnrichedClient struct {
 			models.Client
@@ -116,11 +150,19 @@ func List(db *gorm.DB) gin.HandlerFunc {
 
 func Create(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		currentUserID, role := getEffectiveUser(c, db)
+
 		var client models.Client
 		if err := c.ShouldBindJSON(&client); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 			return
 		}
+
+		// If created by an affiliate, auto-assign to themselves
+		if role == "affiliate" || role == "collaborator" {
+			client.AffiliateID = &currentUserID
+		}
+
 		if err := db.Create(&client).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 			return
@@ -128,39 +170,64 @@ func Create(db *gorm.DB) gin.HandlerFunc {
 		userID := middleware.GetUserID(c)
 		ip := middleware.GetClientIP(c)
 		serviceslayer.LogAudit(db, "CREATE", "client", "Cliente creado: "+client.Name,
-			models.JSON{"clientId": client.ID}, ip, userID)
+			models.JSON{"clientId": client.ID, "affiliateId": client.AffiliateID}, ip, userID)
 		c.JSON(http.StatusCreated, gin.H{"success": true, "data": client})
 	}
 }
 
 func Get(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		currentUserID, role := getEffectiveUser(c, db)
 		id := c.Param("id")
+
 		var client models.Client
-		if err := db.Preload("VPSList.Services").Preload("Services").
+		if err := db.Preload("Affiliate").Preload("VPSList.Services").Preload("Services").
 			Preload("Payments", func(db *gorm.DB) *gorm.DB {
 				return db.Order("date desc")
 			}).First(&client, "id = ?", id).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Cliente no encontrado"})
 			return
 		}
+
+		// Affiliate scoping check
+		if (role == "affiliate" || role == "collaborator") && (client.AffiliateID == nil || *client.AffiliateID != currentUserID) {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "No tienes acceso a este cliente"})
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": client})
 	}
 }
 
 func Update(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		currentUserID, role := getEffectiveUser(c, db)
 		id := c.Param("id")
-		var client models.Client
-		if err := db.First(&client, "id = ?", id).Error; err != nil {
+
+		var existing models.Client
+		if err := db.First(&existing, "id = ?", id).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Cliente no encontrado"})
 			return
 		}
+
+		// Affiliate scoping check
+		if (role == "affiliate" || role == "collaborator") && (existing.AffiliateID == nil || *existing.AffiliateID != currentUserID) {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "No tienes permisos para modificar este cliente"})
+			return
+		}
+
+		var client models.Client
 		if err := c.ShouldBindJSON(&client); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 			return
 		}
 		client.ID = id
+
+		// Prevent affiliate from re-assigning ownership
+		if role == "affiliate" || role == "collaborator" {
+			client.AffiliateID = existing.AffiliateID
+		}
+
 		db.Save(&client)
 		serviceslayer.RecalculateClientCost(db, id)
 		userID := middleware.GetUserID(c)
@@ -173,12 +240,21 @@ func Update(db *gorm.DB) gin.HandlerFunc {
 
 func Delete(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		currentUserID, role := getEffectiveUser(c, db)
 		id := c.Param("id")
+
 		var client models.Client
 		if err := db.First(&client, "id = ?", id).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Cliente no encontrado"})
 			return
 		}
+
+		// Affiliate scoping check
+		if (role == "affiliate" || role == "collaborator") && (client.AffiliateID == nil || *client.AffiliateID != currentUserID) {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "No tienes permisos para eliminar este cliente"})
+			return
+		}
+
 		db.Delete(&client)
 		userID := middleware.GetUserID(c)
 		ip := middleware.GetClientIP(c)
