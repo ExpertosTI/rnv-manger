@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -43,7 +44,13 @@ var (
 	serviceFailures    = make(map[string]int)       // serviceID -> consecutive failure count
 	serviceAlertActive = make(map[string]bool)      // serviceID -> true if OFFLINE alert was sent
 	serviceLastAlert   = make(map[string]time.Time) // serviceID -> timestamp of last email alert
+	swarmReplicaRe     = regexp.MustCompile(`\.[0-9]+\.[a-zA-Z0-9]{5,}`)
 )
+
+// isSwarmReplicaName returns true if a name or URL contains a temporary Docker Swarm container task ID
+func isSwarmReplicaName(s string) bool {
+	return swarmReplicaRe.MatchString(s)
+}
 
 // CheckHTTPHealthFast executes a lightweight, resilient HTTP probe with retries, SSL tolerance, and fallback.
 func CheckHTTPHealthFast(rawURL string, maxRetries int, timeout time.Duration) (online bool, statusCode int) {
@@ -108,6 +115,9 @@ func CheckHTTPHealthFast(rawURL string, maxRetries int, timeout time.Duration) (
 
 // CheckServiceReachable probes a single service with 3 retries (HTTP URL or TCP port on VPS).
 func CheckServiceReachable(svc models.Service, vps *models.VPS) (online bool, method string) {
+	if isSwarmReplicaName(svc.Name) || (svc.URL != nil && isSwarmReplicaName(*svc.URL)) {
+		return false, "skip"
+	}
 	if svc.URL != nil && strings.TrimSpace(*svc.URL) != "" {
 		isOnline, _ := CheckHTTPHealthFast(*svc.URL, 3, 10*time.Second)
 		return isOnline, "http"
@@ -137,6 +147,11 @@ func RunServiceHealthChecks(db *gorm.DB, cfg *config.Config) []ServiceHealthResu
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
+
+			if isSwarmReplicaName(s.Name) || (s.URL != nil && isSwarmReplicaName(*s.URL)) {
+				db.Delete(&s)
+				return
+			}
 
 			oldStatus := normalizeServiceStatus(s.Status)
 			online, method := CheckServiceReachable(s, s.VPS)

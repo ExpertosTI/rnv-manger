@@ -45,4 +45,10 @@ func AutoMigrate(db *gorm.DB) {
 		log.Fatalf("[DB] AutoMigrate failed: %v", err)
 	}
 	log.Println("[DB] Schema migrated successfully")
+
+	// Clean up legacy/orphan Swarm replica task records that were incorrectly saved as services
+	cleanupRes := db.Exec(`DELETE FROM services WHERE name ~ '\.[0-9]+\.[a-zA-Z0-9]{5,}' OR url ~ '\.[0-9]+\.[a-zA-Z0-9]{5,}'`)
+	if cleanupRes.RowsAffected > 0 {
+		log.Printf("[DB] Purged %d stale Swarm replica services from database", cleanupRes.RowsAffected)
+	}
 }

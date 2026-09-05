@@ -40,6 +40,15 @@ type VPSScanResult struct {
 
 var portRe = regexp.MustCompile(`:(\d+)->`)
 var hostRuleRe = regexp.MustCompile(`Host\(` + "`" + `([^` + "`" + `]+)` + "`" + `\)`)
+var swarmTaskRe = regexp.MustCompile(`^(.+)\.[0-9]+\.[a-zA-Z0-9]+$`)
+
+func cleanServiceName(raw string) string {
+	raw = strings.TrimPrefix(strings.TrimSpace(raw), "/")
+	if m := swarmTaskRe.FindStringSubmatch(raw); len(m) > 1 {
+		return m[1]
+	}
+	return raw
+}
 
 func appendUniqueString(items []string, value string) []string {
 	value = strings.TrimSpace(value)
@@ -85,17 +94,24 @@ func inferServiceType(name, image string) string {
 }
 
 func inferServiceURL(name string) *string {
-	name = strings.TrimSpace(name)
-	if name == "" {
+	name = cleanServiceName(strings.TrimSpace(name))
+	if name == "" || strings.Contains(name, ".") {
 		return nil
 	}
 	lower := strings.ToLower(name)
 	if strings.Contains(lower, "traefik") || strings.Contains(lower, "portainer") ||
 		strings.Contains(lower, "postgres") || strings.Contains(lower, "redis") ||
-		strings.Contains(lower, "watchtower") {
+		strings.Contains(lower, "watchtower") || strings.Contains(lower, "backup") ||
+		strings.Contains(lower, "worker") || strings.Contains(lower, "queue") ||
+		strings.Contains(lower, "cron") || strings.Contains(lower, "db") {
 		return nil
 	}
-	u := fmt.Sprintf("https://%s.renace.tech", name)
+	clean := strings.TrimSuffix(lower, "_web")
+	clean = strings.TrimSuffix(clean, "-web")
+	clean = strings.TrimSuffix(clean, "_app")
+	clean = strings.TrimSuffix(clean, "-app")
+	clean = strings.ReplaceAll(clean, "_", "-")
+	u := fmt.Sprintf("https://%s.renace.tech", clean)
 	return &u
 }
 
@@ -108,7 +124,7 @@ func parseDockerLine(line string) (DiscoveredService, bool) {
 	if len(parts) < 4 {
 		return DiscoveredService{}, false
 	}
-	name := strings.TrimSpace(parts[0])
+	name := cleanServiceName(parts[0])
 	if name == "" || name == "NAMES" {
 		return DiscoveredService{}, false
 	}
@@ -178,7 +194,7 @@ func mergeTraefikHosts(existing []DiscoveredService, inspectOutput string) []Dis
 		if len(parts) < 2 {
 			continue
 		}
-		name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
+		name := cleanServiceName(parts[0])
 		var labels map[string]string
 		if err := json.Unmarshal([]byte(parts[1]), &labels); err != nil {
 			continue
