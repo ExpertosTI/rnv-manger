@@ -94,25 +94,9 @@ func inferServiceType(name, image string) string {
 }
 
 func inferServiceURL(name string) *string {
-	name = cleanServiceName(strings.TrimSpace(name))
-	if name == "" || strings.Contains(name, ".") {
-		return nil
-	}
-	lower := strings.ToLower(name)
-	if strings.Contains(lower, "traefik") || strings.Contains(lower, "portainer") ||
-		strings.Contains(lower, "postgres") || strings.Contains(lower, "redis") ||
-		strings.Contains(lower, "watchtower") || strings.Contains(lower, "backup") ||
-		strings.Contains(lower, "worker") || strings.Contains(lower, "queue") ||
-		strings.Contains(lower, "cron") || strings.Contains(lower, "db") {
-		return nil
-	}
-	clean := strings.TrimSuffix(lower, "_web")
-	clean = strings.TrimSuffix(clean, "-web")
-	clean = strings.TrimSuffix(clean, "_app")
-	clean = strings.TrimSuffix(clean, "-app")
-	clean = strings.ReplaceAll(clean, "_", "-")
-	u := fmt.Sprintf("https://%s.renace.tech", clean)
-	return &u
+	// Do not invent hypothetical URLs for services. Real URLs must be discovered from Traefik labels
+	// or entered by the user. Making up *.renace.tech causes false alerts when domains don't exist.
+	return nil
 }
 
 func parseDockerLine(line string) (DiscoveredService, bool) {

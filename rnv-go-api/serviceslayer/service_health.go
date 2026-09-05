@@ -183,7 +183,7 @@ func RunServiceHealthChecks(db *gorm.DB, cfg *config.Config) []ServiceHealthResu
 
 				if oldStatus != "running" {
 					shouldChangeStatus = true
-					if wasAlerted {
+					if wasAlerted && oldStatus == "stopped" {
 						shouldNotifyRecovery = true
 					}
 				}
@@ -195,11 +195,15 @@ func RunServiceHealthChecks(db *gorm.DB, cfg *config.Config) []ServiceHealthResu
 					if oldStatus != "stopped" {
 						shouldChangeStatus = true
 					}
-					lastAlert := serviceLastAlert[s.ID]
-					if !serviceAlertActive[s.ID] || time.Since(lastAlert) > 1*time.Hour {
-						shouldNotifyOffline = true
-						serviceAlertActive[s.ID] = true
-						serviceLastAlert[s.ID] = now
+					// STRICT RULE: Only alert if the service was actively RUNNING before.
+					// If it was already stopped, offline, or unknown, it is NOT a new outage!
+					if oldStatus == "running" {
+						lastAlert := serviceLastAlert[s.ID]
+						if !serviceAlertActive[s.ID] || time.Since(lastAlert) > 1*time.Hour {
+							shouldNotifyOffline = true
+							serviceAlertActive[s.ID] = true
+							serviceLastAlert[s.ID] = now
+						}
 					}
 				}
 			}
@@ -243,6 +247,9 @@ func RunServiceHealthChecks(db *gorm.DB, cfg *config.Config) []ServiceHealthResu
 }
 
 func notifyServiceOffline(db *gorm.DB, cfg *config.Config, svc models.Service, oldStatus, vpsName, method string) {
+	if oldStatus != "running" {
+		return
+	}
 	meta := models.JSON{
 		"serviceId": svc.ID, "serviceName": svc.Name, "type": "service_status",
 		"oldStatus": oldStatus, "newStatus": "stopped", "checkMethod": method,

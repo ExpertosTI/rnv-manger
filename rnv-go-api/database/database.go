@@ -51,4 +51,10 @@ func AutoMigrate(db *gorm.DB) {
 	if cleanupRes.RowsAffected > 0 {
 		log.Printf("[DB] Purged %d stale Swarm replica services from database", cleanupRes.RowsAffected)
 	}
+
+	// Clean up phantom URLs on *.renace.tech that were hallucinated by old scanners on stopped services
+	clearPhantomRes := db.Exec(`UPDATE services SET url = NULL WHERE status = 'stopped' AND url ~ 'https://[a-zA-Z0-9_-]+\.renace\.tech' AND name NOT IN ('rnv-manager', 'www', 'app', 'go-api', 'traefik') AND (domains IS NULL OR domains = '[]' OR domains = '')`)
+	if clearPhantomRes.RowsAffected > 0 {
+		log.Printf("[DB] Cleared %d phantom URLs from stopped services", clearPhantomRes.RowsAffected)
+	}
 }
