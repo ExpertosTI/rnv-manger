@@ -6,6 +6,7 @@ import { Activity, Maximize2, Minimize2, Radio } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
 import { UserMenu } from "./UserMenu";
 import { CurrencyToggle } from "./CurrencyToggle";
+import { SidebarToggle } from "./SidebarToggle";
 import { pageTitleForPath } from "@/config/nav";
 
 export function TopHeader() {
