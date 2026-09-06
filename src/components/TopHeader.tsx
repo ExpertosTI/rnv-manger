@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Activity, Maximize2, Minimize2, Radio, Sparkles } from "lucide-react";
+import { Activity, Maximize2, Minimize2, Radio } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
 import { UserMenu } from "./UserMenu";
 import { CurrencyToggle } from "./CurrencyToggle";
@@ -80,17 +80,6 @@ export function TopHeader() {
                     className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
                 >
                     {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                </button>
-
-                {/* Botón Asistente IA / Chat en la barra de tareas */}
-                <button
-                    type="button"
-                    onClick={() => window.dispatchEvent(new CustomEvent("rnv-ai-open"))}
-                    title="Abrir Asistente IA (Chat)"
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-semibold text-xs shadow-md shadow-violet-500/20 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                >
-                    <Sparkles size={14} className="text-amber-300 animate-pulse" />
-                    <span className="font-medium">Asistente IA</span>
                 </button>
 
                 <NotificationBell />

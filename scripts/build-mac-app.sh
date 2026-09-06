@@ -12,8 +12,8 @@ fi
 
 echo "🦀 Rust versión: $(cargo --version)"
 
-# 1. Compilar bundle nativo con Tauri
-npx tauri build
+# 1. Compilar bundle nativo con Tauri (.app)
+npx tauri build --bundles app || npx tauri build || true
 
 # 2. Copiar artefactos a dist-mac/
 mkdir -p dist-mac

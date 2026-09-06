@@ -53,7 +53,7 @@ pub fn run() {
             let tray_menu = Menu::with_items(
                 handle,
                 &[
-                    &show, &nav_assistant, &nav_reload, &sep,
+                    &nav_assistant, &show, &nav_reload, &sep,
                     &nav_dashboard, &nav_vps, &nav_services,
                     &nav_clients, &nav_billing, &nav_whatsapp,
                     &nav_map, &nav_audit, &nav_settings,
@@ -61,9 +61,14 @@ pub fn run() {
                 ],
             )?;
 
-            let _tray = TrayIconBuilder::new()
+            let tray_icon = app.default_window_icon().cloned().expect("no default window icon");
+
+            let _tray = TrayIconBuilder::with_id("tray_main")
+                .icon(tray_icon)
+                .icon_as_template(false)
                 .menu(&tray_menu)
                 .show_menu_on_left_click(true)
+                .tooltip("RNV Manager - Asistente & Monitor")
                 .on_menu_event(move |app, event| {
                     let win = app.get_webview_window("main");
                     match event.id().as_ref() {
