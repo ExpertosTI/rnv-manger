@@ -146,15 +146,19 @@ clean_disk() {
     rm -f "$ROOT/.git/index.lock"
     # Liberar cache de compilación de Docker BuildKit
     docker builder prune -af 2>/dev/null || true
-    # Eliminar imágenes Docker huérfanas
-    docker image prune -f 2>/dev/null || true
-    # Limpiar logs del sistema mayores a 2 días
-    journalctl --vacuum-time=2d 2>/dev/null || true
+    # Eliminar contenedores parados e imágenes no utilizadas
+    docker container prune -f 2>/dev/null || true
+    docker image prune -af --filter "until=1h" 2>/dev/null || true
+    # Limpiar logs del sistema mayores a 1 día
+    journalctl --vacuum-size=50M 2>/dev/null || true
+    journalctl --vacuum-time=1d 2>/dev/null || true
+    # Limpiar cache de paquetes
+    apt-get clean 2>/dev/null || true
     # Limpiar temporales acumulados
     rm -rf /tmp/go-build* /tmp/npm-* /tmp/next-* /tmp/v8-compile-cache* 2>/dev/null || true
-    # Conservar solo los 3 backups más recientes
+    # Conservar solo los 2 backups más recientes
     if [ -d "$ROOT/backups" ]; then
-        find "$ROOT/backups" -type f -name "*.dump" -mtime +3 -delete 2>/dev/null || true
+        find "$ROOT/backups" -type f -name "*.dump" -mtime +2 -delete 2>/dev/null || true
     fi
     log "✅ Espacio en disco recuperado:"
     df -h / | awk 'NR==1 || NR==2'
