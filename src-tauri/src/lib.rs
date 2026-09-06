@@ -28,6 +28,7 @@ pub fn run() {
             // Tray icon
             let quit = MenuItem::with_id(handle, "quit", "Salir de RNV Manager", true, None::<&str>)?;
             let show = MenuItem::with_id(handle, "show", "Mostrar RNV Manager", true, None::<&str>)?;
+            let nav_assistant = MenuItem::with_id(handle, "nav_assistant", "💬 Abrir Asistente IA (Chat)", true, None::<&str>)?;
             let sep  = PredefinedMenuItem::separator(handle)?;
 
             // Navegación rápida desde el tray
@@ -46,7 +47,7 @@ pub fn run() {
             let tray_menu = Menu::with_items(
                 handle,
                 &[
-                    &show, &nav_reload, &sep,
+                    &show, &nav_assistant, &nav_reload, &sep,
                     &nav_dashboard, &nav_vps, &nav_services,
                     &nav_clients, &nav_billing, &nav_whatsapp,
                     &nav_map, &nav_audit, &nav_settings,
@@ -62,7 +63,15 @@ pub fn run() {
                     match event.id().as_ref() {
                         "quit" => app.exit(0),
                         "show" => {
-                            if let Some(w) = &win { let _ = w.show(); let _ = w.set_focus(); }
+                            if let Some(w) = &win { let _ = w.show(); let _ = w.unminimize(); let _ = w.set_focus(); }
+                        }
+                        "nav_assistant" => {
+                            if let Some(w) = &win {
+                                let _ = w.show();
+                                let _ = w.unminimize();
+                                let _ = w.set_focus();
+                                let _ = w.eval("window.dispatchEvent(new CustomEvent('rnv-ai-open'))");
+                            }
                         }
                         "nav_reload" => {
                             if let Some(w) = &win { let _ = w.eval("window.location.reload()"); }
@@ -84,7 +93,9 @@ pub fn run() {
                         let app = tray.app_handle();
                         if let Some(w) = app.get_webview_window("main") {
                             let _ = w.show();
+                            let _ = w.unminimize();
                             let _ = w.set_focus();
+                            let _ = w.eval("window.dispatchEvent(new CustomEvent('rnv-ai-open'))");
                         }
                     }
                 })
