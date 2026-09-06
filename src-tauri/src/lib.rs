@@ -57,7 +57,7 @@ pub fn run() {
 
             let _tray = TrayIconBuilder::new()
                 .menu(&tray_menu)
-                .show_menu_on_left_click(false)
+                .show_menu_on_left_click(true)
                 .on_menu_event(move |app, event| {
                     let win = app.get_webview_window("main");
                     match event.id().as_ref() {
