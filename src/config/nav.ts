@@ -23,6 +23,7 @@ export type NavItem = {
     label: string;
     href: string;
     headerTitle?: string;
+    target?: string;
 };
 
 /** Navegación principal — una sola fuente para sidebar, dock y header */
@@ -39,7 +40,7 @@ export const MAIN_NAV: NavItem[] = [
     { icon: UsersRound, label: "Colaboradores", href: "/afiliados", headerTitle: "Colaboradores y Afiliados" },
     { icon: DollarSign, label: "Facturación", href: "/billing", headerTitle: "Facturación" },
     { icon: Calendar, label: "Calendario", href: "/calendar", headerTitle: "Calendario" },
-    { icon: Palette, label: "Pizarra", href: "/whiteboard", headerTitle: "Pizarra" },
+    { icon: Palette, label: "Pizarra", href: "/whiteboard-app/index.html", target: "_blank", headerTitle: "Pizarra" },
 ];
 
 export const ADMIN_NAV: NavItem[] = [

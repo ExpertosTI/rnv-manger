@@ -10,6 +10,7 @@ export type NavItem = {
     icon: LucideIcon;
     label: string;
     href: string;
+    target?: string;
 };
 
 type Props = {
@@ -20,7 +21,13 @@ type Props = {
 function DockIcon({ item, active }: { item: NavItem; active: boolean }) {
     const Icon = item.icon;
     return (
-        <Link href={item.href} title={item.label} className="group relative flex justify-center">
+        <Link
+            href={item.href}
+            target={item.target}
+            rel={item.target === "_blank" ? "noopener noreferrer" : undefined}
+            title={item.label}
+            className="group relative flex justify-center"
+        >
             <motion.div
                 whileHover={{ scale: 1.08, y: -1 }}
                 whileTap={{ scale: 0.94 }}

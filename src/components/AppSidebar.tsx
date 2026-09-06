@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, Zap, ChevronLeft } from "lucide-react";
+import { Menu, X, Zap, ChevronLeft, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSidebar } from "@/contexts/SidebarContext";
 import { FloatingNavDock } from "@/components/FloatingNavDock";
@@ -28,6 +28,8 @@ function NavSection({
                     <Link
                         key={item.href}
                         href={item.href}
+                        target={item.target}
+                        rel={item.target === "_blank" ? "noopener noreferrer" : undefined}
                         onClick={onNavigate}
                         className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 group relative ${
                             isActive
@@ -43,7 +45,10 @@ function NavSection({
                             />
                         )}
                         <Icon size={18} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
-                        <span className="text-sm truncate">{item.label}</span>
+                        <span className="text-sm truncate flex-1">{item.label}</span>
+                        {item.target === "_blank" && (
+                            <ExternalLink size={14} className="text-gray-400 group-hover:text-violet-600 shrink-0" />
+                        )}
                     </Link>
                 );
             })}
