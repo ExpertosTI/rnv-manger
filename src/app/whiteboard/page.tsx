@@ -13,8 +13,28 @@ export default function WhiteboardPage() {
 
     const iframeSrc = "/whiteboard-app/index.html";
 
-    const openInNewWindow = () => {
-        window.open(iframeSrc, "_blank", "noopener,noreferrer,width=1400,height=900");
+    const handleOpenInNewWindow = (e: React.MouseEvent<HTMLAnchorElement>) => {
+        const fullUrl = typeof window !== "undefined"
+            ? `${window.location.origin}/whiteboard-app/index.html`
+            : "https://rnv.renace.tech/whiteboard-app/index.html";
+
+        // Try Tauri invoke if available
+        if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
+            try {
+                (window as any).__TAURI_INTERNALS__.invoke("open_whiteboard");
+                e.preventDefault();
+                return;
+            } catch {}
+        }
+
+        // Try standard window.open
+        try {
+            const w = window.open(fullUrl, "_blank");
+            if (w) {
+                e.preventDefault();
+                return;
+            }
+        } catch {}
     };
 
     return (
@@ -31,15 +51,16 @@ export default function WhiteboardPage() {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={openInNewWindow}
-                        className="gap-2 bg-violet-600 text-white hover:bg-violet-700 border-violet-600 shadow-sm"
+                    <a
+                        href="/whiteboard-app/index.html"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={handleOpenInNewWindow}
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-medium text-xs shadow-md shadow-violet-500/20 transition-all hover:scale-105 active:scale-95 cursor-pointer no-underline"
                     >
                         <ExternalLink size={15} />
                         Abrir en Ventana Aparte
-                    </Button>
+                    </a>
                     <Button
                         variant="outline"
                         size="icon"
