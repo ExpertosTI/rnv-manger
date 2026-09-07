@@ -43,15 +43,15 @@ export const listFetcher = <T>(path: string): Promise<T[]> =>
 // ── Auth ────────────────────────────────────────────────────────────────────
 
 export const auth = {
-    requestOTP: (email: string, channel: "email" | "whatsapp" = "email") =>
+    requestOTP: (identifier: string, channel: "email" | "whatsapp" = "whatsapp") =>
         request<{ success: boolean; error?: string; channel?: string; warning?: string; message?: string }>("/auth/request-otp", {
             method: "POST",
-            body: JSON.stringify({ email, channel }),
+            body: JSON.stringify({ email: identifier, identifier, channel }),
         }),
-    verifyOTP: (email: string, code: string) =>
-        request<{ success: boolean; user?: User; error?: string }>("/auth/verify-otp", {
+    verifyOTP: (identifier: string, code: string) =>
+        request<{ success: boolean; token?: string; user?: User; error?: string }>("/auth/verify-otp", {
             method: "POST",
-            body: JSON.stringify({ email, code }),
+            body: JSON.stringify({ email: identifier, identifier, code }),
         }),
     login: (username: string, password: string) =>
         request<{ success: boolean; token: string; user: User }>("/auth/login", {

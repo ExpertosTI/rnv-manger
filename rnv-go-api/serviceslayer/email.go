@@ -147,6 +147,19 @@ func SendOTPWhatsApp(db *gorm.DB, cfg *config.Config, userEmail, code string) er
 	return SendWhatsAppToNotifyNumbers(db, cfg, text)
 }
 
+// SendOTPToPhone sends the OTP code directly to a specific phone number via WhatsApp.
+func SendOTPToPhone(db *gorm.DB, cfg *config.Config, phone, displayName, code string) error {
+	greeting := "Hola"
+	if displayName != "" {
+		greeting = fmt.Sprintf("Hola %s", displayName)
+	}
+	text := fmt.Sprintf(
+		"🔐 *RNV Manager*\n%s, tu código de acceso es:\n\n*%s*\n\nExpira en 5 minutos. Si no lo solicitaste, ignora este mensaje.",
+		greeting, code,
+	)
+	return SendWhatsApp(db, cfg, phone, text)
+}
+
 // SendLoginNotificationWhatsApp alerts admin via WhatsApp on successful login.
 func SendLoginNotificationWhatsApp(db *gorm.DB, cfg *config.Config, email, ip, timestamp string) error {
 	text := fmt.Sprintf(
