@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Send, Loader2 } from "lucide-react";
+import { Send, Loader2, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ai } from "@/lib/api";
 import type { Message, MascotState } from "./ai/types";
@@ -43,7 +43,6 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
 
     useEffect(() => {
         if (isWidget) {
-            setPos({ x: 20, y: 20 });
             setIsOpen(true);
         } else {
             const margin = window.innerWidth < 768 ? 100 : 80;
@@ -104,6 +103,51 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
         }]);
     }, []);
 
+    // Dragging nativo para ventana flotante de macOS Tauri
+    const handleWidgetDrag = useCallback(async (e: React.MouseEvent | React.PointerEvent) => {
+        if (!isWidget) return;
+        if (e.button === 0 && !(e.target as HTMLElement).closest("button") && !(e.target as HTMLElement).closest("input")) {
+            try {
+                const { invoke } = await import("@tauri-apps/api/core");
+                await invoke("start_drag");
+            } catch {
+                try {
+                    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+                    await getCurrentWindow().startDragging();
+                } catch {
+                    /* ignore */
+                }
+            }
+        }
+    }, [isWidget]);
+
+    const handleCloseWidget = useCallback(async () => {
+        try {
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("hide_window");
+        } catch {
+            try {
+                const { getCurrentWindow } = await import("@tauri-apps/api/window");
+                await getCurrentWindow().hide();
+            } catch {
+                setIsOpen(false);
+            }
+        }
+    }, []);
+
+    // Tecla Esc para ocultar ventana widget
+    useEffect(() => {
+        if (!isWidget) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                handleCloseWidget();
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [isWidget, handleCloseWidget]);
+
+    // Dragging en navegador dentro de la página
     const handlePointerDown = useCallback((e: React.PointerEvent) => {
         if (isWidget) return;
         e.preventDefault();
@@ -131,10 +175,14 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
     }, []);
 
     const handleClick = useCallback((e: React.MouseEvent) => {
+        if (isWidget) {
+            setIsOpen((prev) => !prev);
+            return;
+        }
         const dx = e.clientX - dragStartPos.current.x;
         const dy = e.clientY - dragStartPos.current.y;
         if (Math.sqrt(dx * dx + dy * dy) < 10) setIsOpen((prev) => !prev);
-    }, []);
+    }, [isWidget]);
 
     const sendMessage = useCallback(async (overrideMessage?: string) => {
         const text = overrideMessage || input.trim();
@@ -196,7 +244,6 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            setHistoryIndex(-1);
             sendMessage();
         }
         if (e.key === "ArrowUp" && userMessages.length > 0) {
@@ -270,6 +317,17 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
         if (typeof window === "undefined") {
             return { position: "fixed" as const, display: "none" };
         }
+        if (isWidget) {
+            return {
+                position: "fixed" as const,
+                bottom: 84,
+                right: 20,
+                zIndex: 59,
+                display: "flex",
+                flexDirection: "column" as const,
+                alignItems: "flex-end" as const,
+            };
+        }
         const isNearBottom = pos.y > window.innerHeight * 0.5;
         const isNearRight = pos.x > window.innerWidth * 0.5;
         return {
@@ -285,33 +343,49 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
             flexDirection: "column" as const,
             alignItems: isNearRight ? ("flex-end" as const) : ("flex-start" as const),
         };
-    }, [pos]);
+    }, [pos, isWidget]);
+
+    const mascotStyle = useMemo(() => {
+        if (isWidget) {
+            return {
+                position: "fixed" as const,
+                right: 20,
+                bottom: 20,
+                zIndex: 61,
+                touchAction: "none",
+                userSelect: "none",
+                cursor: "grab",
+            };
+        }
+        return {
+            position: "fixed" as const,
+            left: pos.x,
+            top: pos.y,
+            zIndex: 61,
+            touchAction: "none",
+            userSelect: "none",
+            cursor: dragging ? "grabbing" : "grab",
+        };
+    }, [pos, dragging, isWidget]);
 
     return (
         <>
             <div
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerCancel={handlePointerUp}
-                onLostPointerCapture={handlePointerUp}
+                data-tauri-drag-region
+                onMouseDown={isWidget ? handleWidgetDrag : undefined}
+                onPointerDown={!isWidget ? handlePointerDown : undefined}
+                onPointerMove={!isWidget ? handlePointerMove : undefined}
+                onPointerUp={!isWidget ? handlePointerUp : undefined}
+                onPointerCancel={!isWidget ? handlePointerUp : undefined}
+                onLostPointerCapture={!isWidget ? handlePointerUp : undefined}
                 onClick={handleClick}
-                style={{
-                    position: "fixed",
-                    left: pos.x,
-                    top: pos.y,
-                    zIndex: 61,
-                    touchAction: "none",
-                    userSelect: "none",
-                    cursor: dragging ? "grabbing" : "grab",
-                    ...(isWidget ? { WebkitAppRegion: "drag", cursor: "move" } : {}),
-                } as React.CSSProperties}
+                style={mascotStyle as React.CSSProperties}
                 className={`p-1 rounded-full
                            bg-gradient-to-br from-violet-600/80 to-purple-800/80
                            shadow-[0_0_30px_rgba(139,92,246,0.5)] border border-violet-400/30
                            backdrop-blur-sm transition-transform hover:shadow-[0_0_40px_rgba(139,92,246,0.7)]
-                           ${dragging ? "scale-110" : ""}`}
-                title="Arrastra para mover • Toca para abrir"
+                           ${dragging ? "scale-110" : "hover:scale-105 active:scale-95"}`}
+                title={isWidget ? "Arrastra para mover por tu pantalla • Toca para abrir/cerrar" : "Arrastra para mover • Toca para abrir"}
             >
                 <ConeMascot state={mascotState} size={52} />
             </div>
@@ -326,6 +400,31 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
                         style={bubbleStyle}
                         className="gap-2"
                     >
+                        {/* Header sutil de arrastre para el widget flotante */}
+                        {isWidget && (
+                            <div
+                                data-tauri-drag-region
+                                onMouseDown={handleWidgetDrag}
+                                className="flex items-center justify-between w-[320px] px-3 py-1.5 mb-1 rounded-2xl bg-black/50 backdrop-blur-2xl border border-violet-500/30 text-xs text-violet-200 cursor-grab active:cursor-grabbing select-none shadow-xl"
+                            >
+                                <span data-tauri-drag-region className="flex items-center gap-1.5 text-[11px] font-bold tracking-wide text-white">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                    RNV Assistant
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    <span data-tauri-drag-region className="text-[10px] text-violet-300/60 font-mono">Arrastra para mover</span>
+                                    <button
+                                        type="button"
+                                        onClick={handleCloseWidget}
+                                        title="Ocultar (Esc)"
+                                        className="p-1 rounded-full text-violet-400 hover:text-white hover:bg-white/10 transition-colors"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         <div ref={scrollRef} className="max-h-[50vh] overflow-y-auto">
                             {lastExchange.slice(-2).map(renderMessage)}
                         </div>
