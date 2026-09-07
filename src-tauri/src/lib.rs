@@ -27,38 +27,25 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .setup(|app| {
-            // ── Menú nativo de la aplicación ──────────────────────────────
             let handle = app.handle();
 
-            // Tray icon
-            let quit = MenuItem::with_id(handle, "quit", "Salir de RNV Manager", true, None::<&str>)?;
-            let show = MenuItem::with_id(handle, "show", "Mostrar RNV Manager", true, None::<&str>)?;
-            let nav_assistant = MenuItem::with_id(handle, "nav_assistant", "💬 Abrir Asistente IA (Chat)", true, None::<&str>)?;
-            let sep  = PredefinedMenuItem::separator(handle)?;
-
-            // Navegación rápida desde el tray
-            let nav_dashboard = MenuItem::with_id(handle, "nav_dashboard", "⚡ Monitor Principal", true, None::<&str>)?;
-            let nav_vps       = MenuItem::with_id(handle, "nav_vps",       "🖥️ Servidores VPS",   true, None::<&str>)?;
-            let nav_services  = MenuItem::with_id(handle, "nav_services",  "🌐 Servicios & Endpoints", true, None::<&str>)?;
-            let nav_clients   = MenuItem::with_id(handle, "nav_clients",   "👥 Clientes",         true, None::<&str>)?;
-            let nav_billing   = MenuItem::with_id(handle, "nav_billing",   "💳 Facturación",      true, None::<&str>)?;
-            let nav_whatsapp  = MenuItem::with_id(handle, "nav_whatsapp",  "💬 WhatsApp / EvoAPI", true, None::<&str>)?;
-            let nav_map       = MenuItem::with_id(handle, "nav_map",       "🗺️ Mapa Topología",   true, None::<&str>)?;
-            let nav_audit     = MenuItem::with_id(handle, "nav_audit",     "🛡️ Auditoría",        true, None::<&str>)?;
-            let nav_settings  = MenuItem::with_id(handle, "nav_settings",  "⚙️ Ajustes",          true, None::<&str>)?;
-            let nav_reload    = MenuItem::with_id(handle, "nav_reload",    "🔄 Recargar Panel",   true, None::<&str>)?;
-            let nav_sep       = PredefinedMenuItem::separator(handle)?;
+            // Menú contextual mínimo para clic secundario / opciones
+            let nav_assistant = MenuItem::with_id(handle, "nav_assistant", "💬 Asistente IA (Chat)", true, None::<&str>)?;
+            let show          = MenuItem::with_id(handle, "show",          "🖥️ Mostrar RNV Manager", true, None::<&str>)?;
+            let nav_reload    = MenuItem::with_id(handle, "nav_reload",    "🔄 Recargar",             true, None::<&str>)?;
+            let sep           = PredefinedMenuItem::separator(handle)?;
+            let quit          = MenuItem::with_id(handle, "quit",          "Salir de RNV Manager",    true, None::<&str>)?;
 
             let tray_menu = Menu::with_items(
                 handle,
-                &[
-                    &nav_assistant, &show, &nav_reload, &sep,
-                    &nav_dashboard, &nav_vps, &nav_services,
-                    &nav_clients, &nav_billing, &nav_whatsapp,
-                    &nav_map, &nav_audit, &nav_settings,
-                    &nav_sep, &quit
-                ],
+                &[&nav_assistant, &show, &nav_reload, &sep, &quit],
             )?;
 
             let tray_icon = app.default_window_icon().cloned().expect("no default window icon");
@@ -67,8 +54,8 @@ pub fn run() {
                 .icon(tray_icon)
                 .icon_as_template(false)
                 .menu(&tray_menu)
-                .show_menu_on_left_click(true)
-                .tooltip("RNV Manager - Asistente & Monitor")
+                .show_menu_on_left_click(false)
+                .tooltip("RNV Manager - Asistente IA")
                 .on_menu_event(move |app, event| {
                     let win = app.get_webview_window("main");
                     match event.id().as_ref() {
@@ -87,15 +74,6 @@ pub fn run() {
                         "nav_reload" => {
                             if let Some(w) = &win { let _ = w.eval("window.location.reload()"); }
                         }
-                        "nav_dashboard" => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/".parse().unwrap()); } }
-                        "nav_vps"       => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/vps".parse().unwrap()); } }
-                        "nav_services"  => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/services".parse().unwrap()); } }
-                        "nav_clients"   => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/clients".parse().unwrap()); } }
-                        "nav_billing"   => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/billing".parse().unwrap()); } }
-                        "nav_whatsapp"  => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/whatsapp".parse().unwrap()); } }
-                        "nav_map"       => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/map".parse().unwrap()); } }
-                        "nav_audit"     => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/audit".parse().unwrap()); } }
-                        "nav_settings"  => { if let Some(w) = &win { let _ = w.show(); let _ = w.navigate("https://rnv.renace.tech/settings".parse().unwrap()); } }
                         _ => {}
                     }
                 })
