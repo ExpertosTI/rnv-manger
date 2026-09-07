@@ -40,6 +40,19 @@
         "transparent": true,
         "visible": false,
         "skipTaskbar": true
+      },
+      {
+        "label": "whiteboard",
+        "title": "RNV Manager — Pizarra y Arquitectura",
+        "url": "https://rnv.renace.tech/whiteboard-app/index.html",
+        "width": 1280,
+        "height": 850,
+        "minWidth": 900,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "decorations": true,
+        "visible": false
       }
     ],
     "security": {

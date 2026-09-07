@@ -13,7 +13,7 @@ const NO_HEADER_PATHS = ["/map"];
 export function AppShell({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const isBare = BARE_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
-    const isFullBleed = pathname === "/map" || pathname.startsWith("/map/");
+    const isFullBleed = pathname === "/map" || pathname.startsWith("/map/") || pathname === "/whiteboard" || pathname.startsWith("/whiteboard/");
     const hideHeader = NO_HEADER_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
     if (isBare) {

@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/schema/acl/capabilities.schema.json",
   "identifier": "default",
   "description": "Capacidades por defecto de RNV Manager",
-  "windows": ["main", "chat"],
+  "windows": ["main", "chat", "whiteboard"],
   "permissions": [
     "core:default",
     "core:window:default",

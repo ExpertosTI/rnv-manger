@@ -19,8 +19,14 @@ fn show_notification(app: tauri::AppHandle, title: String, body: String) {
 
 #[tauri::command]
 fn open_whiteboard(app: tauri::AppHandle) {
-    use tauri_plugin_shell::ShellExt;
-    let _ = app.shell().open("https://rnv.renace.tech/whiteboard-app/index.html", None);
+    if let Some(w) = app.get_webview_window("whiteboard") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    } else {
+        use tauri_plugin_shell::ShellExt;
+        let _ = app.shell().open("https://rnv.renace.tech/whiteboard-app/index.html", None);
+    }
 }
 
 #[tauri::command]
@@ -47,15 +53,16 @@ pub fn run() {
             let handle = app.handle();
 
             // Menú contextual mínimo para clic secundario / opciones
-            let nav_assistant = MenuItem::with_id(handle, "nav_assistant", "💬 Asistente IA (Chat)", true, None::<&str>)?;
-            let show          = MenuItem::with_id(handle, "show",          "🖥️ Mostrar RNV Manager", true, None::<&str>)?;
-            let nav_reload    = MenuItem::with_id(handle, "nav_reload",    "🔄 Recargar",             true, None::<&str>)?;
-            let sep           = PredefinedMenuItem::separator(handle)?;
-            let quit          = MenuItem::with_id(handle, "quit",          "Salir de RNV Manager",    true, None::<&str>)?;
+            let nav_assistant  = MenuItem::with_id(handle, "nav_assistant",  "💬 Asistente IA (Chat)",     true, None::<&str>)?;
+            let show           = MenuItem::with_id(handle, "show",           "🖥️ Mostrar RNV Manager",    true, None::<&str>)?;
+            let nav_whiteboard = MenuItem::with_id(handle, "nav_whiteboard", "🎨 Pizarra y Arquitectura", true, None::<&str>)?;
+            let nav_reload     = MenuItem::with_id(handle, "nav_reload",     "🔄 Recargar",                true, None::<&str>)?;
+            let sep            = PredefinedMenuItem::separator(handle)?;
+            let quit           = MenuItem::with_id(handle, "quit",           "Salir de RNV Manager",       true, None::<&str>)?;
 
             let tray_menu = Menu::with_items(
                 handle,
-                &[&nav_assistant, &show, &nav_reload, &sep, &quit],
+                &[&nav_assistant, &show, &nav_whiteboard, &nav_reload, &sep, &quit],
             )?;
 
             let tray_icon = app.default_window_icon().cloned().expect("no default window icon");
@@ -75,6 +82,9 @@ pub fn run() {
                                 let _ = w.unminimize();
                                 let _ = w.set_focus();
                             }
+                        }
+                        "nav_whiteboard" => {
+                            open_whiteboard(app.clone());
                         }
                         "nav_assistant" => {
                             if let Some(chat_win) = app.get_webview_window("chat") {

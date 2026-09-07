@@ -302,7 +302,7 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
                 initial={{ opacity: 0, y: 10, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ type: "spring", damping: 20, stiffness: 200 }}
-                className="mb-3 p-4 rounded-3xl rounded-bl-sm bg-black/60 backdrop-blur-2xl border border-violet-500/20 shadow-[0_8px_32px_rgba(0,0,0,0.5)] max-w-sm"
+                className="mb-3 p-4 rounded-3xl rounded-bl-sm bg-[#12111c]/95 border border-violet-500/30 shadow-2xl max-w-sm"
             >
                 <MessageBlocks
                     blocks={parseRichBlocks(msg.content)}
@@ -380,14 +380,15 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
                 onLostPointerCapture={!isWidget ? handlePointerUp : undefined}
                 onClick={handleClick}
                 style={mascotStyle as React.CSSProperties}
-                className={`p-1 rounded-full
-                           bg-gradient-to-br from-violet-600/80 to-purple-800/80
-                           shadow-[0_0_30px_rgba(139,92,246,0.5)] border border-violet-400/30
-                           backdrop-blur-sm transition-transform hover:shadow-[0_0_40px_rgba(139,92,246,0.7)]
-                           ${dragging ? "scale-110" : "hover:scale-105 active:scale-95"}`}
+                className={`p-1.5 rounded-full
+                           bg-gradient-to-br from-[#20153d] via-[#331c63] to-[#130b29]
+                           border-2 border-violet-400/50
+                           shadow-[0_6px_25px_rgba(139,92,246,0.4)]
+                           transition-all duration-200 hover:border-violet-300 hover:shadow-[0_8px_32px_rgba(139,92,246,0.65)]
+                           ${dragging ? "scale-110 ring-2 ring-violet-400" : "hover:scale-105 active:scale-95"}`}
                 title={isWidget ? "Arrastra para mover por tu pantalla • Toca para abrir/cerrar" : "Arrastra para mover • Toca para abrir"}
             >
-                <ConeMascot state={mascotState} size={52} />
+                <ConeMascot state={mascotState} size={50} />
             </div>
 
             <AnimatePresence>
@@ -405,7 +406,7 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
                             <div
                                 data-tauri-drag-region
                                 onMouseDown={handleWidgetDrag}
-                                className="flex items-center justify-between w-[320px] px-3 py-1.5 mb-1 rounded-2xl bg-black/50 backdrop-blur-2xl border border-violet-500/30 text-xs text-violet-200 cursor-grab active:cursor-grabbing select-none shadow-xl"
+                                className="flex items-center justify-between w-[320px] px-3.5 py-2 mb-1 rounded-2xl bg-[#12111c]/95 border border-violet-500/35 text-xs text-violet-200 cursor-grab active:cursor-grabbing select-none shadow-2xl"
                             >
                                 <span data-tauri-drag-region className="flex items-center gap-1.5 text-[11px] font-bold tracking-wide text-white">
                                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -433,7 +434,7 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
                             <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
-                                className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-black/50 backdrop-blur-xl text-cyan-300 text-xs border border-cyan-500/20 shadow-[0_8px_32px_rgba(0,0,0,0.5)] mb-2"
+                                className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-[#12111c]/95 text-cyan-300 text-xs border border-cyan-500/30 shadow-2xl mb-2"
                             >
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                 Pensando...
@@ -454,7 +455,7 @@ export default function AIAssistant({ isWidget = false }: { isWidget?: boolean }
                             </div>
                         )}
 
-                        <div className="flex gap-2 w-[320px] bg-black/60 backdrop-blur-2xl p-1.5 rounded-full border border-violet-400/30 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+                        <div className="flex gap-2 w-[320px] bg-[#12111c]/95 p-1.5 rounded-full border border-violet-400/35 shadow-2xl">
                             <input
                                 ref={inputRef}
                                 type="text"

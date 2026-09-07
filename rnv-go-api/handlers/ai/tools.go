@@ -1,6 +1,8 @@
 package ai
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -111,6 +113,8 @@ func (te *toolExecutor) execute(name string, args map[string]interface{}) execut
 		result.Result = te.rnvSendEmail(args)
 	case "rnv_send_whatsapp":
 		result.Result = te.rnvSendWhatsApp(args)
+	case "rnv_create_affiliate_invite":
+		result.Result = te.rnvCreateAffiliateInvite(args)
 	case "rnv_whatsapp_report":
 		result.Result = te.rnvWhatsAppReport(args)
 	case "rnv_billing_remind":
@@ -1329,6 +1333,7 @@ func (te *toolExecutor) rnvSendEmail(args map[string]interface{}) map[string]int
 func (te *toolExecutor) rnvSendWhatsApp(args map[string]interface{}) map[string]interface{} {
 	to := strArg(args, "to")
 	text := strArg(args, "text")
+	force := boolArg(args, "force", false)
 	if text == "" {
 		return map[string]interface{}{"success": false, "error": "text requerido"}
 	}
@@ -1343,12 +1348,30 @@ func (te *toolExecutor) rnvSendWhatsApp(args map[string]interface{}) map[string]
 		}
 		return map[string]interface{}{"success": true, "message": "Enviado por correo al admin (WhatsApp solo para clientes/OTP)", "channel": "email"}
 	}
-	if !serviceslayer.IsKnownWhatsAppRecipient(te.db, te.cfg, to) {
-		return map[string]interface{}{
-			"success": false,
-			"error":   "Destino bloqueado: el número debe estar guardado explícitamente en un cliente o servicio RNV",
+
+	cleanTo := serviceslayer.FormatWhatsAppRecipient(to)
+	isKnown := serviceslayer.IsKnownWhatsAppRecipient(te.db, te.cfg, to)
+	if !isKnown {
+		// Verificar si es un usuario o afiliado registrado
+		var user models.User
+		if te.db.Where("phone = ? OR phone = ?", cleanTo, to).First(&user).Error == nil {
+			isKnown = true
+		}
+		// O una invitación existente
+		var invite models.AffiliateInvite
+		if te.db.Where("phone = ? OR phone = ?", cleanTo, to).First(&invite).Error == nil {
+			isKnown = true
 		}
 	}
+
+	if !isKnown && !force {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("El número %s no está guardado previamente en la libreta. Si confirmas que deseas enviarle este mensaje, indica force=true o solicita confirmación.", to),
+			"needConfirm": true,
+		}
+	}
+
 	sent, err := serviceslayer.SendWhatsAppTo(te.db, te.cfg, to, text)
 	if err != nil {
 		return map[string]interface{}{"success": false, "error": err.Error()}
@@ -1357,6 +1380,104 @@ func (te *toolExecutor) rnvSendWhatsApp(args map[string]interface{}) map[string]
 		"success": true,
 		"message": fmt.Sprintf("WhatsApp enviado a %s", strings.Join(sent, ", ")),
 		"sentTo":  sent,
+	}
+}
+
+func (te *toolExecutor) rnvCreateAffiliateInvite(args map[string]interface{}) map[string]interface{} {
+	phone := strArg(args, "phone")
+	name := strArg(args, "name")
+	email := strArg(args, "email")
+	note := strArg(args, "note")
+	daysValid := intArg(args, "daysValid", 7)
+	if daysValid <= 0 {
+		daysValid = 7
+	}
+	sendWA := boolArg(args, "sendWhatsApp", true)
+
+	tokenBytes := make([]byte, 24)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return map[string]interface{}{"success": false, "error": "Error generando token: " + err.Error()}
+	}
+	token := hex.EncodeToString(tokenBytes)
+
+	var ptrName, ptrEmail, ptrPhone, ptrNote *string
+	if name != "" {
+		ptrName = &name
+	}
+	if email != "" {
+		ptrEmail = &email
+	}
+	if phone != "" {
+		ptrPhone = &phone
+	}
+	if note != "" {
+		ptrNote = &note
+	}
+
+	invite := models.AffiliateInvite{
+		Token:     token,
+		Name:      ptrName,
+		Email:     ptrEmail,
+		Phone:     ptrPhone,
+		Note:      ptrNote,
+		CreatedBy: "asistente-ia",
+		ExpiresAt: time.Now().AddDate(0, 0, daysValid),
+		Used:      false,
+	}
+
+	if err := te.db.Create(&invite).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": "Error guardando invitación: " + err.Error()}
+	}
+
+	baseURL := te.cfg.AppURL
+	if baseURL == "" {
+		baseURL = "https://rnv.renace.tech"
+	}
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	inviteURL := fmt.Sprintf("%s/afiliados/registro?token=%s", baseURL, token)
+
+	greeting := "¡Hola!"
+	if name != "" {
+		greeting = fmt.Sprintf("¡Hola %s!", name)
+	}
+
+	waMessage := fmt.Sprintf(
+		"👋 *%s*\n\nTe comparto tu enlace de acceso como *Colaborador / Afiliado* en *RNV Manager (RENACE)*.\n\nCompleta tu registro aquí para acceder a tu panel:\n🔗 %s\n\n⏰ _Este enlace es de uso único y expira en %d días._",
+		greeting, inviteURL, daysValid,
+	)
+
+	cleanPhone := ""
+	for _, r := range phone {
+		if r >= '0' && r <= '9' {
+			cleanPhone += string(r)
+		}
+	}
+
+	waSent := false
+	var waErr string
+	if sendWA && cleanPhone != "" {
+		if err := serviceslayer.SendWhatsApp(te.db, te.cfg, cleanPhone, waMessage); err != nil {
+			waErr = err.Error()
+		} else {
+			waSent = true
+		}
+	}
+
+	resMsg := fmt.Sprintf("Invitación generada con éxito para %s (válida por %d días).", phone, daysValid)
+	if waSent {
+		resMsg += " ¡Mensaje de WhatsApp con el enlace de registro enviado satisfactoriamente!"
+	} else if waErr != "" {
+		resMsg += fmt.Sprintf(" (Alerta WhatsApp: %s. El enlace es: %s)", waErr, inviteURL)
+	}
+
+	return map[string]interface{}{
+		"success":       true,
+		"message":       resMsg,
+		"token":         token,
+		"inviteUrl":     inviteURL,
+		"phone":         cleanPhone,
+		"whatsappSent":  waSent,
+		"whatsappError": waErr,
 	}
 }
 

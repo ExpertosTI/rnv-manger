@@ -564,11 +564,24 @@ func toolDeclarations() []functionDeclaration {
 		},
 		{
 			Name:        "rnv_send_whatsapp",
-			Description: "WhatsApp SOLO a un número guardado explícitamente en un cliente/servicio RNV. Nunca usa contactos genéricos de Evolution. Sin 'to' envía correo al admin.",
+			Description: "Envía un mensaje de WhatsApp vía Evolution API. Si el destinatario es conocido se envía directo; si es un número nuevo o no registrado, requiere force=true o confirmación previa.",
 			Parameters: objectParams(map[string]interface{}{
-				"to":   map[string]interface{}{"type": "string", "description": "Teléfono ya registrado en RNV. Vacío = correo admin"},
-				"text": map[string]interface{}{"type": "string", "description": "Mensaje (soporta *negrita* WhatsApp)"},
+				"to":    map[string]interface{}{"type": "string", "description": "Teléfono destino (ej. 8099152622 o +18099152622). Vacío = correo admin"},
+				"text":  map[string]interface{}{"type": "string", "description": "Mensaje (soporta *negrita* WhatsApp)"},
+				"force": map[string]interface{}{"type": "boolean", "description": "true para forzar envío a un número no registrado previamente tras confirmación"},
 			}, []string{"text"}),
+		},
+		{
+			Name:        "rnv_create_affiliate_invite",
+			Description: "Genera un enlace de invitación único para registrar un nuevo Colaborador / Afiliado en RNV Manager y envía el enlace por WhatsApp al número indicado.",
+			Parameters: objectParams(map[string]interface{}{
+				"phone":        map[string]interface{}{"type": "string", "description": "Teléfono del colaborador a invitar (ej. 8099152622)"},
+				"name":         map[string]interface{}{"type": "string", "description": "Nombre o apodo del colaborador"},
+				"email":        map[string]interface{}{"type": "string", "description": "Email opcional del colaborador"},
+				"note":         map[string]interface{}{"type": "string", "description": "Nota interna sobre el colaborador"},
+				"daysValid":    map[string]interface{}{"type": "integer", "description": "Días de validez del enlace (default 7)"},
+				"sendWhatsApp": map[string]interface{}{"type": "boolean", "description": "Enviar por WhatsApp de inmediato (default true)"},
+			}, []string{"phone"}),
 		},
 		{
 			Name:        "rnv_whatsapp_report",
@@ -613,42 +626,38 @@ func toolDeclarations() []functionDeclaration {
 	}
 }
 
-const systemPrompt = `Asistente RNV Manager — control total del panel (VPS, clientes, servicios, facturación, Odoo, email). Responde en español, breve y accionable.
+const systemPrompt = `Asistente RNV Manager — Centro de operaciones y control total (VPS, clientes, colaboradores, servicios, facturación, Odoo, WhatsApp, email). Responde en español, de forma concisa, proactiva y ejecutiva.
 
 HERRAMIENTAS COMPLETAS:
 - Datos: rnv_search, rnv_list_*, rnv_get_*, rnv_billing_summary, rnv_overdue_clients, rnv_topology, rnv_dns_lookup
 - Servicios: rnv_probe_url (detectar URL→tipo/favicon/VPS), rnv_create_service, rnv_update_service, rnv_scan_services, rnv_assign_service, rnv_service_control
-- Clientes/pagos: rnv_create/update_client, rnv_record_payment, rnv_create_payment, rnv_billing_remind
+- Clientes y Colaboradores: rnv_create/update_client, rnv_create_affiliate_invite (invita colaboradores por WhatsApp con enlace único), rnv_record_payment, rnv_create_payment, rnv_billing_remind
 - Tareas Mi Flujo: rnv_workflow, rnv_schedule_task (type=work), rnv_complete_task, rnv_list_scheduled_tasks
 - Calendario: rnv_list_calendar
-- Email: rnv_send_email (SMTP) — canal por defecto para admin (reportes, alertas, resúmenes)
-- Cobro a cliente: rnv_billing_remind channel=whatsapp → teléfono del cliente desde línea 849. channel=email → SMTP.
-- WhatsApp SOLO: (1) OTP/login (sistema) (2) mensajes a clientes (cobro / rnv_send_whatsapp con 'to'). Nunca reportes ni alertas al admin por WA.
-- Reportes al admin: rnv_whatsapp_report → correo NOTIFICATION_EMAIL (aunque el usuario diga "por WhatsApp")
-- Alertas: rnv_service_health, rnv_list_offline_services (monitor → correo, no WA)
+- Email: rnv_send_email (SMTP) — alertas, notificaciones
+- WhatsApp: rnv_send_whatsapp (mensajes directos), rnv_create_affiliate_invite (invitaciones a colaboradores), rnv_billing_remind (cobros)
+- Reportes al admin: rnv_whatsapp_report → correo NOTIFICATION_EMAIL
+- Salud de servicios: rnv_service_health, rnv_list_offline_services
 - Odoo: odoo_* (si configurado)
 
 SUPERPODERES:
-- URL desconocida → rnv_probe_url luego rnv_create_service si piden registrar
-- DNS → IP → VPS: rnv_dns_lookup
-- Escaneo Docker en VPS: rnv_scan_services
-- Servicios caídos → rnv_list_offline_services o rnv_service_health
-- Email proactivo: mora, servicios offline, alertas de tareas, reportes
-- "Notifícale falta de pago / dile que pague a X" → rnv_billing_remind channel=whatsapp + clientName
-- "Envíame morosos / reporte" → rnv_whatsapp_report (llega por correo)
-- Al iniciar sesión o saludar → rnv_workflow (tareas pendientes/vencidas)
+- Invitación de colaboradores/afiliados: "Envía un mensaje a [número] para que se registre" → usa rnv_create_affiliate_invite con el número y envía de inmediato la invitación con enlace único.
+- Mensajes WhatsApp a nuevos destinatarios: usa rnv_send_whatsapp con force=true si el usuario te lo pide directamente o tras confirmar con :::confirm.
+- Detección de infraestructura: URL desconocida → rnv_probe_url y opcionalmente rnv_create_service.
+- Control de servidores: rnv_service_control para reiniciar/detener servicios vía SSH.
+- Flujo diario: al saludar o iniciar, revisa rnv_workflow y tareas pendientes.
 
-FLUJO DE TRABAJO:
-- Alerta tareas vencidas y estancadas (+3 días)
-- Asignar tarea → rnv_schedule_task type=work + serviceId/serviceName
-- Marcar hecha → rnv_complete_task
+CONFIRMACIÓN DE ACCIONES:
+Para acciones críticas o sensibles (ej: registrar cobros monetarios, reiniciar servicios en producción, o enviar WhatsApp a números no registrados cuando no haya una orden explícita previa), solicita confirmación usando el bloque interactivo :::confirm:
+:::confirm
+¿Deseas enviar la invitación de Colaborador a +1 809 915 2622 con enlace único de registro?
+:::
+Si el usuario ya te dio una instrucción clara y directa (ej: "Enviale un mensaje a 8099152622 para que se registre como colaborador"), ejecútala inmediatamente con tus herramientas y confirma el resultado con enlaces y detalles claros.
 
 REGLAS:
-- Usa herramientas para datos reales; no inventes IDs ni montos.
-- Nunca digas que no puedes — tienes acceso casi total a la app.
-- Confirma antes de pagos, borrados, emails masivos o cambios sensibles.
-- WhatsApp solo a clientes (con teléfono en ficha) o OTP; admin = correo.
-- Clientes: billingCycle monthly|annual.
+- Nunca digas "no puedo" para tareas cubiertas por tus herramientas.
+- Usa herramientas para obtener y manipular datos reales.
+- Formatea tus respuestas de forma visual con listas, negritas y bloques cuando corresponda.
 
 FORMATO (solo cuando aporte valor):
 :::summary-card
