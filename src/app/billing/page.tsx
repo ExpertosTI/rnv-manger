@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useToast } from "@/components/ui/toast";
-import { billing as billingApi, type OverdueClient } from "@/lib/api";
+import { billing as billingApi, auth, type OverdueClient, type User } from "@/lib/api";
 import { useCurrency } from "@/lib/currency";
 import { CurrencyToggle } from "@/components/CurrencyToggle";
 
@@ -47,9 +47,15 @@ export default function BillingPage() {
     const [overdue, setOverdue] = useState<OverdueClient[]>([]);
     const [remindingId, setRemindingId] = useState<string | null>(null);
     const [remindingAll, setRemindingAll] = useState(false);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
     const { addToast } = useToast();
 
+    const isAffiliate = currentUser?.role === "affiliate" || currentUser?.role === "collaborator";
+
     useEffect(() => {
+        auth.me().then(res => {
+            if (res.success && res.user) setCurrentUser(res.user);
+        }).catch(() => {});
         fetchBilling();
     }, []);
 
@@ -128,14 +134,23 @@ export default function BillingPage() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Facturación</h2>
-                    <p className="text-muted-foreground">Gestiona costos y genera facturas en Odoo</p>
+                    <h2 className="text-3xl font-bold tracking-tight text-gray-900">
+                        {isAffiliate ? "Mi Facturación" : "Facturación"}
+                    </h2>
+                    <p className="text-muted-foreground text-sm">
+                        {isAffiliate
+                            ? "Control de cobros y facturas correspondientes exclusivamente a tu cartera de clientes"
+                            : "Gestiona costos, cobros y genera facturas en Odoo"}
+                    </p>
                 </div>
-                <Button onClick={fetchBilling} variant="outline" className="gap-2">
-                    <RefreshCw size={16} /> Actualizar
-                </Button>
+                <div className="flex items-center gap-3">
+                    <CurrencyToggle />
+                    <Button onClick={fetchBilling} variant="outline" className="gap-2 rounded-xl">
+                        <RefreshCw size={15} /> Actualizar
+                    </Button>
+                </div>
             </div>
 
             {/* Summary Cards */}
@@ -145,9 +160,9 @@ export default function BillingPage() {
                         <div className="flex items-center gap-3">
                             <DollarSign className="h-8 w-8 opacity-80" />
                             <div>
-                                <p className="text-sm opacity-80">Ingresos Mensuales</p>
-                                <p className="text-2xl font-bold">
-                                    ${totals?.totalMonthlyRevenue.toFixed(2) || "0.00"}
+                                <p className="text-sm opacity-80">{isAffiliate ? "Mis Ingresos Recurrentes" : "Ingresos Mensuales"}</p>
+                                <p className="text-2xl font-bold font-mono">
+                                    {format(totals?.totalMonthlyRevenue || 0)}
                                 </p>
                             </div>
                         </div>
@@ -158,7 +173,7 @@ export default function BillingPage() {
                         <div className="flex items-center gap-3">
                             <Users className="h-6 w-6 text-blue-500" />
                             <div>
-                                <p className="text-sm text-muted-foreground">Clientes Activos</p>
+                                <p className="text-sm text-muted-foreground">{isAffiliate ? "Mis Clientes Activos" : "Clientes Activos"}</p>
                                 <p className="text-2xl font-bold">{totals?.clients || 0}</p>
                             </div>
                         </div>
@@ -180,13 +195,24 @@ export default function BillingPage() {
                         <div className="flex items-center gap-3">
                             <FileText className="h-6 w-6 text-violet-500" />
                             <div>
-                                <p className="text-sm text-muted-foreground">Facturables</p>
+                                <p className="text-sm text-muted-foreground">{isAffiliate ? "Cobros Disponibles" : "Facturables"}</p>
                                 <p className="text-2xl font-bold">{billableClients.length}</p>
                             </div>
                         </div>
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Overdue clients for Collaborator or Global */}
+            {isAffiliate && overdue.length === 0 && (
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3 text-emerald-800">
+                    <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <div>
+                        <p className="font-bold text-sm">¡Al día! No tienes facturas vencidas</p>
+                        <p className="text-xs text-emerald-700/80">Todos los clientes de tu cartera están al corriente con sus pagos.</p>
+                    </div>
+                </div>
+            )}
 
             {/* Overdue clients */}
             {overdue.length > 0 && (
@@ -195,18 +221,20 @@ export default function BillingPage() {
                         <div className="flex items-center justify-between">
                             <CardTitle className="text-base flex items-center gap-2 text-red-800">
                                 <AlertCircle className="w-5 h-5" />
-                                Facturas vencidas ({overdue.length})
+                                {isAffiliate ? `Facturas vencidas de tu cartera (${overdue.length})` : `Facturas vencidas (${overdue.length})`}
                             </CardTitle>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-red-300 text-red-700 gap-2"
-                                disabled={remindingAll}
-                                onClick={() => handleRemind()}
-                            >
-                                <Send size={14} className={remindingAll ? "animate-pulse" : ""} />
-                                Enviar a todos
-                            </Button>
+                            {!isAffiliate && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-red-300 text-red-700 gap-2"
+                                    disabled={remindingAll}
+                                    onClick={() => handleRemind()}
+                                >
+                                    <Send size={14} className={remindingAll ? "animate-pulse" : ""} />
+                                    Enviar a todos
+                                </Button>
+                            )}
                         </div>
                     </CardHeader>
                     <CardContent className="space-y-2">

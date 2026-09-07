@@ -43,6 +43,7 @@ export default function ClientsPage() {
 
     // Modals
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [clientModalStep, setClientModalStep] = useState<1 | 2 | 3>(1);
     const [editingClient, setEditingClient] = useState<Client | null>(null);
     const [quickPayClient, setQuickPayClient] = useState<Client | null>(null);
     const [organizeClient, setOrganizeClient] = useState<Client | null>(null);
@@ -326,6 +327,7 @@ export default function ClientsPage() {
             isActive: true,
         });
         setIsCreateModalOpen(true);
+        setClientModalStep(1);
     };
 
     // Open Edit Modal
@@ -352,6 +354,7 @@ export default function ClientsPage() {
             isActive: client.isActive ?? true,
         });
         setIsCreateModalOpen(true);
+        setClientModalStep(1);
     };
 
     // Submit Create / Edit
@@ -359,6 +362,7 @@ export default function ClientsPage() {
         e.preventDefault();
         if (!formData.name.trim()) {
             addToast("El nombre es requerido", "error");
+            setClientModalStep(1);
             return;
         }
 
@@ -2106,388 +2110,466 @@ export default function ClientsPage() {
 
             {/* ── MODAL: CREATE / EDIT CLIENT ── */}
             <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-                <DialogContent className="max-w-lg rounded-3xl p-6 max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-xl font-bold text-gray-900">
-                            <Users className="w-5 h-5 text-violet-600" />
-                            {editingClient ? "Editar Cliente" : "Nuevo Cliente"}
-                        </DialogTitle>
-                        <DialogDescription className="text-xs text-gray-500">
-                            Configura los datos fiscales y ciclo de cobro del cliente.
+                <DialogContent className="max-w-xl rounded-3xl p-0 overflow-hidden max-h-[88vh] flex flex-col bg-white shadow-2xl border border-gray-100">
+                    {/* Fixed Header */}
+                    <div className="p-5 px-6 border-b border-gray-100 bg-white shrink-0">
+                        <div className="flex items-center justify-between">
+                            <DialogTitle className="flex items-center gap-2 text-lg font-bold text-gray-900">
+                                <Users className="w-5 h-5 text-violet-600" />
+                                {editingClient ? "Editar Cliente" : "Nuevo Cliente"}
+                            </DialogTitle>
+                            <span className="text-[11px] font-semibold text-violet-600 bg-violet-50 px-2.5 py-0.5 rounded-full border border-violet-100">
+                                Paso {clientModalStep} de 3
+                            </span>
+                        </div>
+                        <DialogDescription className="text-xs text-gray-500 mt-0.5">
+                            Configura los datos fiscales, ciclo de cobro y partidas pactadas.
                         </DialogDescription>
-                    </DialogHeader>
 
-                    <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-gray-700">Nombre Completo *</label>
-                            <Input
-                                name="name"
-                                placeholder="Ej: Juan Pérez / Empresa XYZ"
-                                value={formData.name}
-                                onChange={handleInputChange}
-                                className="rounded-xl border-gray-300"
-                                required
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
-                                    <Mail size={12} /> Email
-                                </label>
-                                <Input
-                                    name="email"
-                                    type="email"
-                                    placeholder="contacto@empresa.com"
-                                    value={formData.email}
-                                    onChange={handleInputChange}
-                                    className="rounded-xl border-gray-300 text-xs"
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
-                                    <Phone size={12} /> Teléfono (WhatsApp)
-                                </label>
-                                <Input
-                                    name="phone"
-                                    placeholder="+1 809 123 4567"
-                                    value={formData.phone}
-                                    onChange={handleInputChange}
-                                    className="rounded-xl border-gray-300 text-xs"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
-                                <Building size={12} /> Empresa / Razón Social
-                            </label>
-                            <Input
-                                name="companyName"
-                                placeholder="Nombre comercial o empresa (opcional)"
-                                value={formData.companyName}
-                                onChange={handleInputChange}
-                                className="rounded-xl border-gray-300 text-xs"
-                            />
-                        </div>
-
-                        {/* Etapa del Flujo de Trabajo */}
-                        <div className="bg-gradient-to-br from-violet-50 to-indigo-50/60 p-3.5 rounded-2xl border border-violet-100 space-y-2">
-                            <div className="flex items-center justify-between">
-                                <label className="text-xs font-bold text-violet-900 flex items-center gap-1.5">
-                                    <span>📍 Etapa del Cliente</span>
-                                </label>
-                                <span className="text-[10px] text-violet-600 font-medium">Flujo paso a paso</span>
-                            </div>
-                            <select
-                                name="stage"
-                                value={formData.stage}
-                                onChange={handleInputChange}
-                                className="w-full rounded-xl border border-violet-200 px-3 py-2 text-xs bg-white font-semibold text-gray-800"
+                        {/* Step Tabs */}
+                        <div className="grid grid-cols-3 gap-1.5 mt-3 bg-gray-100/80 p-1 rounded-xl">
+                            <button
+                                type="button"
+                                onClick={() => setClientModalStep(1)}
+                                className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                    clientModalStep === 1
+                                        ? "bg-white text-violet-700 shadow-sm"
+                                        : "text-gray-500 hover:text-gray-800"
+                                }`}
                             >
-                                <option value="levantamiento">1. Visita y Levantamiento Inicial</option>
-                                <option value="cotizacion">2. Cotización y Negociación de Partidas</option>
-                                <option value="implementacion">3. En Proceso de Implementación</option>
-                                <option value="activo">4. Cliente Activo / En Operación</option>
-                            </select>
-
-                            <div className="space-y-1 pt-1">
-                                <label className="text-[11px] font-semibold text-violet-800 flex items-center gap-1">
-                                    <FileText size={11} /> Requerimientos y Notas de Levantamiento
-                                </label>
-                                <textarea
-                                    name="assessmentNotes"
-                                    placeholder="Detalla qué necesita el cliente, cuántos puestos, módulos requeridos, etc."
-                                    value={formData.assessmentNotes}
-                                    onChange={handleInputChange}
-                                    rows={2}
-                                    className="w-full px-3 py-1.5 rounded-xl border border-violet-200 text-xs focus:border-violet-400 focus:outline-none resize-none bg-white"
-                                />
-                            </div>
+                                <span>1.</span> Contacto
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setClientModalStep(2)}
+                                className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                    clientModalStep === 2
+                                        ? "bg-white text-violet-700 shadow-sm"
+                                        : "text-gray-500 hover:text-gray-800"
+                                }`}
+                            >
+                                <span>2.</span> Etapa
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setClientModalStep(3)}
+                                className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                    clientModalStep === 3
+                                        ? "bg-white text-violet-700 shadow-sm"
+                                        : "text-gray-500 hover:text-gray-800"
+                                }`}
+                            >
+                                <span>3.</span> Partidas
+                            </button>
                         </div>
+                    </div>
 
-                        {/* Partida de Implementación & División de Beneficios */}
-                        <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2.5">
-                            <div className="flex items-center justify-between">
-                                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                                    <DollarSign size={13} className="text-emerald-600" />
-                                    <span>Precio de Implementación e Hitos ($ USD)</span>
-                                </label>
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => applyImplementationSplit(50)}
-                                        className="text-[10px] font-bold bg-white hover:bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 shadow-2xs"
-                                        title="Repartir 50% Colaborador / 50% Empresa"
-                                    >
-                                        50/50
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => applyImplementationSplit(70)}
-                                        className="text-[10px] font-bold bg-white hover:bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 shadow-2xs"
-                                        title="Repartir 70% Colaborador / 30% Empresa"
-                                    >
-                                        70/30
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
-                                <Input
-                                    name="implementationFee"
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="Total acordado de implementación (Ej: 1500.00)"
-                                    value={formData.implementationFee}
-                                    onChange={handleInputChange}
-                                    className="pl-7 rounded-xl border-gray-300 text-xs font-bold bg-white"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2 pt-1">
-                                <div className="space-y-1">
-                                    <label className="text-[11px] font-semibold text-violet-700">Partida Colaborador ($)</label>
-                                    <Input
-                                        name="implementationFeeCollaborator"
-                                        type="number"
-                                        step="0.01"
-                                        placeholder="0.00"
-                                        value={formData.implementationFeeCollaborator}
-                                        onChange={handleInputChange}
-                                        className="rounded-xl border-violet-200 text-xs bg-white font-semibold text-violet-800"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[11px] font-semibold text-indigo-700">Partida Empresa ($)</label>
-                                    <Input
-                                        name="implementationFeeCompany"
-                                        type="number"
-                                        step="0.01"
-                                        placeholder="0.00"
-                                        value={formData.implementationFeeCompany}
-                                        onChange={handleInputChange}
-                                        className="rounded-xl border-indigo-200 text-xs bg-white font-semibold text-indigo-800"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Billing Cycle & Rates in USD + Real-time DOP Conversion */}
-                        <div className="grid grid-cols-2 gap-3 bg-gray-50 p-3.5 rounded-2xl border border-gray-200">
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-gray-700">Ciclo de Facturación</label>
-                                <select
-                                    name="billingCycle"
-                                    value={formData.billingCycle}
-                                    onChange={handleInputChange}
-                                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-xs bg-white"
-                                >
-                                    <option value="monthly">Mensual</option>
-                                    <option value="annual">Anual</option>
-                                </select>
-                            </div>
-
-                            {formData.billingCycle === "monthly" ? (
-                                <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs font-bold text-gray-700">Tarifa Base Mensual ($ USD)</label>
-                                        {parseFloat(formData.monthlyFee) > 0 && (
-                                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                                                ≈ {formatDOP(parseFloat(formData.monthlyFee))}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+                    {/* Scrollable Body inside Form */}
+                    <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                            {/* ── STEP 1: DATOS BÁSICOS & CONTACTO ── */}
+                            {clientModalStep === 1 && (
+                                <div className="space-y-4 animate-in fade-in duration-150">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-gray-700">Nombre Completo o Comercial *</label>
                                         <Input
-                                            name="monthlyFee"
-                                            type="number"
-                                            step="0.01"
-                                            placeholder="0.00"
-                                            value={formData.monthlyFee}
+                                            name="name"
+                                            placeholder="Ej: Juan Pérez / Empresa XYZ"
+                                            value={formData.name}
                                             onChange={handleInputChange}
-                                            className="pl-7 rounded-xl border-gray-300 text-xs font-bold bg-white"
+                                            className="rounded-xl border-gray-300 font-medium"
+                                            required
+                                            autoFocus
                                         />
                                     </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs font-bold text-gray-700">Tarifa Base Anual ($ USD)</label>
-                                        {parseFloat(formData.annualFee) > 0 && (
-                                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                                                ≈ {formatDOP(parseFloat(formData.annualFee))}
-                                            </span>
-                                        )}
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                                                <Mail size={12} /> Email de Facturación
+                                            </label>
+                                            <Input
+                                                name="email"
+                                                type="email"
+                                                placeholder="contacto@empresa.com"
+                                                value={formData.email}
+                                                onChange={handleInputChange}
+                                                className="rounded-xl border-gray-300 text-xs"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                                                <Phone size={12} /> Teléfono (WhatsApp)
+                                            </label>
+                                            <Input
+                                                name="phone"
+                                                placeholder="+1 809 123 4567"
+                                                value={formData.phone}
+                                                onChange={handleInputChange}
+                                                className="rounded-xl border-gray-300 text-xs"
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                                            <Building size={12} /> Empresa / Razón Social
+                                        </label>
                                         <Input
-                                            name="annualFee"
-                                            type="number"
-                                            step="0.01"
-                                            placeholder="0.00"
-                                            value={formData.annualFee}
+                                            name="companyName"
+                                            placeholder="Nombre comercial o empresa (opcional)"
+                                            value={formData.companyName}
                                             onChange={handleInputChange}
-                                            className="pl-7 rounded-xl border-gray-300 text-xs font-bold bg-white"
+                                            className="rounded-xl border-gray-300 text-xs"
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center gap-2 pt-1">
+                                        <input
+                                            type="checkbox"
+                                            id="isActive"
+                                            name="isActive"
+                                            checked={formData.isActive}
+                                            onChange={handleInputChange}
+                                            className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 h-4 w-4 cursor-pointer"
+                                        />
+                                        <label htmlFor="isActive" className="text-xs font-medium text-gray-700 cursor-pointer">
+                                            Cliente Activo (habilitado para cobros y operaciones)
+                                        </label>
+                                    </div>
+
+                                    <div className="space-y-1.5 pt-1">
+                                        <label className="text-xs font-semibold text-gray-700">Notas Adicionales</label>
+                                        <textarea
+                                            name="notes"
+                                            placeholder="Detalles de facturación, condiciones especiales, etc."
+                                            value={formData.notes}
+                                            onChange={handleInputChange}
+                                            rows={2}
+                                            className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs focus:border-violet-400 focus:outline-none resize-none bg-white"
                                         />
                                     </div>
                                 </div>
                             )}
 
-                            {/* Real-time Converter Tool inside Form */}
-                            <div className="col-span-2 bg-white/90 p-2.5 rounded-xl border border-gray-200 flex flex-wrap items-center justify-between gap-2 shadow-inner">
-                                <div className="flex items-center gap-1.5 text-xs text-gray-700 font-medium">
-                                    <span>🇩🇴 Calcular desde DOP (RD$):</span>
-                                    <input
-                                        type="number"
-                                        placeholder="Ej: 3000"
-                                        className="w-24 h-7 text-xs px-2 border border-gray-300 rounded-lg font-bold"
-                                        onChange={(e) => {
-                                            const dop = parseFloat(e.target.value);
-                                            if (!isNaN(dop) && dop > 0 && rate > 0) {
-                                                const usd = (dop / rate).toFixed(2);
-                                                if (formData.billingCycle === "monthly") {
-                                                    setFormData(prev => ({ ...prev, monthlyFee: usd }));
-                                                } else {
-                                                    setFormData(prev => ({ ...prev, annualFee: usd }));
-                                                }
-                                            }
-                                        }}
-                                    />
-                                </div>
-                                <span className="text-[11px] text-emerald-700 font-bold font-mono bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
-                                    1 USD = RD$ {rate.toFixed(2)}
-                                </span>
-                            </div>
+                            {/* ── STEP 2: ETAPA & LEVANTAMIENTO ── */}
+                            {clientModalStep === 2 && (
+                                <div className="space-y-4 animate-in fade-in duration-150">
+                                    <div className="bg-gradient-to-br from-violet-50 to-indigo-50/60 p-4 rounded-2xl border border-violet-100 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-xs font-bold text-violet-900 flex items-center gap-1.5">
+                                                <span>📍 Etapa del Proceso Comercial</span>
+                                            </label>
+                                            <span className="text-[10px] text-violet-600 font-medium">Ciclo paso a paso</span>
+                                        </div>
+                                        <select
+                                            name="stage"
+                                            value={formData.stage}
+                                            onChange={handleInputChange}
+                                            className="w-full rounded-xl border border-violet-200 px-3 py-2.5 text-xs bg-white font-bold text-gray-800 shadow-sm"
+                                        >
+                                            <option value="levantamiento">1. Visita y Levantamiento Inicial</option>
+                                            <option value="cotizacion">2. Cotización y Negociación de Partidas</option>
+                                            <option value="implementacion">3. En Proceso de Implementación</option>
+                                            <option value="activo">4. Cliente Activo / En Operación</option>
+                                        </select>
+                                        <p className="text-[11px] text-violet-700/80">
+                                            Define la fase actual para que el sistema organice las partidas y los recordatorios automáticos.
+                                        </p>
+                                    </div>
 
-                            {/* Partidas de Cuota Recurrente */}
-                            <div className="col-span-2 bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-100 space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-xs font-bold text-indigo-900">
-                                        División de Cuota Recurrente ($ USD/mes)
-                                    </label>
-                                    <div className="flex items-center gap-1">
-                                        <button
-                                            type="button"
-                                            onClick={() => applyMonthlySplit(50)}
-                                            className="text-[10px] font-bold bg-white hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200"
-                                            title="Repartir 50% Colaborador / 50% Empresa"
-                                        >
-                                            50/50
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => applyMonthlySplit(40)}
-                                            className="text-[10px] font-bold bg-white hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200"
-                                            title="Repartir 40% Colaborador / 60% Empresa"
-                                        >
-                                            40/60
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="text-[10px] font-semibold text-violet-700">Partida Colaborador ($/m)</label>
-                                        <Input
-                                            name="monthlyFeeCollaborator"
-                                            type="number"
-                                            step="0.01"
-                                            placeholder="0.00"
-                                            value={formData.monthlyFeeCollaborator}
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-gray-700 flex items-center gap-1">
+                                            <FileText size={13} className="text-violet-600" />
+                                            Requerimientos Técnicos y Notas de Levantamiento
+                                        </label>
+                                        <textarea
+                                            name="assessmentNotes"
+                                            placeholder="Detalla qué necesita el cliente: cuántos puestos, tipo de negocio, módulos de Odoo, impresoras fiscales, etc."
+                                            value={formData.assessmentNotes}
                                             onChange={handleInputChange}
-                                            className="rounded-xl border-violet-200 text-xs bg-white font-semibold text-violet-800"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-semibold text-indigo-700">Partida Empresa ($/m)</label>
-                                        <Input
-                                            name="monthlyFeeCompany"
-                                            type="number"
-                                            step="0.01"
-                                            placeholder="0.00"
-                                            value={formData.monthlyFeeCompany}
-                                            onChange={handleInputChange}
-                                            className="rounded-xl border-indigo-200 text-xs bg-white font-semibold text-indigo-800"
+                                            rows={5}
+                                            className="w-full px-3.5 py-2.5 rounded-2xl border border-gray-300 text-xs focus:border-violet-400 focus:outline-none resize-none bg-white leading-relaxed"
                                         />
                                     </div>
                                 </div>
-                            </div>
+                            )}
 
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-gray-700">Día de Pago (1 - 28)</label>
-                                <Input
-                                    name="paymentDay"
-                                    type="number"
-                                    min="1"
-                                    max="28"
-                                    placeholder="1"
-                                    value={formData.paymentDay}
-                                    onChange={handleInputChange}
-                                    className="rounded-xl border-gray-300 text-xs bg-white"
-                                />
-                            </div>
+                            {/* ── STEP 3: COTIZACIÓN, PARTIDAS & FACTURACIÓN ── */}
+                            {clientModalStep === 3 && (
+                                <div className="space-y-4 animate-in fade-in duration-150">
+                                    {/* Partida de Implementación */}
+                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                                <DollarSign size={13} className="text-emerald-600" />
+                                                <span>Precio de Implementación ($ USD)</span>
+                                            </label>
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => applyImplementationSplit(50)}
+                                                    className="text-[10px] font-bold bg-white hover:bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 cursor-pointer shadow-2xs"
+                                                    title="50% Colaborador / 50% Empresa"
+                                                >
+                                                    50/50
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => applyImplementationSplit(70)}
+                                                    className="text-[10px] font-bold bg-white hover:bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 cursor-pointer shadow-2xs"
+                                                    title="70% Colaborador / 30% Empresa"
+                                                >
+                                                    70/30
+                                                </button>
+                                            </div>
+                                        </div>
 
-                            {formData.billingCycle === "annual" && (
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-bold text-gray-700">Mes de Cobro (1 - 12)</label>
-                                    <Input
-                                        name="paymentMonth"
-                                        type="number"
-                                        min="1"
-                                        max="12"
-                                        placeholder="1"
-                                        value={formData.paymentMonth}
-                                        onChange={handleInputChange}
-                                        className="rounded-xl border-gray-300 text-xs bg-white"
-                                    />
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+                                            <Input
+                                                name="implementationFee"
+                                                type="number"
+                                                step="0.01"
+                                                placeholder="Total acordado de implementación (Ej: 1500.00)"
+                                                value={formData.implementationFee}
+                                                onChange={handleInputChange}
+                                                className="pl-7 rounded-xl border-gray-300 text-xs font-bold bg-white"
+                                            />
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-2 pt-0.5">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-semibold text-violet-700">Partida Colaborador ($)</label>
+                                                <Input
+                                                    name="implementationFeeCollaborator"
+                                                    type="number"
+                                                    step="0.01"
+                                                    placeholder="0.00"
+                                                    value={formData.implementationFeeCollaborator}
+                                                    onChange={handleInputChange}
+                                                    className="rounded-xl border-violet-200 text-xs bg-white font-semibold text-violet-800"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-semibold text-indigo-700">Partida Empresa ($)</label>
+                                                <Input
+                                                    name="implementationFeeCompany"
+                                                    type="number"
+                                                    step="0.01"
+                                                    placeholder="0.00"
+                                                    value={formData.implementationFeeCompany}
+                                                    onChange={handleInputChange}
+                                                    className="rounded-xl border-indigo-200 text-xs bg-white font-semibold text-indigo-800"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Facturación Recurrente */}
+                                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 space-y-3">
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-bold text-gray-700">Ciclo de Facturación</label>
+                                                <select
+                                                    name="billingCycle"
+                                                    value={formData.billingCycle}
+                                                    onChange={handleInputChange}
+                                                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-xs bg-white font-medium"
+                                                >
+                                                    <option value="monthly">Mensual</option>
+                                                    <option value="annual">Anual</option>
+                                                </select>
+                                            </div>
+
+                                            {formData.billingCycle === "monthly" ? (
+                                                <div className="space-y-1.5">
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-xs font-bold text-gray-700">Tarifa Mensual ($ USD)</label>
+                                                        {parseFloat(formData.monthlyFee) > 0 && (
+                                                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                                                ≈ {formatDOP(parseFloat(formData.monthlyFee))}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="relative">
+                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+                                                        <Input
+                                                            name="monthlyFee"
+                                                            type="number"
+                                                            step="0.01"
+                                                            placeholder="0.00"
+                                                            value={formData.monthlyFee}
+                                                            onChange={handleInputChange}
+                                                            className="pl-7 rounded-xl border-gray-300 text-xs font-bold bg-white"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-1.5">
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-xs font-bold text-gray-700">Tarifa Anual ($ USD)</label>
+                                                        {parseFloat(formData.annualFee) > 0 && (
+                                                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                                                ≈ {formatDOP(parseFloat(formData.annualFee))}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="relative">
+                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+                                                        <Input
+                                                            name="annualFee"
+                                                            type="number"
+                                                            step="0.01"
+                                                            placeholder="0.00"
+                                                            value={formData.annualFee}
+                                                            onChange={handleInputChange}
+                                                            className="pl-7 rounded-xl border-gray-300 text-xs font-bold bg-white"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Real-time DOP Converter */}
+                                        <div className="bg-white/90 p-2.5 rounded-xl border border-gray-200 flex flex-wrap items-center justify-between gap-2 shadow-inner">
+                                            <div className="flex items-center gap-1.5 text-xs text-gray-700 font-medium">
+                                                <span>🇩🇴 Calcular desde DOP (RD$):</span>
+                                                <input
+                                                    type="number"
+                                                    placeholder="Ej: 3000"
+                                                    className="w-24 h-7 text-xs px-2 border border-gray-300 rounded-lg font-bold"
+                                                    onChange={(e) => {
+                                                        const dop = parseFloat(e.target.value);
+                                                        if (!isNaN(dop) && dop > 0 && rate > 0) {
+                                                            const usd = (dop / rate).toFixed(2);
+                                                            if (formData.billingCycle === "monthly") {
+                                                                setFormData(prev => ({ ...prev, monthlyFee: usd }));
+                                                            } else {
+                                                                setFormData(prev => ({ ...prev, annualFee: usd }));
+                                                            }
+                                                        }
+                                                    }}
+                                                />
+                                            </div>
+                                            <span className="text-[11px] text-emerald-700 font-bold font-mono bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                                                1 USD = RD$ {rate.toFixed(2)}
+                                            </span>
+                                        </div>
+
+                                        {/* Cuota Recurrente Splits */}
+                                        <div className="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-xs font-bold text-indigo-900">
+                                                    División de Cuota Recurrente ($ USD/mes)
+                                                </label>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => applyMonthlySplit(50)}
+                                                        className="text-[10px] font-bold bg-white hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 cursor-pointer"
+                                                        title="50% Colaborador / 50% Empresa"
+                                                    >
+                                                        50/50
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => applyMonthlySplit(40)}
+                                                        className="text-[10px] font-bold bg-white hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 cursor-pointer"
+                                                        title="40% Colaborador / 60% Empresa"
+                                                    >
+                                                        40/60
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="text-[10px] font-semibold text-violet-700">Partida Colab ($/m)</label>
+                                                    <Input
+                                                        name="monthlyFeeCollaborator"
+                                                        type="number"
+                                                        step="0.01"
+                                                        placeholder="0.00"
+                                                        value={formData.monthlyFeeCollaborator}
+                                                        onChange={handleInputChange}
+                                                        className="rounded-xl border-violet-200 text-xs bg-white font-semibold text-violet-800"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-semibold text-indigo-700">Partida Empresa ($/m)</label>
+                                                    <Input
+                                                        name="monthlyFeeCompany"
+                                                        type="number"
+                                                        step="0.01"
+                                                        placeholder="0.00"
+                                                        value={formData.monthlyFeeCompany}
+                                                        onChange={handleInputChange}
+                                                        className="rounded-xl border-indigo-200 text-xs bg-white font-semibold text-indigo-800"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-gray-700">Día de Pago (1 - 28)</label>
+                                            <Input
+                                                name="paymentDay"
+                                                type="number"
+                                                min="1"
+                                                max="28"
+                                                placeholder="1"
+                                                value={formData.paymentDay}
+                                                onChange={handleInputChange}
+                                                className="rounded-xl border-gray-300 text-xs bg-white"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>
 
-                        {/* Active checkbox */}
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="checkbox"
-                                id="isActive"
-                                name="isActive"
-                                checked={formData.isActive}
-                                onChange={handleInputChange}
-                                className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 h-4 w-4"
-                            />
-                            <label htmlFor="isActive" className="text-xs font-medium text-gray-700">
-                                Cliente Activo (habilitado para cobros e informes)
-                            </label>
-                        </div>
-
-                        {/* Notes */}
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-gray-700">Notas Adicionales</label>
-                            <textarea
-                                name="notes"
-                                placeholder="Detalles de facturación, condiciones especiales, etc."
-                                value={formData.notes}
-                                onChange={handleInputChange}
-                                rows={2}
-                                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs focus:border-violet-400 focus:outline-none resize-none"
-                            />
-                        </div>
-
-                        <DialogFooter className="gap-2 sm:gap-0 pt-2">
-                            <Button type="button" variant="outline" onClick={() => setIsCreateModalOpen(false)} className="rounded-xl">
+                        {/* Sticky Footer Bar — ALWAYS 100% VISIBLE */}
+                        <div className="p-4 px-6 border-t border-gray-100 bg-gray-50/95 shrink-0 flex items-center justify-between gap-3 w-full">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => setIsCreateModalOpen(false)}
+                                className="rounded-xl text-gray-500 hover:text-gray-900 text-xs"
+                            >
                                 Cancelar
                             </Button>
-                            <Button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl gap-1.5"
-                            >
-                                {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                                {editingClient ? "Guardar Cambios" : "Crear Cliente"}
-                            </Button>
-                        </DialogFooter>
+
+                            <div className="flex items-center gap-2">
+                                {clientModalStep > 1 && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setClientModalStep(prev => (prev - 1) as any)}
+                                        className="rounded-xl text-xs"
+                                    >
+                                        ← Anterior
+                                    </Button>
+                                )}
+                                {clientModalStep < 3 && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setClientModalStep(prev => (prev + 1) as any)}
+                                        className="border-violet-200 text-violet-700 hover:bg-violet-50 rounded-xl text-xs font-semibold"
+                                    >
+                                        Siguiente →
+                                    </Button>
+                                )}
+                                <Button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white font-bold rounded-xl shadow-md h-9 px-4 text-xs gap-1.5"
+                                >
+                                    {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                                    {editingClient ? "Guardar Cambios" : "Crear Cliente"}
+                                </Button>
+                            </div>
+                        </div>
                     </form>
                 </DialogContent>
             </Dialog>

@@ -6,10 +6,27 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/renace/rnv-go-api/middleware"
 	"github.com/renace/rnv-go-api/models"
 	"github.com/renace/rnv-go-api/serviceslayer"
 	"gorm.io/gorm"
 )
+
+func getEffectiveUser(c *gin.Context, db *gorm.DB) (userID string, role string) {
+	userRole, _ := c.Get("userRole")
+	role, _ = userRole.(string)
+
+	if uid := middleware.GetUserID(c); uid != nil && *uid != "" {
+		return *uid, role
+	}
+	if email := middleware.GetActorEmail(c); email != nil && *email != "" {
+		var u models.User
+		if err := db.Where("email = ?", *email).First(&u).Error; err == nil {
+			return u.ID, role
+		}
+	}
+	return "", role
+}
 
 type clientBillingRow struct {
 	ID               string  `json:"id"`
@@ -26,16 +43,28 @@ type clientBillingRow struct {
 
 func Summary(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		currentUserID, role := getEffectiveUser(c, db)
+		isCollaborator := role == "affiliate" || role == "collaborator"
+
 		var clients []models.Client
-		db.Where("is_active = true").
-			Preload("VPSList").Preload("Services").
+		clientQuery := db.Where("is_active = true")
+		if isCollaborator {
+			clientQuery = clientQuery.Where("affiliate_id = ?", currentUserID)
+		}
+
+		clientQuery.Preload("VPSList").Preload("Services").
 			Preload("Payments", func(db *gorm.DB) *gorm.DB {
 				return db.Order("date desc").Limit(3)
 			}).Order("name asc").Find(&clients)
 
 		var totalRevenue, totalExpenses float64
 		var clientsWithOdoo int64
-		db.Model(&models.VPS{}).Select("COALESCE(SUM(monthly_cost),0)").Scan(&totalExpenses)
+
+		if !isCollaborator {
+			db.Model(&models.VPS{}).Select("COALESCE(SUM(monthly_cost),0)").Scan(&totalExpenses)
+		} else {
+			totalExpenses = 0
+		}
 
 		rows := make([]clientBillingRow, 0, len(clients))
 		for _, cl := range clients {
@@ -47,7 +76,15 @@ func Summary(db *gorm.DB) gin.HandlerFunc {
 				svcCost += s.MonthlyCost
 			}
 			total := cl.MonthlyFee + vpsCost + svcCost
-			totalRevenue += total
+			if isCollaborator {
+				if cl.MonthlyFeeCollaborator > 0 {
+					totalRevenue += cl.MonthlyFeeCollaborator
+				} else {
+					totalRevenue += total
+				}
+			} else {
+				totalRevenue += total
+			}
 			if cl.OdooPartnerID != nil {
 				clientsWithOdoo++
 			}
@@ -68,8 +105,12 @@ func Summary(db *gorm.DB) gin.HandlerFunc {
 		now := time.Now()
 		dayOfMonth := now.Day()
 		var upcomingPayments []models.Client
-		db.Where("is_active = true AND payment_day BETWEEN ? AND ?",
-			dayOfMonth, dayOfMonth+5).Find(&upcomingPayments)
+		upcomingQuery := db.Where("is_active = true AND payment_day BETWEEN ? AND ?",
+			dayOfMonth, dayOfMonth+5)
+		if isCollaborator {
+			upcomingQuery = upcomingQuery.Where("affiliate_id = ?", currentUserID)
+		}
+		upcomingQuery.Find(&upcomingPayments)
 
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
@@ -83,6 +124,7 @@ func Summary(db *gorm.DB) gin.HandlerFunc {
 				"netProfit":           totalRevenue - totalExpenses,
 				"clientCount":         len(clients),
 				"upcomingPayments":    upcomingPayments,
+				"isCollaborator":      isCollaborator,
 			},
 		})
 	}

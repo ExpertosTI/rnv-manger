@@ -25,9 +25,16 @@ type overdueRow struct {
 
 func Overdue(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		currentUserID, role := getEffectiveUser(c, db)
+		isCollaborator := role == "affiliate" || role == "collaborator"
+
 		now := time.Now()
 		var clients []models.Client
-		db.Where("is_active = true").Find(&clients)
+		query := db.Where("is_active = true")
+		if isCollaborator {
+			query = query.Where("affiliate_id = ?", currentUserID)
+		}
+		query.Find(&clients)
 
 		rows := make([]overdueRow, 0)
 		for _, cl := range clients {
@@ -54,23 +61,42 @@ type remindRequest struct {
 
 func Remind(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		currentUserID, role := getEffectiveUser(c, db)
+		isCollaborator := role == "affiliate" || role == "collaborator"
+
 		var req remindRequest
 		_ = c.ShouldBindJSON(&req)
 		now := time.Now()
 
 		var targets []models.Client
-		if req.All {
-			db.Where("is_active = true").Find(&targets)
-		} else if req.ClientID != "" {
-			var cl models.Client
-			if err := db.First(&cl, "id = ?", req.ClientID).Error; err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Cliente no encontrado"})
+		if isCollaborator {
+			if req.All {
+				db.Where("is_active = true AND affiliate_id = ?", currentUserID).Find(&targets)
+			} else if req.ClientID != "" {
+				var cl models.Client
+				if err := db.Where("id = ? AND affiliate_id = ?", req.ClientID, currentUserID).First(&cl).Error; err != nil {
+					c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Cliente no encontrado en tu cartera"})
+					return
+				}
+				targets = []models.Client{cl}
+			} else {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "clientId o all requerido"})
 				return
 			}
-			targets = []models.Client{cl}
 		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "clientId o all requerido"})
-			return
+			if req.All {
+				db.Where("is_active = true").Find(&targets)
+			} else if req.ClientID != "" {
+				var cl models.Client
+				if err := db.First(&cl, "id = ?", req.ClientID).Error; err != nil {
+					c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Cliente no encontrado"})
+					return
+				}
+				targets = []models.Client{cl}
+			} else {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "clientId o all requerido"})
+				return
+			}
 		}
 
 		sent, skipped, failed := 0, 0, 0

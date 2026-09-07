@@ -70,9 +70,9 @@ export function AppSidebar() {
 
     const isAffiliate = currentUser?.role === "affiliate" || currentUser?.role === "collaborator";
 
-    // Filter navigation for affiliates/collaborators: only necessary tools
+    // Filter navigation for affiliates/collaborators: only necessary tools (including Whiteboard)
     const visibleMainNav = isAffiliate
-        ? MAIN_NAV.filter(item => ["/clients", "/billing", "/calendar"].includes(item.href))
+        ? MAIN_NAV.filter(item => ["/clients", "/billing", "/calendar", "/whiteboard"].includes(item.href))
         : MAIN_NAV;
 
     const visibleAdminNav = isAffiliate ? [] : ADMIN_NAV;
