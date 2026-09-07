@@ -187,12 +187,25 @@ func CreateInvite(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			waDirectURL = fmt.Sprintf("https://wa.me/%s?text=%s", cleanPhone, url.QueryEscape(waMessage))
 		}
 
+		whatsappSent := false
+		var whatsappSendErr string
+		if cleanPhone != "" {
+			// Intenta enviar automáticamente el mensaje vía Evolution API
+			if err := serviceslayer.SendWhatsApp(db, cfg, cleanPhone, waMessage); err != nil {
+				whatsappSendErr = err.Error()
+			} else {
+				whatsappSent = true
+			}
+		}
+
 		c.JSON(http.StatusCreated, gin.H{
 			"success":         true,
 			"data":            invite,
 			"inviteUrl":       inviteURL,
 			"whatsappMessage": waMessage,
 			"whatsappUrl":     waDirectURL,
+			"whatsappSent":    whatsappSent,
+			"whatsappError":   whatsappSendErr,
 		})
 	}
 }

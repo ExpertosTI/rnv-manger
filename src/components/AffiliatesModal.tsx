@@ -107,7 +107,14 @@ export function AffiliatesModal({
                     whatsappUrl: res.whatsappUrl,
                     phone: invitePhone.trim(),
                 });
-                addToast("Enlace de invitación generado", "success");
+                if (res.whatsappSent) {
+                    addToast("Invitación enviada directamente por WhatsApp al número", "success");
+                } else {
+                    addToast("Enlace de invitación generado", "success");
+                    if (res.whatsappUrl) {
+                        window.open(res.whatsappUrl, "_blank");
+                    }
+                }
                 setInvitePhone("");
                 setInviteName("");
                 setInviteEmail("");

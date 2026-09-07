@@ -42,6 +42,7 @@ export default function AfiliadosPage() {
         whatsappMessage: string;
         whatsappUrl?: string;
         phone?: string;
+        whatsappSent?: boolean;
     } | null>(null);
     const [copied, setCopied] = useState(false);
 
@@ -101,8 +102,17 @@ export default function AfiliadosPage() {
                     whatsappMessage: res.whatsappMessage,
                     whatsappUrl: res.whatsappUrl,
                     phone: invitePhone.trim(),
+                    whatsappSent: res.whatsappSent,
                 });
-                addToast("Enlace de invitación generado con éxito", "success");
+
+                if (res.whatsappSent) {
+                    addToast("¡Invitación enviada por WhatsApp al " + invitePhone + "!", "success");
+                } else {
+                    addToast("Invitación generada. Abriendo WhatsApp para enviar...", "info");
+                    const targetUrl = res.whatsappUrl || `https://wa.me/${invitePhone.replace(/\D/g, "")}?text=${encodeURIComponent(res.whatsappMessage)}`;
+                    window.open(targetUrl, "_blank");
+                }
+
                 setInvitePhone("");
                 setInviteName("");
                 setInviteEmail("");
@@ -372,7 +382,11 @@ export default function AfiliadosPage() {
                                     className="mt-4 p-3.5 rounded-2xl bg-violet-500/10 border border-violet-500/20 space-y-3"
                                 >
                                     <div className="flex items-center justify-between text-xs font-semibold text-violet-300">
-                                        <span>¡Enlace listo para enviar!</span>
+                                        <span>
+                                            {generatedInvite.whatsappSent
+                                                ? "✅ ¡Invitación enviada al WhatsApp del colaborador!"
+                                                : "¡Enlace listo para enviar por WhatsApp!"}
+                                        </span>
                                         <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                                     </div>
                                     <div className="flex items-center gap-2 bg-slate-950/80 p-2 rounded-xl border border-violet-500/20">
@@ -403,7 +417,7 @@ export default function AfiliadosPage() {
                                         className="flex items-center justify-center gap-2 w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-medium transition-colors shadow-sm"
                                     >
                                         <MessageSquare className="w-3.5 h-3.5" />
-                                        Enviar por WhatsApp
+                                        {generatedInvite.whatsappSent ? "Abrir Chat de WhatsApp" : "Enviar por WhatsApp"}
                                     </a>
                                 </motion.div>
                             )}

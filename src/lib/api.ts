@@ -121,7 +121,7 @@ export const clients = {
 export const affiliates = {
     list: () => request<ApiList<Affiliate>>("/affiliates"),
     createInvite: (data: { name?: string; email?: string; phone?: string; note?: string; daysValid?: number }) =>
-        request<{ success: boolean; data: AffiliateInvite; inviteUrl: string; whatsappMessage: string; whatsappUrl?: string }>("/affiliates/invites", {
+        request<{ success: boolean; data: AffiliateInvite; inviteUrl: string; whatsappMessage: string; whatsappUrl?: string; whatsappSent?: boolean; whatsappError?: string }>("/affiliates/invites", {
             method: "POST",
             body: JSON.stringify(data),
         }),
