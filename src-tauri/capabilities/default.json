@@ -2,13 +2,14 @@
   "$schema": "../node_modules/@tauri-apps/cli/schema/acl/capabilities.schema.json",
   "identifier": "default",
   "description": "Capacidades por defecto de RNV Manager",
-  "windows": ["main"],
+  "windows": ["main", "chat"],
   "permissions": [
     "core:default",
     "core:window:default",
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-set-focus",
+    "core:window:allow-start-dragging",
     "shell:allow-open",
     "notification:default"
   ]

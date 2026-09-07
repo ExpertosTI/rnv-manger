@@ -23,6 +23,16 @@ fn open_whiteboard(app: tauri::AppHandle) {
     let _ = app.shell().open("https://rnv.renace.tech/whiteboard-app/index.html", None);
 }
 
+#[tauri::command]
+fn start_drag(window: tauri::WebviewWindow) {
+    let _ = window.start_dragging();
+}
+
+#[tauri::command]
+fn hide_window(window: tauri::WebviewWindow) {
+    let _ = window.hide();
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -103,7 +113,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![navigate_to, show_notification, open_whiteboard])
+        .invoke_handler(tauri::generate_handler![navigate_to, show_notification, open_whiteboard, start_drag, hide_window])
         .run(tauri::generate_context!())
         .expect("error while running RNV Manager");
 }

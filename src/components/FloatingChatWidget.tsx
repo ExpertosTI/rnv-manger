@@ -83,29 +83,46 @@ export default function FloatingChatWidget() {
         inputRef.current?.focus();
     }, []);
 
+    const handleClose = useCallback(async () => {
+        try {
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("hide_window");
+        } catch {
+            try {
+                const { getCurrentWindow } = await import("@tauri-apps/api/window");
+                await getCurrentWindow().hide();
+            } catch {
+                window.close();
+            }
+        }
+    }, []);
+
     // Esc para ocultar ventana
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
-                window.close();
+                handleClose();
             }
         };
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, []);
+    }, [handleClose]);
 
-    const wipeMemory = useCallback(() => {
-        localStorage.removeItem(HISTORY_KEY);
-        setMessages([{
-            id: genId(),
-            role: "assistant",
-            content: "🧹 Memoria borrada. ¿En qué te ayudo ahora?",
-            timestamp: new Date(),
-        }]);
-    }, []);
-
-    const handleClose = () => {
-        window.close();
+    const handleStartDrag = async (e: React.MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (e.button === 0 && !target.closest("button") && !target.closest("input")) {
+            try {
+                const { invoke } = await import("@tauri-apps/api/core");
+                await invoke("start_drag");
+            } catch {
+                try {
+                    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+                    await getCurrentWindow().startDragging();
+                } catch {
+                    /* ignore */
+                }
+            }
+        }
     };
 
     const sendMessage = useCallback(async (overrideMessage?: string) => {
@@ -196,7 +213,8 @@ export default function FloatingChatWidget() {
             {/* Header / Barra de Arrastre macOS */}
             <div
                 data-tauri-drag-region
-                className="flex items-center justify-between px-4 py-3 bg-neutral-900/60 border-b border-white/5 cursor-grab active:cursor-grabbing select-none"
+                onMouseDown={handleStartDrag}
+                className="flex items-center justify-between px-4 py-3 bg-neutral-900/80 border-b border-white/10 cursor-grab active:cursor-grabbing select-none"
             >
                 {/* Traffic dots */}
                 <div className="flex items-center gap-2">
@@ -219,9 +237,9 @@ export default function FloatingChatWidget() {
                 </div>
 
                 {/* Título y estado */}
-                <div data-tauri-drag-region className="flex items-center gap-2">
+                <div data-tauri-drag-region onMouseDown={handleStartDrag} className="flex items-center gap-2 cursor-grab active:cursor-grabbing">
                     <ConeMascot state={mascotState} size={24} />
-                    <span className="font-semibold text-xs tracking-wide text-white">RNV Assistant</span>
+                    <span data-tauri-drag-region className="font-semibold text-xs tracking-wide text-white">RNV Assistant</span>
                     <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                         Online

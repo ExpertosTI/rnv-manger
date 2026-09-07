@@ -7,7 +7,7 @@
     "devUrl": "https://rnv.renace.tech"
   },
   "app": {
-    "withGlobalTauri": false,
+    "withGlobalTauri": true,
     "macOSPrivateApi": true,
     "windows": [
       {

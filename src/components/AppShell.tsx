@@ -17,12 +17,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const hideHeader = NO_HEADER_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
     if (isBare) {
-        return (
-            <>
-                {children}
-                <AIAssistantShell />
-            </>
-        );
+        return <>{children}</>;
     }
 
     return (
