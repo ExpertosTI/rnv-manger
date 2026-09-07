@@ -1,3 +1,7 @@
+"use client";
+
+export const dynamic = "force-dynamic";
+
 import FloatingChatWidget from "@/components/FloatingChatWidget";
 
 export default function WidgetPage() {

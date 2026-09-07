@@ -83,6 +83,15 @@ export default function FloatingChatWidget() {
         inputRef.current?.focus();
     }, []);
 
+    const wipeMemory = useCallback(() => {
+        setMessages([{ ...WELCOME, id: genId(), timestamp: new Date() }]);
+        try {
+            localStorage.removeItem(HISTORY_KEY);
+        } catch {
+            /* ignore */
+        }
+    }, []);
+
     const handleClose = useCallback(async () => {
         try {
             const { invoke } = await import("@tauri-apps/api/core");
