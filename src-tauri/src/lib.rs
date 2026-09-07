@@ -57,22 +57,29 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .tooltip("RNV Manager - Asistente IA")
                 .on_menu_event(move |app, event| {
-                    let win = app.get_webview_window("main");
                     match event.id().as_ref() {
                         "quit" => app.exit(0),
                         "show" => {
-                            if let Some(w) = &win { let _ = w.show(); let _ = w.unminimize(); let _ = w.set_focus(); }
-                        }
-                        "nav_assistant" => {
-                            if let Some(w) = &win {
+                            if let Some(w) = app.get_webview_window("main") {
                                 let _ = w.show();
                                 let _ = w.unminimize();
                                 let _ = w.set_focus();
-                                let _ = w.eval("window.dispatchEvent(new CustomEvent('rnv-ai-open'))");
+                            }
+                        }
+                        "nav_assistant" => {
+                            if let Some(chat_win) = app.get_webview_window("chat") {
+                                let _ = chat_win.show();
+                                let _ = chat_win.unminimize();
+                                let _ = chat_win.set_focus();
                             }
                         }
                         "nav_reload" => {
-                            if let Some(w) = &win { let _ = w.eval("window.location.reload()"); }
+                            if let Some(chat_win) = app.get_webview_window("chat") {
+                                let _ = chat_win.eval("window.location.reload()");
+                            }
+                            if let Some(w) = app.get_webview_window("main") {
+                                let _ = w.eval("window.location.reload()");
+                            }
                         }
                         _ => {}
                     }
@@ -80,11 +87,15 @@ pub fn run() {
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
                         let app = tray.app_handle();
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.unminimize();
-                            let _ = w.set_focus();
-                            let _ = w.eval("window.dispatchEvent(new CustomEvent('rnv-ai-open'))");
+                        if let Some(chat_win) = app.get_webview_window("chat") {
+                            let is_visible = chat_win.is_visible().unwrap_or(false);
+                            if is_visible {
+                                let _ = chat_win.hide();
+                            } else {
+                                let _ = chat_win.show();
+                                let _ = chat_win.unminimize();
+                                let _ = chat_win.set_focus();
+                            }
                         }
                     }
                 })

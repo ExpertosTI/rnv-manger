@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "identifier": "tech.renace.rnv-manager",
   "build": {
-    "frontendDist": "../public",
+    "frontendDist": "../tauri-dist",
     "devUrl": "https://rnv.renace.tech"
   },
   "app": {
@@ -25,7 +25,21 @@
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "acceptFirstMouse": true,
-        "visible": true
+        "visible": false
+      },
+      {
+        "label": "chat",
+        "title": "RNV AI Chat",
+        "url": "https://rnv.renace.tech/widget",
+        "width": 440,
+        "height": 660,
+        "center": true,
+        "resizable": true,
+        "alwaysOnTop": true,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "skipTaskbar": true
       }
     ],
     "security": {
