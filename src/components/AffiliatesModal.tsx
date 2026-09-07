@@ -40,6 +40,7 @@ export function AffiliatesModal({
     const [isLoading, setIsLoading] = useState(false);
 
     // Form for new invite
+    const [invitePhone, setInvitePhone] = useState("");
     const [inviteName, setInviteName] = useState("");
     const [inviteEmail, setInviteEmail] = useState("");
     const [inviteNote, setInviteNote] = useState("");
@@ -48,6 +49,8 @@ export function AffiliatesModal({
     const [generatedInvite, setGeneratedInvite] = useState<{
         inviteUrl: string;
         whatsappMessage: string;
+        whatsappUrl?: string;
+        phone?: string;
     } | null>(null);
     const [copied, setCopied] = useState(false);
 
@@ -83,9 +86,14 @@ export function AffiliatesModal({
     // Handle Create Invite
     const handleCreateInvite = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!invitePhone.trim()) {
+            addToast("Por favor introduce el número de WhatsApp", "error");
+            return;
+        }
         setIsGenerating(true);
         try {
             const res = await affiliates.createInvite({
+                phone: invitePhone.trim() || undefined,
                 name: inviteName.trim() || undefined,
                 email: inviteEmail.trim() || undefined,
                 note: inviteNote.trim() || undefined,
@@ -96,8 +104,14 @@ export function AffiliatesModal({
                 setGeneratedInvite({
                     inviteUrl: res.inviteUrl,
                     whatsappMessage: res.whatsappMessage,
+                    whatsappUrl: res.whatsappUrl,
+                    phone: invitePhone.trim(),
                 });
                 addToast("Enlace de invitación generado", "success");
+                setInvitePhone("");
+                setInviteName("");
+                setInviteEmail("");
+                setInviteNote("");
                 fetchData();
             }
         } catch (err) {
@@ -114,8 +128,15 @@ export function AffiliatesModal({
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const handleWhatsAppShare = (msg: string) => {
-        const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+    const handleWhatsAppShare = (msg: string, phone?: string, waUrl?: string) => {
+        if (waUrl) {
+            window.open(waUrl, "_blank");
+            return;
+        }
+        const cleanPhone = phone ? phone.replace(/\D/g, "") : "";
+        const url = cleanPhone
+            ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`
+            : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
         window.open(url, "_blank");
     };
 
@@ -405,18 +426,36 @@ export function AffiliatesModal({
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-gray-700 ml-1">Nombre o referencia del colaborador (opcional)</label>
+                                    <label className="text-xs font-semibold text-violet-700 ml-1 flex items-center gap-1.5">
+                                        <MessageSquare size={14} className="text-emerald-600" />
+                                        Número de WhatsApp del colaborador
+                                    </label>
                                     <Input
-                                        placeholder="Ej. Juan Pérez (Ventas Santo Domingo)"
-                                        value={inviteName}
-                                        onChange={(e) => setInviteName(e.target.value)}
-                                        className="h-10 rounded-xl text-sm"
+                                        type="tel"
+                                        placeholder="Ej. 809 123 4567 o +1 829 555 1234"
+                                        value={invitePhone}
+                                        onChange={(e) => setInvitePhone(e.target.value)}
+                                        className="h-10 rounded-xl text-sm border-violet-300 focus:ring-violet-500"
+                                        required
+                                        autoFocus
                                     />
+                                    <p className="text-[11px] text-gray-500 ml-1">
+                                        Solo introduce el número de WhatsApp. El colaborador completará su nombre y datos personales al abrir el enlace.
+                                    </p>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                                     <div className="space-y-1.5">
-                                        <label className="text-xs font-semibold text-gray-700 ml-1">Correo electrónico previsto (opcional)</label>
+                                        <label className="text-xs font-semibold text-gray-600 ml-1">Nombre (opcional)</label>
+                                        <Input
+                                            placeholder="Ej. Juan Pérez"
+                                            value={inviteName}
+                                            onChange={(e) => setInviteName(e.target.value)}
+                                            className="h-10 rounded-xl text-sm"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-600 ml-1">Correo electrónico (opcional)</label>
                                         <Input
                                             type="email"
                                             placeholder="juan@ejemplo.com"
@@ -425,6 +464,9 @@ export function AffiliatesModal({
                                             className="h-10 rounded-xl text-sm"
                                         />
                                     </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-semibold text-gray-700 ml-1">Días de validez</label>
                                         <select
@@ -438,21 +480,20 @@ export function AffiliatesModal({
                                             <option value={30}>30 días</option>
                                         </select>
                                     </div>
-                                </div>
-
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-gray-700 ml-1">Nota interna para el equipo (opcional)</label>
-                                    <Input
-                                        placeholder="Ej. Afiliado comisiones 15% cartera nueva"
-                                        value={inviteNote}
-                                        onChange={(e) => setInviteNote(e.target.value)}
-                                        className="h-10 rounded-xl text-sm"
-                                    />
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700 ml-1">Nota / Cartera (opcional)</label>
+                                        <Input
+                                            placeholder="Ej. Afiliado comisiones 15% cartera nueva"
+                                            value={inviteNote}
+                                            onChange={(e) => setInviteNote(e.target.value)}
+                                            className="h-10 rounded-xl text-sm"
+                                        />
+                                    </div>
                                 </div>
 
                                 <Button
                                     type="submit"
-                                    disabled={isGenerating}
+                                    disabled={isGenerating || !invitePhone.trim()}
                                     className="w-full h-11 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl shadow-md shadow-violet-500/20 font-semibold text-xs flex items-center justify-center gap-2"
                                 >
                                     <Link2 size={16} />
@@ -496,7 +537,7 @@ export function AffiliatesModal({
                                             </Button>
 
                                             <Button
-                                                onClick={() => handleWhatsAppShare(generatedInvite.whatsappMessage)}
+                                                onClick={() => handleWhatsAppShare(generatedInvite.whatsappMessage, generatedInvite.phone, generatedInvite.whatsappUrl)}
                                                 className="flex-1 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs h-10 shadow-sm"
                                             >
                                                 <MessageSquare size={14} className="mr-1.5" />

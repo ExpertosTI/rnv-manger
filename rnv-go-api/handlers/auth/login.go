@@ -34,15 +34,26 @@ func Login(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		var user models.User
 		var err error
 
-		identifier := req.Username
+		identifier := strings.TrimSpace(req.Username)
 		if identifier == "" {
-			identifier = req.Email
+			identifier = strings.TrimSpace(req.Email)
 		}
 
 		if identifier != "" {
-			// Login with username/email
-			err = db.Where("(username = ? OR email = ?) AND is_active = true",
-				identifier, identifier).First(&user).Error
+			cleanDigits := ""
+			for _, r := range identifier {
+				if r >= '0' && r <= '9' {
+					cleanDigits += string(r)
+				}
+			}
+
+			if len(cleanDigits) >= 7 {
+				err = db.Where("is_active = true AND (username = ? OR email = ? OR phone = ? OR phone LIKE ?)",
+					identifier, strings.ToLower(identifier), identifier, "%"+cleanDigits+"%").First(&user).Error
+			} else {
+				err = db.Where("is_active = true AND (username = ? OR email = ?)",
+					identifier, strings.ToLower(identifier)).First(&user).Error
+			}
 		} else {
 			// Legacy: password-only (master password or first active admin)
 			err = db.Where("is_active = true AND role IN ('superadmin', 'admin')").

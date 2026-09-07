@@ -51,6 +51,7 @@ function RegisterContent() {
                     setInviteInfo(res.data);
                     if (res.data.name) setName(res.data.name);
                     if (res.data.email) setEmail(res.data.email);
+                    if (res.data.phone) setPhone(res.data.phone);
                 } else {
                     setTokenError("El enlace de invitación no es válido o ha expirado.");
                 }
@@ -65,6 +66,16 @@ function RegisterContent() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!name.trim()) {
+            addToast("Por favor ingresa tu nombre completo", "error");
+            return;
+        }
+
+        if (!email.trim() && !phone.trim()) {
+            addToast("Debes ingresar tu correo electrónico o tu WhatsApp para identificarte", "error");
+            return;
+        }
 
         if (password.length < 6) {
             addToast("La contraseña debe tener al menos 6 caracteres", "error");
@@ -81,7 +92,7 @@ function RegisterContent() {
             const res = await affiliates.register({
                 token,
                 name: name.trim(),
-                email: email.trim().toLowerCase(),
+                email: email.trim() ? email.trim().toLowerCase() : undefined,
                 phone: phone.trim() ? phone.trim() : undefined,
                 password,
             });
@@ -164,10 +175,14 @@ function RegisterContent() {
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="p-3 rounded-xl bg-violet-50/80 border border-violet-100 text-[12px] text-violet-900 leading-relaxed">
+                💡 Completa tus datos personales. Puedes registrarte con tu <strong>WhatsApp</strong> o con tu <strong>Correo Electrónico</strong> para iniciar sesión junto a tu contraseña.
+            </div>
+
             <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-gray-700 ml-1 flex items-center gap-1.5">
                     <User className="h-3.5 w-3.5 text-violet-600" />
-                    Nombre Completo
+                    Nombre Completo <span className="text-red-500">*</span>
                 </label>
                 <Input
                     type="text"
@@ -181,29 +196,28 @@ function RegisterContent() {
 
             <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-gray-700 ml-1 flex items-center gap-1.5">
-                    <Mail className="h-3.5 w-3.5 text-violet-600" />
-                    Correo Electrónico
-                </label>
-                <Input
-                    type="email"
-                    required
-                    placeholder="carlos@empresa.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="h-11 rounded-xl bg-gray-50/70 border-gray-200 focus:bg-white transition-all text-sm"
-                />
-            </div>
-
-            <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-700 ml-1 flex items-center gap-1.5">
-                    <Phone className="h-3.5 w-3.5 text-violet-600" />
-                    Teléfono / WhatsApp (opcional)
+                    <Phone className="h-3.5 w-3.5 text-emerald-600" />
+                    WhatsApp / Teléfono {email.trim() ? "(Opcional si usas correo)" : "(Requerido si no pones correo)"}
                 </label>
                 <Input
                     type="tel"
                     placeholder="Ej. +1 829 555 1234"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
+                    className="h-11 rounded-xl bg-gray-50/70 border-gray-200 focus:bg-white transition-all text-sm"
+                />
+            </div>
+
+            <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-700 ml-1 flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5 text-violet-600" />
+                    Correo Electrónico {phone.trim() ? "(Opcional si usas WhatsApp)" : "(Requerido si no pones WhatsApp)"}
+                </label>
+                <Input
+                    type="email"
+                    placeholder="carlos@empresa.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="h-11 rounded-xl bg-gray-50/70 border-gray-200 focus:bg-white transition-all text-sm"
                 />
             </div>

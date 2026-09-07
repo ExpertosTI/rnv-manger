@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 type CreateInviteRequest struct {
 	Name      *string `json:"name"`
 	Email     *string `json:"email"`
+	Phone     *string `json:"phone"`
 	Note      *string `json:"note"`
 	DaysValid int     `json:"daysValid"`
 }
@@ -26,7 +28,7 @@ type CreateInviteRequest struct {
 type RegisterRequest struct {
 	Token    string  `json:"token" binding:"required"`
 	Name     string  `json:"name" binding:"required"`
-	Email    string  `json:"email" binding:"required"`
+	Email    *string `json:"email"`
 	Phone    *string `json:"phone"`
 	Password string  `json:"password" binding:"required,min=6"`
 }
@@ -141,6 +143,7 @@ func CreateInvite(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			Token:     token,
 			Name:      req.Name,
 			Email:     req.Email,
+			Phone:     req.Phone,
 			Note:      req.Note,
 			CreatedBy: creator,
 			ExpiresAt: expiresAt,
@@ -170,11 +173,26 @@ func CreateInvite(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			recipientGreeting, inviteURL, days,
 		)
 
+		cleanPhone := ""
+		if req.Phone != nil {
+			for _, r := range *req.Phone {
+				if r >= '0' && r <= '9' {
+					cleanPhone += string(r)
+				}
+			}
+		}
+
+		waDirectURL := fmt.Sprintf("https://wa.me/?text=%s", url.QueryEscape(waMessage))
+		if cleanPhone != "" {
+			waDirectURL = fmt.Sprintf("https://wa.me/%s?text=%s", cleanPhone, url.QueryEscape(waMessage))
+		}
+
 		c.JSON(http.StatusCreated, gin.H{
 			"success":         true,
 			"data":            invite,
 			"inviteUrl":       inviteURL,
 			"whatsappMessage": waMessage,
+			"whatsappUrl":     waDirectURL,
 		})
 	}
 }
@@ -240,6 +258,7 @@ func GetInviteInfo(db *gorm.DB) gin.HandlerFunc {
 				"token":     invite.Token,
 				"name":      invite.Name,
 				"email":     invite.Email,
+				"phone":     invite.Phone,
 				"note":      invite.Note,
 				"expiresAt": invite.ExpiresAt,
 			},
@@ -257,11 +276,32 @@ func Register(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 
 		token := strings.TrimSpace(req.Token)
-		email := strings.ToLower(strings.TrimSpace(req.Email))
 		name := strings.TrimSpace(req.Name)
+		if token == "" || name == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "El nombre completo y token de invitación son requeridos"})
+			return
+		}
 
-		if token == "" || email == "" || name == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Todos los campos son obligatorios"})
+		var email string
+		if req.Email != nil {
+			email = strings.ToLower(strings.TrimSpace(*req.Email))
+		}
+
+		var phone *string
+		cleanPhone := ""
+		if req.Phone != nil && strings.TrimSpace(*req.Phone) != "" {
+			p := strings.TrimSpace(*req.Phone)
+			phone = &p
+			for _, r := range p {
+				if r >= '0' && r <= '9' {
+					cleanPhone += string(r)
+				}
+			}
+		}
+
+		// Must have at least email or phone!
+		if email == "" && cleanPhone == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Debes proporcionar al menos tu correo electrónico o tu número de WhatsApp"})
 			return
 		}
 
@@ -281,10 +321,19 @@ func Register(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Check if user with this email exists
+		// If user registered with WhatsApp only (no email provided), generate an internal email identifier
+		if email == "" {
+			email = fmt.Sprintf("%s@whatsapp.rnv.internal", cleanPhone)
+		}
+
+		// Check if user with this email or phone already exists
 		var existingUser models.User
-		if err := db.Where("email = ?", email).First(&existingUser).Error; err == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Ya existe una cuenta con este correo electrónico"})
+		query := db.Where("email = ?", email)
+		if phone != nil && *phone != "" {
+			query = db.Where("email = ? OR phone = ?", email, *phone)
+		}
+		if err := query.First(&existingUser).Error; err == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Ya existe una cuenta con este correo electrónico o número telefónico"})
 			return
 		}
 
@@ -310,7 +359,7 @@ func Register(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			Email:    email,
 			Password: hash,
 			Name:     name,
-			Phone:    req.Phone,
+			Phone:    phone,
 			Role:     "affiliate",
 			IsActive: true,
 		}
@@ -334,9 +383,9 @@ func Register(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		// Mark invite as used
 		now := time.Now()
 		db.Model(&invite).Updates(map[string]interface{}{
-			"used":        true,
-			"used_at":     now,
-			"used_by_id":  user.ID,
+			"used":       true,
+			"used_at":    now,
+			"used_by_id": user.ID,
 		})
 
 		// Generate session JWT

@@ -311,6 +311,7 @@ type AffiliateInvite struct {
 	Token     string     `gorm:"uniqueIndex;not null" json:"token"`
 	Name      *string    `json:"name,omitempty"`
 	Email     *string    `json:"email,omitempty"`
+	Phone     *string    `json:"phone,omitempty"`
 	Note      *string    `json:"note,omitempty"`
 	CreatedBy string     `gorm:"not null" json:"createdBy"`
 	ExpiresAt time.Time  `gorm:"not null" json:"expiresAt"`

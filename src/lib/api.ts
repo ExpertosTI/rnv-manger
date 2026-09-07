@@ -120,18 +120,18 @@ export const clients = {
 
 export const affiliates = {
     list: () => request<ApiList<Affiliate>>("/affiliates"),
-    createInvite: (data: { name?: string; email?: string; note?: string; daysValid?: number }) =>
-        request<{ success: boolean; data: AffiliateInvite; inviteUrl: string; whatsappMessage: string }>("/affiliates/invites", {
+    createInvite: (data: { name?: string; email?: string; phone?: string; note?: string; daysValid?: number }) =>
+        request<{ success: boolean; data: AffiliateInvite; inviteUrl: string; whatsappMessage: string; whatsappUrl?: string }>("/affiliates/invites", {
             method: "POST",
             body: JSON.stringify(data),
         }),
     listInvites: () => request<ApiList<AffiliateInvite>>("/affiliates/invites"),
     revokeInvite: (id: string) => request<ApiSuccess>(`/affiliates/invites/${id}`, { method: "DELETE" }),
     getInviteInfo: (token: string) =>
-        request<{ success: boolean; data: { token: string; name?: string; email?: string; note?: string; expiresAt: string } }>(
+        request<{ success: boolean; data: { token: string; name?: string; email?: string; phone?: string; note?: string; expiresAt: string } }>(
             `/affiliates/invite-info?token=${encodeURIComponent(token)}`
         ),
-    register: (data: { token: string; name: string; email: string; phone?: string; password: string }) =>
+    register: (data: { token: string; name: string; email?: string; phone?: string; password: string }) =>
         request<{ success: boolean; token: string; user: User }>("/affiliates/register", {
             method: "POST",
             body: JSON.stringify(data),
@@ -523,6 +523,7 @@ export interface AffiliateInvite {
     token: string;
     name?: string;
     email?: string;
+    phone?: string;
     note?: string;
     createdBy: string;
     expiresAt: string;

@@ -31,6 +31,7 @@ export default function AfiliadosPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     // Quick Invite Form
+    const [invitePhone, setInvitePhone] = useState("");
     const [inviteName, setInviteName] = useState("");
     const [inviteEmail, setInviteEmail] = useState("");
     const [inviteNote, setInviteNote] = useState("");
@@ -39,6 +40,8 @@ export default function AfiliadosPage() {
     const [generatedInvite, setGeneratedInvite] = useState<{
         inviteUrl: string;
         whatsappMessage: string;
+        whatsappUrl?: string;
+        phone?: string;
     } | null>(null);
     const [copied, setCopied] = useState(false);
 
@@ -78,9 +81,14 @@ export default function AfiliadosPage() {
     // Handle Quick Invite
     const handleCreateInvite = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!invitePhone.trim()) {
+            addToast("Por favor introduce el número de WhatsApp", "error");
+            return;
+        }
         setIsGenerating(true);
         try {
             const res = await affiliates.createInvite({
+                phone: invitePhone.trim() || undefined,
                 name: inviteName.trim() || undefined,
                 email: inviteEmail.trim() || undefined,
                 note: inviteNote.trim() || undefined,
@@ -91,8 +99,11 @@ export default function AfiliadosPage() {
                 setGeneratedInvite({
                     inviteUrl: res.inviteUrl,
                     whatsappMessage: res.whatsappMessage,
+                    whatsappUrl: res.whatsappUrl,
+                    phone: invitePhone.trim(),
                 });
                 addToast("Enlace de invitación generado con éxito", "success");
+                setInvitePhone("");
                 setInviteName("");
                 setInviteEmail("");
                 setInviteNote("");
@@ -278,25 +289,44 @@ export default function AfiliadosPage() {
                         <CardContent>
                             <form onSubmit={handleCreateInvite} className="space-y-4">
                                 <div>
-                                    <label className="text-xs font-medium text-slate-300 block mb-1.5">Nombre del Colaborador</label>
+                                    <label className="text-xs font-semibold text-violet-300 block mb-1.5 flex items-center gap-1.5">
+                                        <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                                        WhatsApp del Colaborador
+                                    </label>
                                     <Input
-                                        placeholder="Ej: Carlos Gómez"
-                                        value={inviteName}
-                                        onChange={(e) => setInviteName(e.target.value)}
-                                        className="bg-slate-950/60 border-slate-800 text-white rounded-xl text-xs h-10"
+                                        type="tel"
+                                        placeholder="Ej: 809 123 4567 o +1 829 555 1234"
+                                        value={invitePhone}
+                                        onChange={(e) => setInvitePhone(e.target.value)}
+                                        className="bg-slate-950/80 border-violet-500/40 focus:border-violet-400 text-white rounded-xl text-xs h-10 placeholder:text-slate-500"
                                         required
+                                        autoFocus
                                     />
+                                    <p className="text-[11px] text-slate-400 mt-1">
+                                        Solo con el número se genera el enlace. El colaborador completará sus datos al registrarse.
+                                    </p>
                                 </div>
 
-                                <div>
-                                    <label className="text-xs font-medium text-slate-300 block mb-1.5">Correo (Opcional)</label>
-                                    <Input
-                                        type="email"
-                                        placeholder="carlos@ejemplo.com"
-                                        value={inviteEmail}
-                                        onChange={(e) => setInviteEmail(e.target.value)}
-                                        className="bg-slate-950/60 border-slate-800 text-white rounded-xl text-xs h-10"
-                                    />
+                                <div className="grid grid-cols-2 gap-3 pt-1">
+                                    <div>
+                                        <label className="text-xs font-medium text-slate-400 block mb-1.5">Nombre (Opcional)</label>
+                                        <Input
+                                            placeholder="Ej: Carlos Gómez"
+                                            value={inviteName}
+                                            onChange={(e) => setInviteName(e.target.value)}
+                                            className="bg-slate-950/60 border-slate-800 text-white rounded-xl text-xs h-10 placeholder:text-slate-600"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-slate-400 block mb-1.5">Correo (Opcional)</label>
+                                        <Input
+                                            type="email"
+                                            placeholder="carlos@ejemplo.com"
+                                            value={inviteEmail}
+                                            onChange={(e) => setInviteEmail(e.target.value)}
+                                            className="bg-slate-950/60 border-slate-800 text-white rounded-xl text-xs h-10 placeholder:text-slate-600"
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-3">
@@ -326,7 +356,7 @@ export default function AfiliadosPage() {
 
                                 <Button
                                     type="submit"
-                                    disabled={isGenerating || !inviteName.trim()}
+                                    disabled={isGenerating || !invitePhone.trim()}
                                     className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold h-10 shadow-md shadow-violet-600/20"
                                 >
                                     {isGenerating ? "Generando..." : "Generar Invitación"}
@@ -362,7 +392,12 @@ export default function AfiliadosPage() {
                                     </div>
 
                                     <a
-                                        href={`https://wa.me/?text=${encodeURIComponent(generatedInvite.whatsappMessage)}`}
+                                        href={
+                                            generatedInvite.whatsappUrl ||
+                                            (generatedInvite.phone
+                                                ? `https://wa.me/${generatedInvite.phone.replace(/\D/g, "")}?text=${encodeURIComponent(generatedInvite.whatsappMessage)}`
+                                                : `https://wa.me/?text=${encodeURIComponent(generatedInvite.whatsappMessage)}`)
+                                        }
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="flex items-center justify-center gap-2 w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-medium transition-colors shadow-sm"
