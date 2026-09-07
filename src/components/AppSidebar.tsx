@@ -70,9 +70,9 @@ export function AppSidebar() {
 
     const isAffiliate = currentUser?.role === "affiliate" || currentUser?.role === "collaborator";
 
-    // Filter navigation for affiliates
+    // Filter navigation for affiliates/collaborators: only necessary tools
     const visibleMainNav = isAffiliate
-        ? MAIN_NAV.filter(item => ["/", "/clients", "/afiliados", "/billing", "/calendar", "/workflow"].includes(item.href))
+        ? MAIN_NAV.filter(item => ["/clients", "/billing", "/calendar"].includes(item.href))
         : MAIN_NAV;
 
     const visibleAdminNav = isAffiliate ? [] : ADMIN_NAV;
@@ -139,7 +139,7 @@ export function AppSidebar() {
             </button>
 
             {collapsed && (
-                <FloatingNavDock items={[...MAIN_NAV, ...ADMIN_NAV]} onExpand={() => setCollapsed(false)} />
+                <FloatingNavDock items={[...visibleMainNav, ...visibleAdminNav]} onExpand={() => setCollapsed(false)} />
             )}
 
             <AnimatePresence initial={false}>

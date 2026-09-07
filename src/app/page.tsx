@@ -9,8 +9,9 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { fetcher, listFetcher } from "@/lib/api";
+import { fetcher, listFetcher, auth } from "@/lib/api";
 import { DASHBOARD_SHORTCUTS, isVpsOnline } from "@/config/nav";
 
 interface VPSItem {
@@ -52,12 +53,21 @@ function StatCardSkeleton() {
 }
 
 export default function Home() {
+    const router = useRouter();
     const { addToast } = useToast();
     const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
     const [showFilterMenu, setShowFilterMenu] = useState(false);
     const [refreshRate, setRefreshRate] = useState<number>(30000); // 30s default
     const [showRateMenu, setShowRateMenu] = useState(false);
     const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+
+    useEffect(() => {
+        auth.me().then(res => {
+            if (res.success && (res.user?.role === "affiliate" || res.user?.role === "collaborator")) {
+                router.replace("/clients");
+            }
+        }).catch(() => {});
+    }, [router]);
 
     const { data: statsResponse, error: statsError, isLoading: statsLoading, mutate: mutateStats } = useSWR<{
         success: boolean;

@@ -114,6 +114,42 @@ export const clients = {
             method: "POST",
             body: JSON.stringify({ clientId, ...data }),
         }),
+    recordAbono: (
+        clientId: string,
+        data: {
+            amount: number;
+            currency?: string;
+            type?: "implementation" | "monthly" | "custom";
+            paymentMethod?: string;
+            notes?: string;
+            collaboratorAmount?: number;
+            companyAmount?: number;
+        }
+    ) =>
+        request<{
+            success: boolean;
+            data: Payment;
+            receiptNumber: string;
+            implementationPaid: number;
+            implementationBalance: number;
+            collaboratorAmount: number;
+            companyAmount: number;
+        }>(`/clients/${clientId}/abonos`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    updateStage: (
+        clientId: string,
+        data: {
+            stage: string;
+            assessmentNotes?: string;
+            implementationChecklist?: Record<string, boolean>;
+        }
+    ) =>
+        request<{ success: boolean; client?: Client; data?: Client }>(`/clients/${clientId}/stage`, {
+            method: "PUT",
+            body: JSON.stringify(data),
+        }),
 };
 
 // ── Affiliates & Collaborators ────────────────────────────────────────────────
@@ -544,6 +580,18 @@ export interface Client {
     isActive: boolean;
     affiliateId?: string;
     affiliate?: User;
+    stage?: "levantamiento" | "cotizacion" | "implementacion" | "activo" | "suspendido";
+    assessmentNotes?: string;
+    implementationFee?: number;
+    implementationFeeCollaborator?: number;
+    implementationFeeCompany?: number;
+    monthlyFeeCollaborator?: number;
+    monthlyFeeCompany?: number;
+    implementationChecklist?: Record<string, boolean>;
+    implementationPaid?: number;
+    implementationBalance?: number;
+    totalCollaboratorEarned?: number;
+    totalCompanyEarned?: number;
     billingCycle?: "monthly" | "annual";
     monthlyFee: number;
     annualFee?: number;
@@ -678,6 +726,11 @@ export interface Payment {
     date: string;
     status: string;
     clientId: string;
+    type?: "implementation" | "monthly" | "custom";
+    collaboratorAmount?: number;
+    companyAmount?: number;
+    paymentMethod?: string;
+    receiptNumber?: string;
     notes?: string;
     createdAt: string;
 }

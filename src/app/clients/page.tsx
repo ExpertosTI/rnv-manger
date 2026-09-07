@@ -12,7 +12,7 @@ import {
     RefreshCw, Building, FileText, CheckCircle2, Clock, Sparkles, Layers,
     Send, MessageSquare, ExternalLink, Edit2, Trash2,
     Wrench, Check, Copy, Download,
-    Server, ArrowRight, UsersRound
+    Server, ArrowRight, UsersRound, Receipt, Printer, Share2, CheckSquare, TrendingUp
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/components/ui/toast";
@@ -22,7 +22,7 @@ import { useCurrency } from "@/lib/currency";
 import { CurrencyToggle } from "@/components/CurrencyToggle";
 import { AffiliatesModal } from "@/components/AffiliatesModal";
 
-type FilterTab = "all" | "overdue" | "paid" | "pending" | "no_services" | "zero_fee" | "no_odoo" | "inactive";
+type FilterTab = "all" | "levantamiento" | "cotizacion" | "implementacion" | "activo" | "overdue" | "paid" | "pending" | "no_services" | "zero_fee" | "no_odoo" | "inactive";
 type ViewMode = "directory" | "cleanup";
 
 export default function ClientsPage() {
@@ -49,6 +49,30 @@ export default function ClientsPage() {
     const [whatsAppModalClient, setWhatsAppModalClient] = useState<Client | null>(null);
     const [whatsAppMessage, setWhatsAppMessage] = useState("");
 
+    // Abonos Modal state
+    const [abonoClient, setAbonoClient] = useState<Client | null>(null);
+    const [abonoAmount, setAbonoAmount] = useState("");
+    const [abonoType, setAbonoType] = useState<"implementation" | "monthly">("implementation");
+    const [abonoCurrency, setAbonoCurrency] = useState<"USD" | "DOP">("USD");
+    const [abonoMethod, setAbonoMethod] = useState<string>("transferencia");
+    const [abonoNotes, setAbonoNotes] = useState("");
+    const [isSubmittingAbono, setIsSubmittingAbono] = useState(false);
+
+    // Receipt Modal state (for WhatsApp or printing)
+    const [receiptData, setReceiptData] = useState<{
+        client: Client;
+        receiptNumber: string;
+        amount: number;
+        currency: string;
+        type: string;
+        method: string;
+        notes?: string;
+        date: string;
+        collaboratorAmount: number;
+        companyAmount: number;
+        remainingBalance: number;
+    } | null>(null);
+
     // Quick Pay Form
     const [payCurrency, setPayCurrency] = useState<"USD" | "DOP">("USD");
     const [payAmount, setPayAmount] = useState("");
@@ -62,6 +86,13 @@ export default function ClientsPage() {
         phone: "",
         companyName: "",
         notes: "",
+        stage: "levantamiento",
+        assessmentNotes: "",
+        implementationFee: "",
+        implementationFeeCollaborator: "",
+        implementationFeeCompany: "",
+        monthlyFeeCollaborator: "",
+        monthlyFeeCompany: "",
         billingCycle: "monthly",
         monthlyFee: "",
         annualFee: "",
@@ -104,6 +135,7 @@ export default function ClientsPage() {
 
     const isMaster = !currentUser || currentUser.role === "superadmin" || currentUser.role === "admin";
     const isAffiliate = currentUser?.role === "affiliate" || currentUser?.role === "collaborator";
+    const isCollaborator = isAffiliate;
 
     // Orphan Services (services without client)
     const orphanServices = useMemo(() => {
@@ -123,6 +155,17 @@ export default function ClientsPage() {
         const overdueAmount = overdueClients.reduce((sum, c) => sum + (c.amountDue || c.monthlyFee || 0), 0);
         const paidClients = clients.filter(c => c.paidThisPeriod || c.billingStatus === "paid");
         
+        // Stage metrics
+        const levantamientoCount = clients.filter(c => (c.stage || "levantamiento") === "levantamiento").length;
+        const cotizacionCount = clients.filter(c => c.stage === "cotizacion").length;
+        const implementacionCount = clients.filter(c => c.stage === "implementacion").length;
+        const activoCount = clients.filter(c => c.stage === "activo").length;
+
+        // Collaborator totals
+        const totalCollaboratorEarnings = clients.reduce((sum, c) => sum + (c.totalCollaboratorEarned || 0), 0);
+        const totalImplementationBalance = clients.reduce((sum, c) => sum + (c.implementationBalance || 0), 0);
+        const totalMonthlyCollaboratorFee = clients.reduce((sum, c) => sum + (c.monthlyFeeCollaborator || (c.monthlyFee ? c.monthlyFee * 0.5 : 0)), 0);
+
         // Issues
         const noServicesClients = clients.filter(c => (c.services?.length ?? 0) === 0 && (c.vpsList?.length ?? 0) === 0);
         const zeroFeeClients = clients.filter(c => {
@@ -145,6 +188,13 @@ export default function ClientsPage() {
             noOdooCount: noOdooClients.length,
             noContactCount: noContactClients.length,
             totalIssues: overdueClients.length + orphanServices.length + zeroFeeClients.length + noContactClients.length,
+            levantamientoCount,
+            cotizacionCount,
+            implementacionCount,
+            activoCount,
+            totalCollaboratorEarnings,
+            totalImplementationBalance,
+            totalMonthlyCollaboratorFee,
         };
     }, [clients, orphanServices]);
 
@@ -176,6 +226,14 @@ export default function ClientsPage() {
 
             // Tab filter
             switch (filterTab) {
+                case "levantamiento":
+                    return (c.stage || "levantamiento") === "levantamiento";
+                case "cotizacion":
+                    return c.stage === "cotizacion";
+                case "implementacion":
+                    return c.stage === "implementacion";
+                case "activo":
+                    return c.stage === "activo";
                 case "overdue":
                     return c.isOverdue || c.billingStatus === "overdue";
                 case "paid":
@@ -222,6 +280,28 @@ export default function ClientsPage() {
         }
     };
 
+    const applyImplementationSplit = (percentColab: number) => {
+        const total = parseFloat(formData.implementationFee) || 0;
+        const colab = (total * (percentColab / 100)).toFixed(2);
+        const comp = (total - parseFloat(colab)).toFixed(2);
+        setFormData(prev => ({
+            ...prev,
+            implementationFeeCollaborator: colab,
+            implementationFeeCompany: comp,
+        }));
+    };
+
+    const applyMonthlySplit = (percentColab: number) => {
+        const total = parseFloat(formData.monthlyFee) || 0;
+        const colab = (total * (percentColab / 100)).toFixed(2);
+        const comp = (total - parseFloat(colab)).toFixed(2);
+        setFormData(prev => ({
+            ...prev,
+            monthlyFeeCollaborator: colab,
+            monthlyFeeCompany: comp,
+        }));
+    };
+
     // Open Create Modal
     const openCreateModal = () => {
         setEditingClient(null);
@@ -231,6 +311,13 @@ export default function ClientsPage() {
             phone: "",
             companyName: "",
             notes: "",
+            stage: "levantamiento",
+            assessmentNotes: "",
+            implementationFee: "",
+            implementationFeeCollaborator: "",
+            implementationFeeCompany: "",
+            monthlyFeeCollaborator: "",
+            monthlyFeeCompany: "",
             billingCycle: "monthly",
             monthlyFee: "",
             annualFee: "",
@@ -250,6 +337,13 @@ export default function ClientsPage() {
             phone: client.phone || "",
             companyName: client.companyName || "",
             notes: client.notes || "",
+            stage: client.stage || "levantamiento",
+            assessmentNotes: client.assessmentNotes || "",
+            implementationFee: client.implementationFee ? String(client.implementationFee) : "",
+            implementationFeeCollaborator: client.implementationFeeCollaborator ? String(client.implementationFeeCollaborator) : "",
+            implementationFeeCompany: client.implementationFeeCompany ? String(client.implementationFeeCompany) : "",
+            monthlyFeeCollaborator: client.monthlyFeeCollaborator ? String(client.monthlyFeeCollaborator) : "",
+            monthlyFeeCompany: client.monthlyFeeCompany ? String(client.monthlyFeeCompany) : "",
             billingCycle: client.billingCycle || "monthly",
             monthlyFee: String(client.monthlyFee || ""),
             annualFee: String(client.annualFee || ""),
@@ -276,6 +370,13 @@ export default function ClientsPage() {
                 phone: formData.phone.trim() || undefined,
                 companyName: formData.companyName.trim() || undefined,
                 notes: formData.notes.trim() || undefined,
+                stage: formData.stage as any,
+                assessmentNotes: formData.assessmentNotes.trim() || undefined,
+                implementationFee: parseFloat(formData.implementationFee) || 0,
+                implementationFeeCollaborator: parseFloat(formData.implementationFeeCollaborator) || 0,
+                implementationFeeCompany: parseFloat(formData.implementationFeeCompany) || 0,
+                monthlyFeeCollaborator: parseFloat(formData.monthlyFeeCollaborator) || 0,
+                monthlyFeeCompany: parseFloat(formData.monthlyFeeCompany) || 0,
                 billingCycle: formData.billingCycle as "monthly" | "annual",
                 monthlyFee: parseFloat(formData.monthlyFee) || 0,
                 annualFee: parseFloat(formData.annualFee) || 0,
@@ -289,7 +390,7 @@ export default function ClientsPage() {
                 addToast("Cliente actualizado exitosamente", "success");
             } else {
                 await clientsApi.create(payload);
-                addToast("Cliente creado exitosamente", "success");
+                addToast("Cliente registrado exitosamente", "success");
             }
 
             setIsCreateModalOpen(false);
@@ -299,6 +400,98 @@ export default function ClientsPage() {
         } finally {
             setIsSubmitting(false);
         }
+    };
+
+    // Open Abono Modal
+    const openAbonoModal = (client: Client) => {
+        setAbonoClient(client);
+        const hasImplBalance = (client.implementationBalance || 0) > 0;
+        setAbonoType(hasImplBalance ? "implementation" : "monthly");
+        setAbonoCurrency((client.currency as "USD" | "DOP") || "USD");
+        setAbonoMethod("transferencia");
+        const defaultAmt = hasImplBalance ? client.implementationBalance : client.monthlyFee;
+        setAbonoAmount(defaultAmt && defaultAmt > 0 ? String(defaultAmt) : "");
+        setAbonoNotes("");
+    };
+
+    // Submit Abono
+    const handleAbonoSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!abonoClient) return;
+        const amt = parseFloat(abonoAmount);
+        if (isNaN(amt) || amt <= 0) {
+            addToast("Ingresa un monto válido mayor a 0", "error");
+            return;
+        }
+
+        setIsSubmittingAbono(true);
+        try {
+            const res = await clientsApi.recordAbono(abonoClient.id, {
+                amount: amt,
+                currency: abonoCurrency,
+                type: abonoType,
+                paymentMethod: abonoMethod,
+                notes: abonoNotes.trim(),
+            });
+
+            if (res.success) {
+                addToast(`¡Abono de ${abonoCurrency} $${amt.toFixed(2)} registrado exitosamente!`, "success");
+                // Open receipt modal
+                setReceiptData({
+                    client: abonoClient,
+                    receiptNumber: res.receiptNumber,
+                    amount: amt,
+                    currency: abonoCurrency,
+                    type: abonoType === "implementation" ? "Abono a Implementación" : "Cuota Mensual",
+                    method: abonoMethod,
+                    notes: abonoNotes.trim(),
+                    date: new Date().toLocaleString("es-DO", { dateStyle: "medium", timeStyle: "short" }),
+                    collaboratorAmount: res.collaboratorAmount,
+                    companyAmount: res.companyAmount,
+                    remainingBalance: res.implementationBalance,
+                });
+                setAbonoClient(null);
+                fetchData();
+            }
+        } catch (err) {
+            addToast(err instanceof Error ? err.message : "Error al registrar abono", "error");
+        } finally {
+            setIsSubmittingAbono(false);
+        }
+    };
+
+    // Fast Stage Change
+    const handleAdvanceStage = async (client: Client, nextStage: string) => {
+        try {
+            await clientsApi.updateStage(client.id, { stage: nextStage });
+            addToast(`Cliente movido a: ${nextStage.toUpperCase()}`, "success");
+            fetchData();
+        } catch (err) {
+            addToast("Error al actualizar etapa", "error");
+        }
+    };
+
+    // WhatsApp Receipt Sender
+    const sendReceiptWhatsApp = () => {
+        if (!receiptData) return;
+        const rawPhone = (receiptData.client.phone || "").replace(/\D/g, "");
+        const msg = `*COMPROBANTE DE PAGO - RNV MANAGER*\n` +
+            `-----------------------------------\n` +
+            `📄 *Recibo:* ${receiptData.receiptNumber}\n` +
+            `👤 *Cliente:* ${receiptData.client.name}\n` +
+            `📅 *Fecha:* ${receiptData.date}\n` +
+            `📌 *Concepto:* ${receiptData.type}\n` +
+            `💳 *Método:* ${receiptData.method.toUpperCase()}\n` +
+            `💵 *Monto Abonado:* ${receiptData.currency} $${receiptData.amount.toFixed(2)}\n` +
+            `⏳ *Saldo Pendiente:* ${receiptData.currency} $${receiptData.remainingBalance.toFixed(2)}\n` +
+            (receiptData.notes ? `📝 *Nota:* ${receiptData.notes}\n` : "") +
+            `-----------------------------------\n` +
+            `¡Muchas gracias por su preferencia!`;
+
+        const url = rawPhone
+            ? `https://wa.me/${rawPhone}?text=${encodeURIComponent(msg)}`
+            : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+        window.open(url, "_blank");
     };
 
     // Delete Client
@@ -528,6 +721,37 @@ export default function ClientsPage() {
         );
     };
 
+    // Helper stage badge renderer
+    const renderStageBadge = (stage?: string) => {
+        switch (stage) {
+            case "levantamiento":
+                return (
+                    <Badge variant="outline" className="text-sky-700 bg-sky-50 border-sky-200 font-semibold gap-1 text-[11px]">
+                        📍 Levantamiento
+                    </Badge>
+                );
+            case "cotizacion":
+                return (
+                    <Badge variant="outline" className="text-amber-700 bg-amber-50 border-amber-200 font-semibold gap-1 text-[11px]">
+                        📝 Cotización
+                    </Badge>
+                );
+            case "implementacion":
+                return (
+                    <Badge variant="outline" className="text-purple-700 bg-purple-50 border-purple-200 font-semibold gap-1 text-[11px]">
+                        🛠️ Implementación
+                    </Badge>
+                );
+            case "activo":
+            default:
+                return (
+                    <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200 font-semibold gap-1 text-[11px]">
+                        🚀 Activo
+                    </Badge>
+                );
+        }
+    };
+
     return (
         <div className="space-y-6 max-w-7xl mx-auto pb-16">
             {/* Header */}
@@ -539,46 +763,50 @@ export default function ClientsPage() {
                         </div>
                         <div>
                             <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-gray-900 via-gray-800 to-gray-700 bg-clip-text text-transparent">
-                                Clientes & Cobranzas
+                                {isAffiliate ? "Mis Clientes & Etapas" : "Clientes & Cobranzas"}
                             </h2>
                             <p className="text-sm text-muted-foreground">
-                                Depura anomalías, organiza servicios y cobra en 1 clic
+                                {isAffiliate
+                                    ? "Gestiona tus levantamientos, cotizaciones, hitos de implementación y abonos de clientes."
+                                    : "Depura anomalías, organiza servicios y cobra en 1 clic"}
                             </p>
                         </div>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-2.5 flex-wrap">
-                    {/* View mode switcher */}
-                    <div className="flex bg-gray-100/80 p-1 rounded-2xl border border-gray-200/80">
-                        <button
-                            onClick={() => setViewMode("directory")}
-                            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                                viewMode === "directory"
-                                    ? "bg-white text-violet-700 shadow-sm"
-                                    : "text-gray-600 hover:text-gray-900"
-                            }`}
-                        >
-                            <Users size={14} />
-                            Directorio & Cobro
-                        </button>
-                        <button
-                            onClick={() => setViewMode("cleanup")}
-                            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                                viewMode === "cleanup"
-                                    ? "bg-white text-violet-700 shadow-sm"
-                                    : "text-gray-600 hover:text-gray-900"
-                            }`}
-                        >
-                            <Sparkles size={14} className="text-amber-500" />
-                            Centro de Depuración
-                            {metrics.totalIssues > 0 && (
-                                <span className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800">
-                                    {metrics.totalIssues}
-                                </span>
-                            )}
-                        </button>
-                    </div>
+                    {/* View mode switcher (Master only) */}
+                    {isMaster && (
+                        <div className="flex bg-gray-100/80 p-1 rounded-2xl border border-gray-200/80">
+                            <button
+                                onClick={() => setViewMode("directory")}
+                                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                                    viewMode === "directory"
+                                        ? "bg-white text-violet-700 shadow-sm"
+                                        : "text-gray-600 hover:text-gray-900"
+                                }`}
+                            >
+                                <Users size={14} />
+                                Directorio & Cobro
+                            </button>
+                            <button
+                                onClick={() => setViewMode("cleanup")}
+                                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                                    viewMode === "cleanup"
+                                        ? "bg-white text-violet-700 shadow-sm"
+                                        : "text-gray-600 hover:text-gray-900"
+                                }`}
+                            >
+                                <Sparkles size={14} className="text-amber-500" />
+                                Centro de Depuración
+                                {metrics.totalIssues > 0 && (
+                                    <span className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800">
+                                        {metrics.totalIssues}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
+                    )}
 
                     {/* Quick Currency Switcher */}
                     <CurrencyToggle />
@@ -613,8 +841,8 @@ export default function ClientsPage() {
                             <UsersRound size={20} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-sm tracking-tight">Panel de Colaborador · {currentUser?.name || "Afiliado"}</h3>
-                            <p className="text-xs text-violet-100">Visualizando tu cartera exclusiva de clientes, partidas y cobros asignados.</p>
+                            <h3 className="font-bold text-sm tracking-tight">Espacio de Trabajo del Colaborador · {currentUser?.name || "Colaborador"}</h3>
+                            <p className="text-xs text-violet-100">Solo ves las herramientas necesarias para gestionar tus clientes, partidas pactadas y registrar abonos.</p>
                         </div>
                     </div>
                     <Button
@@ -629,8 +857,76 @@ export default function ClientsPage() {
             )}
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card className="bg-white/80 backdrop-blur rounded-2xl border-2 border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+            {isAffiliate ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-white/80 backdrop-blur rounded-2xl border-2 border-violet-100 shadow-sm hover:shadow-md transition-shadow">
+                        <CardContent className="p-5">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mis Clientes</p>
+                                    <p className="text-2xl font-black text-slate-900 mt-1">{clients.length}</p>
+                                    <p className="text-xs text-violet-600 font-semibold mt-1">
+                                        {metrics.activoCount} activo(s) · {metrics.implementacionCount} en implementación
+                                    </p>
+                                </div>
+                                <div className="p-3 rounded-2xl bg-violet-50 text-violet-600 border border-violet-100">
+                                    <Users className="h-6 w-6" />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-white/80 backdrop-blur rounded-2xl border-2 border-amber-100 shadow-sm hover:shadow-md transition-shadow">
+                        <CardContent className="p-5">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider">Saldos por Cobrar</p>
+                                    <p className="text-2xl font-black text-amber-700 mt-1">{format(metrics.totalImplementationBalance)}</p>
+                                    <p className="text-xs text-slate-500 mt-1">Pendiente de implementación</p>
+                                </div>
+                                <div className="p-3 rounded-2xl bg-amber-50 text-amber-600 border border-amber-100">
+                                    <Clock className="h-6 w-6" />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-white/80 backdrop-blur rounded-2xl border-2 border-emerald-100 shadow-sm hover:shadow-md transition-shadow">
+                        <CardContent className="p-5">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">Mis Comisiones Ganadas</p>
+                                    <p className="text-2xl font-black text-emerald-700 mt-1">{format(metrics.totalCollaboratorEarnings)}</p>
+                                    <p className="text-xs text-emerald-600 font-semibold mt-1">Total de tus partidas abonadas</p>
+                                </div>
+                                <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                    <DollarSign className="h-6 w-6" />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-white/80 backdrop-blur rounded-2xl border-2 border-purple-100 shadow-sm hover:shadow-md transition-shadow">
+                        <CardContent className="p-5">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs font-semibold text-purple-600 uppercase tracking-wider">Mi Recurrente Estimado</p>
+                                    <p className="text-2xl font-black text-purple-700 mt-1">
+                                        {format(metrics.totalMonthlyCollaboratorFee)}
+                                        <span className="text-xs font-normal text-slate-400"> /mes</span>
+                                    </p>
+                                    <p className="text-xs text-slate-500 mt-1">Tu porción mensual</p>
+                                </div>
+                                <div className="p-3 rounded-2xl bg-purple-50 text-purple-600 border border-purple-100">
+                                    <TrendingUp className="h-6 w-6" />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-white/80 backdrop-blur rounded-2xl border-2 border-gray-100 shadow-sm hover:shadow-md transition-shadow">
                     <CardContent className="p-5">
                         <div className="flex items-center justify-between">
                             <div>
@@ -712,6 +1008,7 @@ export default function ClientsPage() {
                     </CardContent>
                 </Card>
             </div>
+            )}
 
             {/* VIEW MODE: DIRECTORY */}
             {viewMode === "directory" && (
@@ -806,6 +1103,46 @@ export default function ClientsPage() {
                             Todos ({clients.length})
                         </button>
                         <button
+                            onClick={() => setFilterTab("levantamiento")}
+                            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                                filterTab === "levantamiento"
+                                    ? "bg-sky-600 text-white shadow-sm"
+                                    : "bg-sky-50 text-sky-700 hover:bg-sky-100"
+                            }`}
+                        >
+                            📍 Levantamiento ({metrics.levantamientoCount})
+                        </button>
+                        <button
+                            onClick={() => setFilterTab("cotizacion")}
+                            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                                filterTab === "cotizacion"
+                                    ? "bg-amber-600 text-white shadow-sm"
+                                    : "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                            }`}
+                        >
+                            📝 Cotización ({metrics.cotizacionCount})
+                        </button>
+                        <button
+                            onClick={() => setFilterTab("implementacion")}
+                            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                                filterTab === "implementacion"
+                                    ? "bg-purple-600 text-white shadow-sm"
+                                    : "bg-purple-50 text-purple-700 hover:bg-purple-100"
+                            }`}
+                        >
+                            🛠️ Implementación ({metrics.implementacionCount})
+                        </button>
+                        <button
+                            onClick={() => setFilterTab("activo")}
+                            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                                filterTab === "activo"
+                                    ? "bg-emerald-600 text-white shadow-sm"
+                                    : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                            }`}
+                        >
+                            🚀 Activos ({metrics.activoCount})
+                        </button>
+                        <button
                             onClick={() => setFilterTab("overdue")}
                             className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
                                 filterTab === "overdue"
@@ -825,56 +1162,52 @@ export default function ClientsPage() {
                         >
                             🟢 Al Día ({metrics.paidCount})
                         </button>
-                        <button
-                            onClick={() => setFilterTab("pending")}
-                            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
-                                filterTab === "pending"
-                                    ? "bg-blue-600 text-white shadow-sm"
-                                    : "bg-blue-50 text-blue-700 hover:bg-blue-100"
-                            }`}
-                        >
-                            🟡 Por Cobrar
-                        </button>
-                        <button
-                            onClick={() => setFilterTab("zero_fee")}
-                            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
-                                filterTab === "zero_fee"
-                                    ? "bg-orange-600 text-white shadow-sm"
-                                    : "bg-orange-50 text-orange-700 hover:bg-orange-100"
-                            }`}
-                        >
-                            🟠 Tarifa $0 ({metrics.zeroFeeCount})
-                        </button>
-                        <button
-                            onClick={() => setFilterTab("no_services")}
-                            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
-                                filterTab === "no_services"
-                                    ? "bg-gray-800 text-white shadow-sm"
-                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                            }`}
-                        >
-                            ⚪ Sin Servicios ({metrics.noServicesCount})
-                        </button>
-                        <button
-                            onClick={() => setFilterTab("no_odoo")}
-                            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
-                                filterTab === "no_odoo"
-                                    ? "bg-purple-600 text-white shadow-sm"
-                                    : "bg-purple-50 text-purple-700 hover:bg-purple-100"
-                            }`}
-                        >
-                            🔵 Sin Odoo ({metrics.noOdooCount})
-                        </button>
-                        <button
-                            onClick={() => setFilterTab("inactive")}
-                            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
-                                filterTab === "inactive"
-                                    ? "bg-gray-600 text-white shadow-sm"
-                                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                            }`}
-                        >
-                            Inactivos
-                        </button>
+
+                        {/* Master technical filters only */}
+                        {isMaster && (
+                            <>
+                                <button
+                                    onClick={() => setFilterTab("zero_fee")}
+                                    className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                                        filterTab === "zero_fee"
+                                            ? "bg-orange-600 text-white shadow-sm"
+                                            : "bg-orange-50 text-orange-700 hover:bg-orange-100"
+                                    }`}
+                                >
+                                    🟠 Tarifa $0 ({metrics.zeroFeeCount})
+                                </button>
+                                <button
+                                    onClick={() => setFilterTab("no_services")}
+                                    className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                                        filterTab === "no_services"
+                                            ? "bg-gray-800 text-white shadow-sm"
+                                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    }`}
+                                >
+                                    ⚪ Sin Servicios ({metrics.noServicesCount})
+                                </button>
+                                <button
+                                    onClick={() => setFilterTab("no_odoo")}
+                                    className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                                        filterTab === "no_odoo"
+                                            ? "bg-purple-600 text-white shadow-sm"
+                                            : "bg-purple-50 text-purple-700 hover:bg-purple-100"
+                                    }`}
+                                >
+                                    🔵 Sin Odoo ({metrics.noOdooCount})
+                                </button>
+                                <button
+                                    onClick={() => setFilterTab("inactive")}
+                                    className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                                        filterTab === "inactive"
+                                            ? "bg-gray-600 text-white shadow-sm"
+                                            : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                                    }`}
+                                >
+                                    Inactivos
+                                </button>
+                            </>
+                        )}
                     </div>
 
                     {/* Batch Actions Bar (when items selected) */}
@@ -984,6 +1317,7 @@ export default function ClientsPage() {
                                                                     </span>
                                                                 )}
                                                                 {renderStatusBadge(client)}
+                                                                {renderStageBadge(client.stage)}
                                                                 {client.odooPartnerId ? (
                                                                     <Badge variant="outline" className="text-[10px] text-emerald-700 bg-emerald-50 border-emerald-200">
                                                                         Odoo #{client.odooPartnerId}
@@ -1061,6 +1395,91 @@ export default function ClientsPage() {
                                                                     ))}
                                                                 </div>
                                                             )}
+
+                                                            {/* Implementation & Split Progress Section */}
+                                                            {((client.implementationFee && client.implementationFee > 0) || client.stage !== "activo") && (
+                                                                <div className="mt-3 p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
+                                                                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                                                        <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                                                                            <span>🛠️ Implementación:</span>
+                                                                            <span className="font-mono text-violet-700">${(client.implementationFee || 0).toLocaleString()} USD</span>
+                                                                            <span className="text-slate-400 font-normal">·</span>
+                                                                            <span className="text-emerald-600 font-medium">Abonado: ${(client.implementationPaid || 0).toLocaleString()}</span>
+                                                                            <span className="text-slate-400 font-normal">·</span>
+                                                                            <span className={`font-semibold ${(client.implementationBalance || 0) > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                                                                                Pendiente: ${(client.implementationBalance || 0).toLocaleString()}
+                                                                            </span>
+                                                                        </div>
+
+                                                                        {/* Stage Quick Advance Pill */}
+                                                                        {client.stage === "levantamiento" && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleAdvanceStage(client, "cotizacion")}
+                                                                                className="text-[11px] font-bold text-blue-700 bg-blue-100/80 hover:bg-blue-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                                                            >
+                                                                                Pasar a Cotización ➔
+                                                                            </button>
+                                                                        )}
+                                                                        {client.stage === "cotizacion" && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleAdvanceStage(client, "implementacion")}
+                                                                                className="text-[11px] font-bold text-amber-800 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                                                            >
+                                                                                Iniciar Implementación ➔
+                                                                            </button>
+                                                                        )}
+                                                                        {client.stage === "implementacion" && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleAdvanceStage(client, "activo")}
+                                                                                className="text-[11px] font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                                                            >
+                                                                                Marcar como Activo 🎉
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {/* Progress bar */}
+                                                                    {client.implementationFee && client.implementationFee > 0 ? (
+                                                                        <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                                                                            <div
+                                                                                className="bg-gradient-to-r from-violet-500 to-emerald-500 h-2 rounded-full transition-all duration-500"
+                                                                                style={{
+                                                                                    width: `${Math.min(100, Math.round(((client.implementationPaid || 0) / client.implementationFee) * 100))}%`,
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    ) : null}
+
+                                                                    {/* Partidas / Comisiones breakdown */}
+                                                                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 pt-0.5">
+                                                                        {isCollaborator ? (
+                                                                            <>
+                                                                                <span className="font-semibold text-violet-700">
+                                                                                    Mi Ganancia Impl.: ${(client.implementationFeeCollaborator || 0).toLocaleString()} USD
+                                                                                </span>
+                                                                                <span>·</span>
+                                                                                <span className="font-semibold text-emerald-700">
+                                                                                    Mi Recurrente: ${(client.monthlyFeeCollaborator || 0).toLocaleString()} USD/mes
+                                                                                </span>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <span>Partida Colaborador: <strong className="text-violet-700">${client.implementationFeeCollaborator || 0}</strong> (Rec: ${client.monthlyFeeCollaborator || 0}/m)</span>
+                                                                                <span>·</span>
+                                                                                <span>Partida Empresa: <strong className="text-indigo-700">${client.implementationFeeCompany || 0}</strong> (Rec: ${client.monthlyFeeCompany || 0}/m)</span>
+                                                                            </>
+                                                                        )}
+                                                                        {client.assessmentNotes && (
+                                                                            <span className="italic text-slate-400 truncate max-w-xs" title={client.assessmentNotes}>
+                                                                                📝 {client.assessmentNotes}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
 
@@ -1086,12 +1505,29 @@ export default function ClientsPage() {
 
                                                         {/* Quick Action Buttons */}
                                                         <div className="flex items-center gap-1.5">
+                                                            {/* 💰 Abonar & Recibo */}
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    setAbonoClient(client);
+                                                                    setAbonoAmount("");
+                                                                    setAbonoType("implementation");
+                                                                    setAbonoCurrency("USD");
+                                                                    setAbonoNotes("");
+                                                                }}
+                                                                className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl shadow-sm text-xs gap-1.5 h-8 font-bold"
+                                                                title="Registrar abono de implementación o cuota y emitir recibo"
+                                                            >
+                                                                <Receipt size={13} />
+                                                                Abonar
+                                                            </Button>
+
                                                             {/* ⚡ 1-Click Cobro Rápido */}
                                                             <Button
                                                                 size="sm"
                                                                 onClick={() => openQuickPay(client)}
                                                                 className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl shadow-sm text-xs gap-1 h-8"
-                                                                title="Registrar cobro instantáneo"
+                                                                title="Registrar cobro mensual instantáneo"
                                                             >
                                                                 <DollarSign size={13} />
                                                                 Cobrar
@@ -1108,28 +1544,32 @@ export default function ClientsPage() {
                                                                 <MessageSquare size={13} />
                                                             </Button>
 
-                                                            {/* ✉️ Email Reminder */}
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                disabled={!client.email || sendingReminderId === client.id}
-                                                                onClick={() => handleSendEmailReminder(client.id)}
-                                                                className="border-gray-200 text-gray-700 hover:bg-gray-50 rounded-xl text-xs h-8 px-2.5"
-                                                                title="Enviar recordatorio por Email"
-                                                            >
-                                                                <Mail size={13} className={sendingReminderId === client.id ? "animate-pulse" : ""} />
-                                                            </Button>
+                                                            {!isCollaborator && (
+                                                                <>
+                                                                    {/* ✉️ Email Reminder */}
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        disabled={!client.email || sendingReminderId === client.id}
+                                                                        onClick={() => handleSendEmailReminder(client.id)}
+                                                                        className="border-gray-200 text-gray-700 hover:bg-gray-50 rounded-xl text-xs h-8 px-2.5"
+                                                                        title="Enviar recordatorio por Email"
+                                                                    >
+                                                                        <Mail size={13} className={sendingReminderId === client.id ? "animate-pulse" : ""} />
+                                                                    </Button>
 
-                                                            {/* 🛠️ Organizar Servicios */}
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                onClick={() => setOrganizeClient(client)}
-                                                                className="border-violet-200 text-violet-700 hover:bg-violet-50 rounded-xl text-xs h-8 px-2.5"
-                                                                title="Asignar y organizar servicios de este cliente"
-                                                            >
-                                                                <Layers size={13} />
-                                                            </Button>
+                                                                    {/* 🛠️ Organizar Servicios */}
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        onClick={() => setOrganizeClient(client)}
+                                                                        className="border-violet-200 text-violet-700 hover:bg-violet-50 rounded-xl text-xs h-8 px-2.5"
+                                                                        title="Asignar y organizar servicios de este cliente"
+                                                                    >
+                                                                        <Layers size={13} />
+                                                                    </Button>
+                                                                </>
+                                                            )}
 
                                                             {/* ✏️ Editar */}
                                                             <Button
@@ -1731,6 +2171,109 @@ export default function ClientsPage() {
                             />
                         </div>
 
+                        {/* Etapa del Flujo de Trabajo */}
+                        <div className="bg-gradient-to-br from-violet-50 to-indigo-50/60 p-3.5 rounded-2xl border border-violet-100 space-y-2">
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-bold text-violet-900 flex items-center gap-1.5">
+                                    <span>📍 Etapa del Cliente</span>
+                                </label>
+                                <span className="text-[10px] text-violet-600 font-medium">Flujo paso a paso</span>
+                            </div>
+                            <select
+                                name="stage"
+                                value={formData.stage}
+                                onChange={handleInputChange}
+                                className="w-full rounded-xl border border-violet-200 px-3 py-2 text-xs bg-white font-semibold text-gray-800"
+                            >
+                                <option value="levantamiento">1. Visita y Levantamiento Inicial</option>
+                                <option value="cotizacion">2. Cotización y Negociación de Partidas</option>
+                                <option value="implementacion">3. En Proceso de Implementación</option>
+                                <option value="activo">4. Cliente Activo / En Operación</option>
+                            </select>
+
+                            <div className="space-y-1 pt-1">
+                                <label className="text-[11px] font-semibold text-violet-800 flex items-center gap-1">
+                                    <FileText size={11} /> Requerimientos y Notas de Levantamiento
+                                </label>
+                                <textarea
+                                    name="assessmentNotes"
+                                    placeholder="Detalla qué necesita el cliente, cuántos puestos, módulos requeridos, etc."
+                                    value={formData.assessmentNotes}
+                                    onChange={handleInputChange}
+                                    rows={2}
+                                    className="w-full px-3 py-1.5 rounded-xl border border-violet-200 text-xs focus:border-violet-400 focus:outline-none resize-none bg-white"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Partida de Implementación & División de Beneficios */}
+                        <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                    <DollarSign size={13} className="text-emerald-600" />
+                                    <span>Precio de Implementación e Hitos ($ USD)</span>
+                                </label>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => applyImplementationSplit(50)}
+                                        className="text-[10px] font-bold bg-white hover:bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 shadow-2xs"
+                                        title="Repartir 50% Colaborador / 50% Empresa"
+                                    >
+                                        50/50
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => applyImplementationSplit(70)}
+                                        className="text-[10px] font-bold bg-white hover:bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 shadow-2xs"
+                                        title="Repartir 70% Colaborador / 30% Empresa"
+                                    >
+                                        70/30
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+                                <Input
+                                    name="implementationFee"
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="Total acordado de implementación (Ej: 1500.00)"
+                                    value={formData.implementationFee}
+                                    onChange={handleInputChange}
+                                    className="pl-7 rounded-xl border-gray-300 text-xs font-bold bg-white"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-semibold text-violet-700">Partida Colaborador ($)</label>
+                                    <Input
+                                        name="implementationFeeCollaborator"
+                                        type="number"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        value={formData.implementationFeeCollaborator}
+                                        onChange={handleInputChange}
+                                        className="rounded-xl border-violet-200 text-xs bg-white font-semibold text-violet-800"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-semibold text-indigo-700">Partida Empresa ($)</label>
+                                    <Input
+                                        name="implementationFeeCompany"
+                                        type="number"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        value={formData.implementationFeeCompany}
+                                        onChange={handleInputChange}
+                                        className="rounded-xl border-indigo-200 text-xs bg-white font-semibold text-indigo-800"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Billing Cycle & Rates in USD + Real-time DOP Conversion */}
                         <div className="grid grid-cols-2 gap-3 bg-gray-50 p-3.5 rounded-2xl border border-gray-200">
                             <div className="space-y-1.5">
@@ -1820,6 +2363,59 @@ export default function ClientsPage() {
                                 </span>
                             </div>
 
+                            {/* Partidas de Cuota Recurrente */}
+                            <div className="col-span-2 bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-100 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-bold text-indigo-900">
+                                        División de Cuota Recurrente ($ USD/mes)
+                                    </label>
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => applyMonthlySplit(50)}
+                                            className="text-[10px] font-bold bg-white hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200"
+                                            title="Repartir 50% Colaborador / 50% Empresa"
+                                        >
+                                            50/50
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => applyMonthlySplit(40)}
+                                            className="text-[10px] font-bold bg-white hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200"
+                                            title="Repartir 40% Colaborador / 60% Empresa"
+                                        >
+                                            40/60
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="text-[10px] font-semibold text-violet-700">Partida Colaborador ($/m)</label>
+                                        <Input
+                                            name="monthlyFeeCollaborator"
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="0.00"
+                                            value={formData.monthlyFeeCollaborator}
+                                            onChange={handleInputChange}
+                                            className="rounded-xl border-violet-200 text-xs bg-white font-semibold text-violet-800"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-semibold text-indigo-700">Partida Empresa ($/m)</label>
+                                        <Input
+                                            name="monthlyFeeCompany"
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="0.00"
+                                            value={formData.monthlyFeeCompany}
+                                            onChange={handleInputChange}
+                                            className="rounded-xl border-indigo-200 text-xs bg-white font-semibold text-indigo-800"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="space-y-1.5">
                                 <label className="text-xs font-bold text-gray-700">Día de Pago (1 - 28)</label>
                                 <Input
@@ -1893,6 +2489,284 @@ export default function ClientsPage() {
                             </Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── MODAL: REGISTRAR ABONO Y GENERAR RECIBO ── */}
+            <Dialog open={!!abonoClient} onOpenChange={(open) => !open && setAbonoClient(null)}>
+                <DialogContent className="max-w-md rounded-3xl p-6">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-lg font-bold text-gray-900">
+                            <Receipt className="w-5 h-5 text-emerald-600" />
+                            Registrar Abono & Emitir Recibo
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-gray-500">
+                            Registra un abono a implementación o cuota de servicio de {abonoClient?.name}.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {abonoClient && (
+                        <form onSubmit={handleAbonoSubmit} className="space-y-4 mt-2">
+                            {/* Summary Card */}
+                            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs space-y-1.5">
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500">Cliente:</span>
+                                    <span className="font-bold text-slate-800">{abonoClient.name}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500">Total Implementación:</span>
+                                    <span className="font-bold text-slate-800">${(abonoClient.implementationFee || 0).toLocaleString()} USD</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500">Abonado hasta la fecha:</span>
+                                    <span className="font-semibold text-emerald-600">${(abonoClient.implementationPaid || 0).toLocaleString()} USD</span>
+                                </div>
+                                <div className="flex justify-between pt-1.5 border-t border-slate-200">
+                                    <span className="font-semibold text-slate-700">Saldo Pendiente Actual:</span>
+                                    <span className="font-extrabold text-amber-600 font-mono">
+                                        ${(abonoClient.implementationBalance || 0).toLocaleString()} USD
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Concept / Type */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-gray-700">Concepto del Pago</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAbonoType("implementation")}
+                                        className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
+                                            abonoType === "implementation"
+                                                ? "bg-violet-600 text-white border-violet-600 shadow-sm"
+                                                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                                        }`}
+                                    >
+                                        🛠️ Implementación
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAbonoType("monthly")}
+                                        className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
+                                            abonoType === "monthly"
+                                                ? "bg-violet-600 text-white border-violet-600 shadow-sm"
+                                                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                                        }`}
+                                    >
+                                        📅 Cuota Mensual
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Currency & Amount */}
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-bold text-gray-700">Monto Abonado *</label>
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setAbonoCurrency("USD")}
+                                            className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+                                                abonoCurrency === "USD" ? "bg-emerald-600 text-white" : "bg-gray-100 text-gray-600"
+                                            }`}
+                                        >
+                                            USD $
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAbonoCurrency("DOP")}
+                                            className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+                                                abonoCurrency === "DOP" ? "bg-emerald-600 text-white" : "bg-gray-100 text-gray-600"
+                                            }`}
+                                        >
+                                            RD$ DOP
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">
+                                        {abonoCurrency === "USD" ? "$" : "RD$"}
+                                    </span>
+                                    <Input
+                                        type="number"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        value={abonoAmount}
+                                        onChange={(e) => setAbonoAmount(e.target.value)}
+                                        className="pl-9 rounded-xl border-gray-300 font-mono font-bold text-base bg-white"
+                                        required
+                                        autoFocus
+                                    />
+                                </div>
+                                {parseFloat(abonoAmount) > 0 && abonoType === "implementation" && (
+                                    <div className="bg-emerald-50/70 p-2 rounded-xl border border-emerald-100 text-[11px] text-emerald-800 flex justify-between">
+                                        <span>Nuevo saldo restante estimado:</span>
+                                        <strong className="font-mono">
+                                            ${Math.max(0, (abonoClient.implementationBalance || 0) - (abonoCurrency === "DOP" && rate > 0 ? parseFloat(abonoAmount) / rate : parseFloat(abonoAmount) || 0)).toFixed(2)} USD
+                                        </strong>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Method */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-gray-700">Método de Pago</label>
+                                <select
+                                    value={abonoMethod}
+                                    onChange={(e) => setAbonoMethod(e.target.value)}
+                                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-xs bg-white"
+                                >
+                                    <option value="transferencia">Transferencia Bancaria</option>
+                                    <option value="efectivo">Efectivo</option>
+                                    <option value="tarjeta">Tarjeta de Crédito / Débito</option>
+                                    <option value="cheque">Cheque</option>
+                                    <option value="otro">Otro</option>
+                                </select>
+                            </div>
+
+                            {/* Notes */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-gray-700">Comentarios o Referencia Bancaria</label>
+                                <Input
+                                    placeholder="Ej: Depósito Banco BHD #392819 / Hito 1"
+                                    value={abonoNotes}
+                                    onChange={(e) => setAbonoNotes(e.target.value)}
+                                    className="rounded-xl border-gray-300 text-xs bg-white"
+                                />
+                            </div>
+
+                            <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setAbonoClient(null)}
+                                    className="rounded-xl text-xs"
+                                >
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    disabled={isSubmittingAbono}
+                                    className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs gap-1.5 font-bold shadow-md"
+                                >
+                                    {isSubmittingAbono ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                                    Registrar Abono y Emitir Recibo
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* ── MODAL: RECIBO OFICIAL DIGITAL Y WHATSAPP ── */}
+            <Dialog open={!!receiptData} onOpenChange={(open) => !open && setReceiptData(null)}>
+                <DialogContent className="max-w-md rounded-3xl p-6 bg-white shadow-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center justify-between text-base font-bold text-gray-900">
+                            <span className="flex items-center gap-1.5 text-emerald-700">
+                                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                                Comprobante de Abono Emitido
+                            </span>
+                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 font-mono text-xs">
+                                {receiptData?.receiptNumber || "REC-XXXX"}
+                            </Badge>
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    {receiptData && (
+                        <div className="space-y-4 my-2">
+                            {/* Receipt Body */}
+                            <div className="p-4 rounded-2xl bg-gradient-to-b from-slate-50 to-gray-100/70 border border-gray-200 space-y-3 font-sans text-xs shadow-inner">
+                                <div className="text-center pb-2 border-b border-gray-200">
+                                    <h3 className="font-extrabold text-sm text-gray-900 uppercase tracking-wide">
+                                        RNV Manager & Expertos TI
+                                    </h3>
+                                    <p className="text-[10px] text-gray-500">Comprobante Oficial de Abono</p>
+                                    <p className="text-[10px] text-gray-400 mt-0.5">{receiptData.date}</p>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Cliente:</span>
+                                        <strong className="text-gray-900">{receiptData.client.name}</strong>
+                                    </div>
+                                    {receiptData.client.companyName && (
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Empresa:</span>
+                                            <span className="text-gray-800">{receiptData.client.companyName}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Concepto:</span>
+                                        <span className="font-semibold text-violet-700">{receiptData.type}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Método de Pago:</span>
+                                        <span className="capitalize text-gray-800">{receiptData.method}</span>
+                                    </div>
+                                    {receiptData.notes && (
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Referencia:</span>
+                                            <span className="italic text-gray-700">{receiptData.notes}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Amount Box */}
+                                <div className="bg-emerald-600 text-white p-3 rounded-xl text-center space-y-0.5 shadow-sm">
+                                    <p className="text-[10px] uppercase font-semibold text-emerald-100 tracking-wider">Monto Abonado</p>
+                                    <p className="text-xl font-extrabold font-mono">
+                                        {receiptData.currency} ${receiptData.amount.toFixed(2)}
+                                    </p>
+                                    {receiptData.remainingBalance !== undefined && (
+                                        <p className="text-[11px] text-emerald-100 pt-0.5 border-t border-emerald-500/60 mt-1">
+                                            Saldo Pendiente Restante: <strong>${receiptData.remainingBalance.toFixed(2)} USD</strong>
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Partidas Breakdown */}
+                                {receiptData.collaboratorAmount !== undefined && (
+                                    <div className="flex items-center justify-between text-[11px] text-gray-500 pt-1 border-t border-gray-200">
+                                        <span>Partida Colaborador: <strong className="text-violet-700">${receiptData.collaboratorAmount.toFixed(2)}</strong></span>
+                                        <span>Partida Empresa: <strong className="text-indigo-700">${(receiptData.companyAmount || 0).toFixed(2)}</strong></span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Actions: WhatsApp Direct & Print */}
+                            <div className="space-y-2">
+                                <Button
+                                    type="button"
+                                    onClick={sendReceiptWhatsApp}
+                                    className="w-full bg-[#25D366] hover:bg-[#20ba59] text-white rounded-xl gap-2 font-bold shadow-md h-10 text-xs cursor-pointer"
+                                >
+                                    <MessageSquare size={15} />
+                                    Enviar Comprobante por WhatsApp
+                                </Button>
+
+                                <div className="flex gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => window.print()}
+                                        className="flex-1 rounded-xl text-xs gap-1.5 border-gray-300 hover:bg-gray-50"
+                                    >
+                                        <Printer size={14} />
+                                        Imprimir / PDF
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={() => setReceiptData(null)}
+                                        className="flex-1 rounded-xl text-xs"
+                                    >
+                                        Cerrar
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </DialogContent>
             </Dialog>
 

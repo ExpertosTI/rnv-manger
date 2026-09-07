@@ -153,6 +153,8 @@ func main() {
 		auth.GET("/clients/:id", clientsHandler.Get(db))
 		auth.PUT("/clients/:id", clientsHandler.Update(db))
 		auth.DELETE("/clients/:id", clientsHandler.Delete(db))
+		auth.POST("/clients/:id/abonos", clientsHandler.RecordAbono(db))
+		auth.PUT("/clients/:id/stage", clientsHandler.UpdateStage(db))
 
 		// Services
 		auth.GET("/services", servicesHandler.List(db))

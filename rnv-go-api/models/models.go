@@ -89,8 +89,16 @@ type Client struct {
 	OdooPartnerID    *int       `json:"odooPartnerId,omitempty"`
 	OdooLastSync     *time.Time `json:"odooLastSync,omitempty"`
 	OdooData         JSON       `gorm:"type:jsonb" json:"odooData,omitempty"`
-	TotalMonthlyCost float64    `gorm:"default:0" json:"totalMonthlyCost"`
-	AffiliateID      *string    `gorm:"index" json:"affiliateId,omitempty"`
+	TotalMonthlyCost              float64    `gorm:"default:0" json:"totalMonthlyCost"`
+	Stage                         string     `gorm:"default:'levantamiento'" json:"stage"` // levantamiento | cotizacion | implementacion | activo | suspendido
+	AssessmentNotes               *string    `json:"assessmentNotes,omitempty"`
+	ImplementationFee             float64    `gorm:"default:0" json:"implementationFee"`
+	ImplementationFeeCollaborator float64    `gorm:"default:0" json:"implementationFeeCollaborator"`
+	ImplementationFeeCompany      float64    `gorm:"default:0" json:"implementationFeeCompany"`
+	MonthlyFeeCollaborator        float64    `gorm:"default:0" json:"monthlyFeeCollaborator"`
+	MonthlyFeeCompany             float64    `gorm:"default:0" json:"monthlyFeeCompany"`
+	ImplementationChecklist       JSON       `gorm:"type:jsonb" json:"implementationChecklist,omitempty"`
+	AffiliateID                   *string    `gorm:"index" json:"affiliateId,omitempty"`
 	Affiliate        *User      `gorm:"foreignKey:AffiliateID" json:"affiliate,omitempty"`
 	VPSList          []VPS      `gorm:"foreignKey:ClientID" json:"vpsList,omitempty"`
 	Services         []Service  `gorm:"foreignKey:ClientID" json:"services,omitempty"`
@@ -203,9 +211,14 @@ type Payment struct {
 	Status          string    `gorm:"default:'completed'" json:"status"`
 	OdooInvoiceID   *int      `json:"odooInvoiceId,omitempty"`
 	OdooInvoiceName *string   `json:"odooInvoiceName,omitempty"`
-	ClientID        string    `gorm:"not null" json:"clientId"`
-	Client          *Client   `gorm:"foreignKey:ClientID" json:"client,omitempty"`
-	Notes           *string   `json:"notes,omitempty"`
+	ClientID           string    `gorm:"not null" json:"clientId"`
+	Client             *Client   `gorm:"foreignKey:ClientID" json:"client,omitempty"`
+	Type               string    `gorm:"default:'monthly'" json:"type"` // implementation | monthly | custom
+	CollaboratorAmount float64   `gorm:"default:0" json:"collaboratorAmount"`
+	CompanyAmount      float64   `gorm:"default:0" json:"companyAmount"`
+	PaymentMethod      string    `gorm:"default:'transferencia'" json:"paymentMethod"` // transferencia | efectivo | tarjeta | otro
+	ReceiptNumber      *string   `json:"receiptNumber,omitempty"`
+	Notes              *string   `json:"notes,omitempty"`
 	BillingCycle    string    `gorm:"default:'monthly'" json:"billingCycle"`
 	CreatedAt       time.Time `json:"createdAt"`
 }
