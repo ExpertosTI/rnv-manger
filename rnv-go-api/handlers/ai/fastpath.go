@@ -257,8 +257,12 @@ func isRetryableGeminiErr(err error) bool {
 		strings.Contains(s, "unavailable") ||
 		strings.Contains(s, "429") ||
 		strings.Contains(s, "503") ||
+		strings.Contains(s, "500") ||
 		strings.Contains(s, "overloaded") ||
-		strings.Contains(s, "quota")
+		strings.Contains(s, "quota") ||
+		strings.Contains(s, "no longer available") ||
+		strings.Contains(s, "not found") ||
+		strings.Contains(s, "deprecated")
 }
 
 func friendlyGeminiError(err error) string {

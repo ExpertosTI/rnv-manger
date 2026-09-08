@@ -85,7 +85,7 @@ type geminiResponse struct {
 }
 
 func newGeminiClient(apiKey, model string) *geminiClient {
-	if model == "" {
+	if model == "" || strings.Contains(model, "2.0") {
 		model = "gemini-2.5-flash"
 	}
 	return &geminiClient{
@@ -96,9 +96,21 @@ func newGeminiClient(apiKey, model string) *geminiClient {
 }
 
 func (g *geminiClient) generate(req geminiRequest) (*geminiResponse, error) {
-	models := []string{g.model}
-	for _, fb := range []string{"gemini-2.0-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash-002"} {
-		if fb != g.model {
+	primary := g.model
+	if primary == "" || strings.Contains(primary, "2.0") {
+		primary = "gemini-2.5-flash"
+	}
+
+	models := []string{primary}
+	for _, fb := range []string{"gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"} {
+		found := false
+		for _, m := range models {
+			if m == fb {
+				found = true
+				break
+			}
+		}
+		if !found {
 			models = append(models, fb)
 		}
 	}
@@ -110,8 +122,12 @@ func (g *geminiClient) generate(req geminiRequest) (*geminiResponse, error) {
 		if err == nil {
 			return resp, nil
 		}
+		lastErr = err
 		if isRetryableGeminiErr(err) {
-			lastErr = err
+			continue
+		}
+		errStr := strings.ToLower(err.Error())
+		if strings.Contains(errStr, "model") || strings.Contains(errStr, "not found") || strings.Contains(errStr, "available") {
 			continue
 		}
 		return nil, err
