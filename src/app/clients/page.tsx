@@ -303,6 +303,67 @@ export default function ClientsPage() {
         }));
     };
 
+    const applyPreset = (preset: "retail" | "corporate" | "vps" | "lead") => {
+        switch (preset) {
+            case "retail":
+                setFormData(prev => ({
+                    ...prev,
+                    stage: "cotizacion",
+                    assessmentNotes: (prev.assessmentNotes ? prev.assessmentNotes + "\n" : "") + "• Punto de Venta (POS) para tienda retail.\n• Control de inventario, código de barras e impresora térmica.\n• Facturación fiscal DGII.",
+                    implementationFee: prev.implementationFee || "1200",
+                    implementationFeeCollaborator: prev.implementationFeeCollaborator || "720",
+                    implementationFeeCompany: prev.implementationFeeCompany || "480",
+                    monthlyFee: prev.monthlyFee || "60",
+                    monthlyFeeCollaborator: prev.monthlyFeeCollaborator || "30",
+                    monthlyFeeCompany: prev.monthlyFeeCompany || "30",
+                }));
+                break;
+            case "corporate":
+                setFormData(prev => ({
+                    ...prev,
+                    stage: "levantamiento",
+                    assessmentNotes: (prev.assessmentNotes ? prev.assessmentNotes + "\n" : "") + "• ERP Odoo Empresarial: Ventas, Compras, Contabilidad y Almacén.\n• Multi-usuario y accesos restringidos por roles.\n• Servidor VPS dedicado con backups automáticos.",
+                    implementationFee: prev.implementationFee || "2500",
+                    implementationFeeCollaborator: prev.implementationFeeCollaborator || "1250",
+                    implementationFeeCompany: prev.implementationFeeCompany || "1250",
+                    monthlyFee: prev.monthlyFee || "150",
+                    monthlyFeeCollaborator: prev.monthlyFeeCollaborator || "75",
+                    monthlyFeeCompany: prev.monthlyFeeCompany || "75",
+                }));
+                break;
+            case "vps":
+                setFormData(prev => ({
+                    ...prev,
+                    stage: "implementacion",
+                    assessmentNotes: (prev.assessmentNotes ? prev.assessmentNotes + "\n" : "") + "• Despliegue de infraestructura VPS Hostinger / Cloud.\n• Configuración Docker, dominio con SSL Traefik y monitoreo.",
+                    implementationFee: prev.implementationFee || "400",
+                    implementationFeeCollaborator: prev.implementationFeeCollaborator || "250",
+                    implementationFeeCompany: prev.implementationFeeCompany || "150",
+                    monthlyFee: prev.monthlyFee || "45",
+                    monthlyFeeCollaborator: prev.monthlyFeeCollaborator || "20",
+                    monthlyFeeCompany: prev.monthlyFeeCompany || "25",
+                }));
+                break;
+            case "lead":
+                setFormData(prev => ({
+                    ...prev,
+                    stage: "levantamiento",
+                    assessmentNotes: (prev.assessmentNotes ? prev.assessmentNotes + "\n" : "") + "• Prospecto contactado vía WhatsApp / Referido.\n• Pendiente visita técnica y levantamiento de requerimientos iniciales.",
+                    isActive: true,
+                }));
+                break;
+        }
+    };
+
+    const appendRequirement = (req: string) => {
+        setFormData(prev => {
+            const existing = prev.assessmentNotes ? prev.assessmentNotes.trim() : "";
+            if (existing.includes(req)) return prev;
+            const updated = existing ? `${existing}\n• ${req}` : `• ${req}`;
+            return { ...prev, assessmentNotes: updated };
+        });
+    };
+
     // Open Create Modal
     const openCreateModal = () => {
         setEditingClient(null);
@@ -2110,74 +2171,131 @@ export default function ClientsPage() {
 
             {/* ── MODAL: CREATE / EDIT CLIENT ── */}
             <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-                <DialogContent className="max-w-xl rounded-3xl p-0 overflow-hidden max-h-[88vh] flex flex-col bg-white shadow-2xl border border-gray-100">
-                    {/* Fixed Header */}
-                    <div className="p-5 px-6 border-b border-gray-100 bg-white shrink-0">
+                <DialogContent className="max-w-2xl rounded-3xl p-0 overflow-hidden max-h-[90vh] flex flex-col bg-white shadow-2xl border border-gray-100">
+                    {/* Fixed Modern Header */}
+                    <div className="p-5 px-6 border-b border-gray-100 bg-gradient-to-b from-white to-slate-50/50 shrink-0">
                         <div className="flex items-center justify-between">
-                            <DialogTitle className="flex items-center gap-2 text-lg font-bold text-gray-900">
-                                <Users className="w-5 h-5 text-violet-600" />
-                                {editingClient ? "Editar Cliente" : "Nuevo Cliente"}
-                            </DialogTitle>
-                            <span className="text-[11px] font-semibold text-violet-600 bg-violet-50 px-2.5 py-0.5 rounded-full border border-violet-100">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-violet-500/20">
+                                    <Users className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <DialogTitle className="text-lg font-black text-gray-900 tracking-tight">
+                                        {editingClient ? "Editar Registro de Cliente" : "Nuevo Cliente / Prospecto"}
+                                    </DialogTitle>
+                                    <DialogDescription className="text-xs text-gray-500">
+                                        Configuración comercial, levantamiento técnico y partición de cobros.
+                                    </DialogDescription>
+                                </div>
+                            </div>
+                            <span className="text-[11px] font-bold text-violet-700 bg-violet-50 border border-violet-200/80 px-3 py-1 rounded-full shadow-2xs">
                                 Paso {clientModalStep} de 3
                             </span>
                         </div>
-                        <DialogDescription className="text-xs text-gray-500 mt-0.5">
-                            Configura los datos fiscales, ciclo de cobro y partidas pactadas.
-                        </DialogDescription>
 
-                        {/* Step Tabs */}
-                        <div className="grid grid-cols-3 gap-1.5 mt-3 bg-gray-100/80 p-1 rounded-xl">
+                        {/* Progress Bar */}
+                        <div className="w-full bg-gray-200/70 h-1.5 rounded-full mt-4 overflow-hidden">
+                            <div
+                                className="h-full bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 transition-all duration-300 rounded-full"
+                                style={{ width: clientModalStep === 1 ? "33%" : clientModalStep === 2 ? "66%" : "100%" }}
+                            />
+                        </div>
+
+                        {/* Step Navigation Tabs */}
+                        <div className="grid grid-cols-3 gap-2 mt-3 bg-gray-100/80 p-1 rounded-2xl">
                             <button
                                 type="button"
                                 onClick={() => setClientModalStep(1)}
-                                className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                                     clientModalStep === 1
-                                        ? "bg-white text-violet-700 shadow-sm"
+                                        ? "bg-white text-violet-700 shadow-xs border border-gray-200/60"
                                         : "text-gray-500 hover:text-gray-800"
                                 }`}
                             >
-                                <span>1.</span> Contacto
+                                <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${clientModalStep === 1 ? "bg-violet-600 text-white" : "bg-gray-200 text-gray-600"}`}>1</span>
+                                Contacto
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setClientModalStep(2)}
-                                className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                                     clientModalStep === 2
-                                        ? "bg-white text-violet-700 shadow-sm"
+                                        ? "bg-white text-violet-700 shadow-xs border border-gray-200/60"
                                         : "text-gray-500 hover:text-gray-800"
                                 }`}
                             >
-                                <span>2.</span> Etapa
+                                <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${clientModalStep === 2 ? "bg-violet-600 text-white" : "bg-gray-200 text-gray-600"}`}>2</span>
+                                Flujo & Requisitos
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setClientModalStep(3)}
-                                className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                                     clientModalStep === 3
-                                        ? "bg-white text-violet-700 shadow-sm"
+                                        ? "bg-white text-violet-700 shadow-xs border border-gray-200/60"
                                         : "text-gray-500 hover:text-gray-800"
                                 }`}
                             >
-                                <span>3.</span> Partidas
+                                <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${clientModalStep === 3 ? "bg-violet-600 text-white" : "bg-gray-200 text-gray-600"}`}>3</span>
+                                Partidas & Splits
                             </button>
                         </div>
                     </div>
 
-                    {/* Scrollable Body inside Form */}
+                    {/* Scrollable Form Body */}
                     <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4 max-h-[60vh]">
                             {/* ── STEP 1: DATOS BÁSICOS & CONTACTO ── */}
                             {clientModalStep === 1 && (
                                 <div className="space-y-4 animate-in fade-in duration-150">
+                                    {/* Quick Presets */}
+                                    <div className="p-3 bg-gradient-to-r from-violet-50/70 to-indigo-50/50 rounded-2xl border border-violet-100">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-[11px] font-bold text-violet-900 flex items-center gap-1.5">
+                                                <Sparkles className="w-3.5 h-3.5 text-violet-600" /> Plantillas Rápidas de Prospecto
+                                            </span>
+                                            <span className="text-[10px] text-violet-600 font-medium">Autocompleta en 1 clic</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => applyPreset("retail")}
+                                                className="text-[11px] font-semibold bg-white hover:bg-violet-100/70 text-violet-800 px-2.5 py-1 rounded-xl border border-violet-200 transition-all cursor-pointer shadow-2xs"
+                                            >
+                                                🏬 Retail / POS
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => applyPreset("corporate")}
+                                                className="text-[11px] font-semibold bg-white hover:bg-violet-100/70 text-violet-800 px-2.5 py-1 rounded-xl border border-violet-200 transition-all cursor-pointer shadow-2xs"
+                                            >
+                                                💼 Odoo ERP
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => applyPreset("vps")}
+                                                className="text-[11px] font-semibold bg-white hover:bg-violet-100/70 text-violet-800 px-2.5 py-1 rounded-xl border border-violet-200 transition-all cursor-pointer shadow-2xs"
+                                            >
+                                                🛠️ VPS Cloud
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => applyPreset("lead")}
+                                                className="text-[11px] font-semibold bg-white hover:bg-violet-100/70 text-violet-800 px-2.5 py-1 rounded-xl border border-violet-200 transition-all cursor-pointer shadow-2xs"
+                                            >
+                                                🚀 Prospecto Rápido
+                                            </button>
+                                        </div>
+                                    </div>
+
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-bold text-gray-700">Nombre Completo o Comercial *</label>
                                         <Input
                                             name="name"
-                                            placeholder="Ej: Juan Pérez / Empresa XYZ"
+                                            placeholder="Ej: Joyería Aurora / Grupo Sol SRL"
                                             value={formData.name}
                                             onChange={handleInputChange}
-                                            className="rounded-xl border-gray-300 font-medium"
+                                            className="rounded-xl border-gray-300 font-bold text-sm bg-white"
                                             required
                                             autoFocus
                                         />
@@ -2186,63 +2304,74 @@ export default function ClientsPage() {
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
-                                                <Mail size={12} /> Email de Facturación
+                                                <Mail size={12} className="text-violet-600" /> Email de Contacto / Facturas
                                             </label>
                                             <Input
                                                 name="email"
                                                 type="email"
-                                                placeholder="contacto@empresa.com"
+                                                placeholder="facturas@empresa.com"
                                                 value={formData.email}
                                                 onChange={handleInputChange}
-                                                className="rounded-xl border-gray-300 text-xs"
+                                                className="rounded-xl border-gray-300 text-xs bg-white"
                                             />
                                         </div>
                                         <div className="space-y-1.5">
-                                            <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
-                                                <Phone size={12} /> Teléfono (WhatsApp)
-                                            </label>
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                                                    <Phone size={12} className="text-emerald-600" /> WhatsApp
+                                                </label>
+                                                {formData.phone && (
+                                                    <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                                        WhatsApp Activo
+                                                    </span>
+                                                )}
+                                            </div>
                                             <Input
                                                 name="phone"
                                                 placeholder="+1 809 123 4567"
                                                 value={formData.phone}
                                                 onChange={handleInputChange}
-                                                className="rounded-xl border-gray-300 text-xs"
+                                                className="rounded-xl border-gray-300 text-xs bg-white font-mono"
                                             />
                                         </div>
                                     </div>
 
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
-                                            <Building size={12} /> Empresa / Razón Social
+                                            <Building size={12} className="text-indigo-600" /> Empresa / Razón Social Fiscal
                                         </label>
                                         <Input
                                             name="companyName"
-                                            placeholder="Nombre comercial o empresa (opcional)"
+                                            placeholder="Razón social para facturación DGII (opcional)"
                                             value={formData.companyName}
                                             onChange={handleInputChange}
-                                            className="rounded-xl border-gray-300 text-xs"
+                                            className="rounded-xl border-gray-300 text-xs bg-white"
                                         />
                                     </div>
 
-                                    <div className="flex items-center gap-2 pt-1">
-                                        <input
-                                            type="checkbox"
-                                            id="isActive"
-                                            name="isActive"
-                                            checked={formData.isActive}
-                                            onChange={handleInputChange}
-                                            className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 h-4 w-4 cursor-pointer"
-                                        />
-                                        <label htmlFor="isActive" className="text-xs font-medium text-gray-700 cursor-pointer">
-                                            Cliente Activo (habilitado para cobros y operaciones)
+                                    <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between">
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-800">Estado Operativo</p>
+                                            <p className="text-[11px] text-slate-500">Habilitado inmediatamente para registrar servicios y cobros</p>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                id="isActive"
+                                                name="isActive"
+                                                checked={formData.isActive}
+                                                onChange={handleInputChange}
+                                                className="sr-only peer"
+                                            />
+                                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
                                         </label>
                                     </div>
 
-                                    <div className="space-y-1.5 pt-1">
-                                        <label className="text-xs font-semibold text-gray-700">Notas Adicionales</label>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700">Notas Generales / Referencias</label>
                                         <textarea
                                             name="notes"
-                                            placeholder="Detalles de facturación, condiciones especiales, etc."
+                                            placeholder="¿Quién lo refirió? ¿Condiciones de horario o contacto preferido?"
                                             value={formData.notes}
                                             onChange={handleInputChange}
                                             rows={2}
@@ -2252,73 +2381,106 @@ export default function ClientsPage() {
                                 </div>
                             )}
 
-                            {/* ── STEP 2: ETAPA & LEVANTAMIENTO ── */}
+                            {/* ── STEP 2: ETAPA COMERCIAL & REQUERIMIENTOS ── */}
                             {clientModalStep === 2 && (
                                 <div className="space-y-4 animate-in fade-in duration-150">
-                                    <div className="bg-gradient-to-br from-violet-50 to-indigo-50/60 p-4 rounded-2xl border border-violet-100 space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <label className="text-xs font-bold text-violet-900 flex items-center gap-1.5">
-                                                <span>📍 Etapa del Proceso Comercial</span>
-                                            </label>
-                                            <span className="text-[10px] text-violet-600 font-medium">Ciclo paso a paso</span>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-gray-800">Selecciona la Etapa Actual del Cliente</label>
+                                        <div className="grid grid-cols-2 gap-2.5">
+                                            {[
+                                                { id: "levantamiento", num: "1", title: "Levantamiento", desc: "Visita y toma de datos técnicos", icon: Search, color: "text-amber-600", bg: "bg-amber-500/10 border-amber-300" },
+                                                { id: "cotizacion", num: "2", title: "Cotización", desc: "Negociación de precios y partidas", icon: DollarSign, color: "text-blue-600", bg: "bg-blue-500/10 border-blue-300" },
+                                                { id: "implementacion", num: "3", title: "Implementación", desc: "Instalación de Odoo, VPS y pruebas", icon: Sparkles, color: "text-purple-600", bg: "bg-purple-500/10 border-purple-300" },
+                                                { id: "activo", num: "4", title: "Cliente Activo", desc: "En producción con facturación activa", icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-500/10 border-emerald-300" },
+                                            ].map(st => (
+                                                <div
+                                                    key={st.id}
+                                                    onClick={() => setFormData(prev => ({ ...prev, stage: st.id }))}
+                                                    className={`p-3 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                                                        formData.stage === st.id
+                                                            ? `${st.bg} ring-2 ring-violet-500/30 shadow-sm`
+                                                            : "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50/50"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Fase {st.num}</span>
+                                                        <st.icon className={`w-4 h-4 ${st.color}`} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-bold text-xs text-gray-900">{st.title}</p>
+                                                        <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">{st.desc}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
-                                        <select
-                                            name="stage"
-                                            value={formData.stage}
-                                            onChange={handleInputChange}
-                                            className="w-full rounded-xl border border-violet-200 px-3 py-2.5 text-xs bg-white font-bold text-gray-800 shadow-sm"
-                                        >
-                                            <option value="levantamiento">1. Visita y Levantamiento Inicial</option>
-                                            <option value="cotizacion">2. Cotización y Negociación de Partidas</option>
-                                            <option value="implementacion">3. En Proceso de Implementación</option>
-                                            <option value="activo">4. Cliente Activo / En Operación</option>
-                                        </select>
-                                        <p className="text-[11px] text-violet-700/80">
-                                            Define la fase actual para que el sistema organice las partidas y los recordatorios automáticos.
-                                        </p>
                                     </div>
 
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-700 flex items-center gap-1">
-                                            <FileText size={13} className="text-violet-600" />
-                                            Requerimientos Técnicos y Notas de Levantamiento
-                                        </label>
+                                    {/* Requirements with 1-Click Badges */}
+                                    <div className="space-y-2 pt-1">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                                                <FileText size={13} className="text-violet-600" />
+                                                Requerimientos Técnicos y Alcance
+                                            </label>
+                                            <span className="text-[10px] text-gray-400">Clic para añadir</span>
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {[
+                                                "Punto de Venta (POS)",
+                                                "Facturación Fiscal DGII",
+                                                "Inventario & Código de Barras",
+                                                "Odoo ERP Cloud",
+                                                "Impresora Térmica",
+                                                "Multimoneda USD/DOP",
+                                                "Tienda Online / eCommerce",
+                                                "Copias de Seguridad Diarias",
+                                            ].map(req => (
+                                                <button
+                                                    key={req}
+                                                    type="button"
+                                                    onClick={() => appendRequirement(req)}
+                                                    className="text-[10px] font-semibold bg-gray-100 hover:bg-violet-100 hover:text-violet-800 text-gray-700 px-2 py-1 rounded-lg border border-gray-200/80 transition-all cursor-pointer"
+                                                >
+                                                    + {req}
+                                                </button>
+                                            ))}
+                                        </div>
+
                                         <textarea
                                             name="assessmentNotes"
                                             placeholder="Detalla qué necesita el cliente: cuántos puestos, tipo de negocio, módulos de Odoo, impresoras fiscales, etc."
                                             value={formData.assessmentNotes}
                                             onChange={handleInputChange}
-                                            rows={5}
-                                            className="w-full px-3.5 py-2.5 rounded-2xl border border-gray-300 text-xs focus:border-violet-400 focus:outline-none resize-none bg-white leading-relaxed"
+                                            rows={4}
+                                            className="w-full px-3.5 py-2.5 rounded-2xl border border-gray-300 text-xs focus:border-violet-400 focus:outline-none resize-none bg-white leading-relaxed font-sans"
                                         />
                                     </div>
                                 </div>
                             )}
 
-                            {/* ── STEP 3: COTIZACIÓN, PARTIDAS & FACTURACIÓN ── */}
+                            {/* ── STEP 3: COTIZACIÓN, PARTIDAS & SPLITS FINANCIEROS ── */}
                             {clientModalStep === 3 && (
                                 <div className="space-y-4 animate-in fade-in duration-150">
-                                    {/* Partida de Implementación */}
+                                    {/* Partida de Implementación con Visual Split Bar */}
                                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
                                         <div className="flex items-center justify-between">
                                             <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                                                <DollarSign size={13} className="text-emerald-600" />
-                                                <span>Precio de Implementación ($ USD)</span>
+                                                <DollarSign size={14} className="text-emerald-600" />
+                                                <span>Precio Total de Implementación ($ USD)</span>
                                             </label>
                                             <div className="flex items-center gap-1">
                                                 <button
                                                     type="button"
                                                     onClick={() => applyImplementationSplit(50)}
-                                                    className="text-[10px] font-bold bg-white hover:bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 cursor-pointer shadow-2xs"
-                                                    title="50% Colaborador / 50% Empresa"
+                                                    className="text-[10px] font-bold bg-white hover:bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200 cursor-pointer shadow-2xs"
                                                 >
                                                     50/50
                                                 </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => applyImplementationSplit(70)}
-                                                    className="text-[10px] font-bold bg-white hover:bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 cursor-pointer shadow-2xs"
-                                                    title="70% Colaborador / 30% Empresa"
+                                                    className="text-[10px] font-bold bg-white hover:bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200 cursor-pointer shadow-2xs"
                                                 >
                                                     70/30
                                                 </button>
@@ -2331,12 +2493,36 @@ export default function ClientsPage() {
                                                 name="implementationFee"
                                                 type="number"
                                                 step="0.01"
-                                                placeholder="Total acordado de implementación (Ej: 1500.00)"
+                                                placeholder="Total acordado (Ej: 1500.00)"
                                                 value={formData.implementationFee}
                                                 onChange={handleInputChange}
                                                 className="pl-7 rounded-xl border-gray-300 text-xs font-bold bg-white"
                                             />
                                         </div>
+
+                                        {/* Dual-Color Live Split Visualizer */}
+                                        {parseFloat(formData.implementationFee) > 0 && (
+                                            <div className="space-y-1 pt-1">
+                                                <div className="h-2.5 w-full bg-gray-200 rounded-full overflow-hidden flex shadow-inner">
+                                                    <div
+                                                        style={{
+                                                            width: `${Math.min(100, Math.max(0, Math.round(((parseFloat(formData.implementationFeeCollaborator) || 0) / (parseFloat(formData.implementationFee) || 1)) * 100)))}%`
+                                                        }}
+                                                        className="bg-gradient-to-r from-violet-500 to-purple-600 transition-all duration-300"
+                                                    />
+                                                    <div
+                                                        style={{
+                                                            width: `${Math.min(100, Math.max(0, 100 - Math.round(((parseFloat(formData.implementationFeeCollaborator) || 0) / (parseFloat(formData.implementationFee) || 1)) * 100)))}%`
+                                                        }}
+                                                        className="bg-gradient-to-r from-indigo-500 to-slate-700 transition-all duration-300"
+                                                    />
+                                                </div>
+                                                <div className="flex justify-between text-[10px] font-bold">
+                                                    <span className="text-violet-700">Tu Partida: ${parseFloat(formData.implementationFeeCollaborator || "0").toFixed(2)}</span>
+                                                    <span className="text-slate-600">Partida Empresa: ${parseFloat(formData.implementationFeeCompany || "0").toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         <div className="grid grid-cols-2 gap-2 pt-0.5">
                                             <div className="space-y-1">
@@ -2461,14 +2647,13 @@ export default function ClientsPage() {
                                         <div className="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 space-y-2">
                                             <div className="flex items-center justify-between">
                                                 <label className="text-xs font-bold text-indigo-900">
-                                                    División de Cuota Recurrente ($ USD/mes)
+                                                    División Recurrente ($ USD/mes)
                                                 </label>
                                                 <div className="flex items-center gap-1">
                                                     <button
                                                         type="button"
                                                         onClick={() => applyMonthlySplit(50)}
                                                         className="text-[10px] font-bold bg-white hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 cursor-pointer"
-                                                        title="50% Colaborador / 50% Empresa"
                                                     >
                                                         50/50
                                                     </button>
@@ -2476,7 +2661,6 @@ export default function ClientsPage() {
                                                         type="button"
                                                         onClick={() => applyMonthlySplit(40)}
                                                         className="text-[10px] font-bold bg-white hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 cursor-pointer"
-                                                        title="40% Colaborador / 60% Empresa"
                                                     >
                                                         40/60
                                                     </button>
@@ -2511,7 +2695,7 @@ export default function ClientsPage() {
                                         </div>
 
                                         <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-gray-700">Día de Pago (1 - 28)</label>
+                                            <label className="text-xs font-bold text-gray-700">Día de Cobro Mensual (1 - 28)</label>
                                             <Input
                                                 name="paymentDay"
                                                 type="number"
@@ -2528,13 +2712,13 @@ export default function ClientsPage() {
                             )}
                         </div>
 
-                        {/* Sticky Footer Bar — ALWAYS 100% VISIBLE */}
+                        {/* Sticky Modern Footer Bar */}
                         <div className="p-4 px-6 border-t border-gray-100 bg-gray-50/95 shrink-0 flex items-center justify-between gap-3 w-full">
                             <Button
                                 type="button"
                                 variant="ghost"
                                 onClick={() => setIsCreateModalOpen(false)}
-                                className="rounded-xl text-gray-500 hover:text-gray-900 text-xs"
+                                className="rounded-xl text-gray-500 hover:text-gray-900 text-xs font-semibold"
                             >
                                 Cancelar
                             </Button>
@@ -2545,7 +2729,7 @@ export default function ClientsPage() {
                                         type="button"
                                         variant="outline"
                                         onClick={() => setClientModalStep(prev => (prev - 1) as any)}
-                                        className="rounded-xl text-xs"
+                                        className="rounded-xl text-xs font-semibold"
                                     >
                                         ← Anterior
                                     </Button>
@@ -2555,7 +2739,7 @@ export default function ClientsPage() {
                                         type="button"
                                         variant="outline"
                                         onClick={() => setClientModalStep(prev => (prev + 1) as any)}
-                                        className="border-violet-200 text-violet-700 hover:bg-violet-50 rounded-xl text-xs font-semibold"
+                                        className="border-violet-300 text-violet-700 hover:bg-violet-50 rounded-xl text-xs font-bold"
                                     >
                                         Siguiente →
                                     </Button>
@@ -2563,10 +2747,10 @@ export default function ClientsPage() {
                                 <Button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white font-bold rounded-xl shadow-md h-9 px-4 text-xs gap-1.5"
+                                    className="bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white font-bold rounded-xl shadow-md h-9 px-5 text-xs gap-1.5 cursor-pointer"
                                 >
                                     {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                                    {editingClient ? "Guardar Cambios" : "Crear Cliente"}
+                                    {editingClient ? "Guardar Cambios" : "Crear Registro"}
                                 </Button>
                             </div>
                         </div>
