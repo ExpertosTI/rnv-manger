@@ -89,6 +89,10 @@ func (te *toolExecutor) execute(name string, args map[string]interface{}) execut
 		result.Result = te.rnvServiceControl(args)
 	case "rnv_record_payment":
 		result.Result = te.rnvRecordPayment(args)
+	case "rnv_update_payment":
+		result.Result = te.rnvUpdatePayment(args)
+	case "rnv_delete_payment":
+		result.Result = te.rnvDeletePayment(args)
 	case "rnv_schedule_task":
 		result.Result = te.rnvScheduleTask(args)
 	case "rnv_list_calendar":
@@ -131,6 +135,8 @@ func (te *toolExecutor) execute(name string, args map[string]interface{}) execut
 		result.Result = te.rnvListPartidas(args)
 	case "rnv_open_app":
 		result.Result = te.rnvOpenApp(args)
+	case "rnv_assign_collaborator":
+		result.Result = te.rnvAssignCollaborator(args)
 	default:
 		result.Result = map[string]interface{}{"success": false, "error": "función desconocida: " + name}
 	}
@@ -414,6 +420,33 @@ func (te *toolExecutor) rnvCreateClient(args map[string]interface{}) map[string]
 	if v, ok := args["annualFee"]; ok {
 		client.AnnualFee = toFloat(v)
 	}
+	if v := strArg(args, "stage"); v != "" {
+		client.Stage = v
+	}
+	if v := strArg(args, "assessmentNotes"); v != "" {
+		client.AssessmentNotes = &v
+	}
+	if v, ok := args["implementationFee"]; ok {
+		client.ImplementationFee = toFloat(v)
+	}
+	if v, ok := args["implementationFeeCollaborator"]; ok {
+		client.ImplementationFeeCollaborator = toFloat(v)
+	}
+	if v, ok := args["implementationFeeCompany"]; ok {
+		client.ImplementationFeeCompany = toFloat(v)
+	}
+	if v, ok := args["monthlyFeeCollaborator"]; ok {
+		client.MonthlyFeeCollaborator = toFloat(v)
+	}
+	if v, ok := args["monthlyFeeCompany"]; ok {
+		client.MonthlyFeeCompany = toFloat(v)
+	}
+	if aff := strArg(args, "affiliateId"); aff != "" {
+		var user models.User
+		if te.db.Where("id = ? OR name ILIKE ?", aff, "%"+aff+"%").First(&user).Error == nil {
+			client.AffiliateID = &user.ID
+		}
+	}
 
 	if err := te.db.Create(&client).Error; err != nil {
 		return map[string]interface{}{"success": false, "error": err.Error()}
@@ -427,11 +460,21 @@ func (te *toolExecutor) rnvCreateClient(args map[string]interface{}) map[string]
 
 func (te *toolExecutor) rnvUpdateClient(args map[string]interface{}) map[string]interface{} {
 	id := strArg(args, "id")
-	if id == "" {
-		return map[string]interface{}{"success": false, "error": "id requerido"}
+	name := strArg(args, "clientName")
+	if name == "" {
+		name = strArg(args, "name")
 	}
+
 	var client models.Client
-	if err := te.db.First(&client, "id = ?", id).Error; err != nil {
+	var err error
+	if id != "" {
+		err = te.db.First(&client, "id = ?", id).Error
+	} else if name != "" {
+		err = te.db.Where("name ILIKE ?", "%"+name+"%").First(&client).Error
+	} else {
+		return map[string]interface{}{"success": false, "error": "id o nombre de cliente requerido"}
+	}
+	if err != nil {
 		return map[string]interface{}{"success": false, "error": "cliente no encontrado"}
 	}
 
@@ -469,6 +512,35 @@ func (te *toolExecutor) rnvUpdateClient(args map[string]interface{}) map[string]
 	if v, ok := args["isActive"]; ok {
 		updates["is_active"] = v
 	}
+	if v := strArg(args, "affiliateId"); v != "" {
+		var user models.User
+		if te.db.Where("id = ? OR name ILIKE ?", v, "%"+v+"%").First(&user).Error == nil {
+			updates["affiliate_id"] = user.ID
+		} else {
+			updates["affiliate_id"] = v
+		}
+	}
+	if v := strArg(args, "stage"); v != "" {
+		updates["stage"] = v
+	}
+	if v := strArg(args, "assessmentNotes"); v != "" {
+		updates["assessment_notes"] = v
+	}
+	if _, ok := args["implementationFee"]; ok {
+		updates["implementation_fee"] = toFloat(args["implementationFee"])
+	}
+	if _, ok := args["implementationFeeCollaborator"]; ok {
+		updates["implementation_fee_collaborator"] = toFloat(args["implementationFeeCollaborator"])
+	}
+	if _, ok := args["implementationFeeCompany"]; ok {
+		updates["implementation_fee_company"] = toFloat(args["implementationFeeCompany"])
+	}
+	if _, ok := args["monthlyFeeCollaborator"]; ok {
+		updates["monthly_fee_collaborator"] = toFloat(args["monthlyFeeCollaborator"])
+	}
+	if _, ok := args["monthlyFeeCompany"]; ok {
+		updates["monthly_fee_company"] = toFloat(args["monthlyFeeCompany"])
+	}
 
 	if len(updates) == 0 {
 		return map[string]interface{}{"success": false, "error": "ningún campo para actualizar"}
@@ -476,11 +548,56 @@ func (te *toolExecutor) rnvUpdateClient(args map[string]interface{}) map[string]
 	if err := te.db.Model(&client).Updates(updates).Error; err != nil {
 		return map[string]interface{}{"success": false, "error": err.Error()}
 	}
-	te.db.First(&client, "id = ?", id)
+	te.db.First(&client, "id = ?", client.ID)
 	return map[string]interface{}{
 		"success": true,
-		"message": "Cliente actualizado",
+		"message": "Cliente actualizado: " + client.Name,
 		"client":  simplifyClient(client),
+	}
+}
+
+func (te *toolExecutor) rnvAssignCollaborator(args map[string]interface{}) map[string]interface{} {
+	clientQuery := strArg(args, "client")
+	if clientQuery == "" {
+		clientQuery = strArg(args, "clientName")
+	}
+	if clientQuery == "" {
+		clientQuery = strArg(args, "clientId")
+	}
+
+	collabQuery := strArg(args, "collaborator")
+	if collabQuery == "" {
+		collabQuery = strArg(args, "collaboratorName")
+	}
+	if collabQuery == "" {
+		collabQuery = strArg(args, "collaboratorId")
+	}
+
+	if clientQuery == "" || collabQuery == "" {
+		return map[string]interface{}{"success": false, "error": "Debes indicar el cliente y el colaborador"}
+	}
+
+	var client models.Client
+	if err := te.db.Where("id = ? OR name ILIKE ?", clientQuery, "%"+clientQuery+"%").First(&client).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": "Cliente no encontrado: " + clientQuery}
+	}
+
+	var collab models.User
+	if err := te.db.Where("(id = ? OR name ILIKE ? OR email ILIKE ?) AND role IN ('affiliate', 'collaborator', 'admin')", collabQuery, "%"+collabQuery+"%", "%"+collabQuery+"%").First(&collab).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": "Colaborador no encontrado: " + collabQuery}
+	}
+
+	if err := te.db.Model(&client).Update("affiliate_id", collab.ID).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": "Error al asignar colaborador: " + err.Error()}
+	}
+
+	return map[string]interface{}{
+		"success":          true,
+		"message":          fmt.Sprintf("Cliente **%s** asignado con éxito a **%s**.", client.Name, collab.Name),
+		"clientId":         client.ID,
+		"clientName":       client.Name,
+		"collaboratorId":   collab.ID,
+		"collaboratorName": collab.Name,
 	}
 }
 
@@ -709,6 +826,20 @@ func (te *toolExecutor) rnvListPayments(args map[string]interface{}) map[string]
 	return map[string]interface{}{"success": true, "count": len(payments), "payments": simplifyPayments(payments)}
 }
 
+func normalizeCurrency(cur string) string {
+	c := strings.ToUpper(strings.TrimSpace(cur))
+	switch c {
+	case "PESOS", "PESO", "RD", "RD$", "DOP":
+		return "DOP"
+	case "DOLARES", "DÓLARES", "DOLAR", "DÓLAR", "USD", "$":
+		return "USD"
+	}
+	if c != "" {
+		return c
+	}
+	return "USD"
+}
+
 func (te *toolExecutor) rnvCreatePayment(args map[string]interface{}) map[string]interface{} {
 	amount := toFloat(args["amount"])
 	if amount <= 0 {
@@ -728,10 +859,7 @@ func (te *toolExecutor) rnvCreatePayment(args map[string]interface{}) map[string
 		clientID = client.ID
 	}
 
-	currency := strArg(args, "currency")
-	if currency == "" {
-		currency = "USD"
-	}
+	currency := normalizeCurrency(strArg(args, "currency"))
 	status := strArg(args, "status")
 	if status == "" {
 		status = "completed"
@@ -858,10 +986,138 @@ func (te *toolExecutor) rnvRecordPayment(args map[string]interface{}) map[string
 	if amount <= 0 {
 		amount = serviceslayer.ClientChargeAmount(cl)
 	}
+
+	curArg := strArg(args, "currency")
+	var currency string
+	if curArg != "" {
+		currency = normalizeCurrency(curArg)
+	} else if cl.Currency != "" {
+		currency = normalizeCurrency(cl.Currency)
+	} else {
+		currency = "USD"
+	}
+
 	return te.rnvCreatePayment(map[string]interface{}{
-		"clientId": clientID, "amount": amount,
-		"notes": strArg(args, "notes"),
+		"clientId": clientID,
+		"amount":   amount,
+		"currency": currency,
+		"notes":    strArg(args, "notes"),
+		"status":   strArg(args, "status"),
 	})
+}
+
+func (te *toolExecutor) rnvUpdatePayment(args map[string]interface{}) map[string]interface{} {
+	paymentID := strArg(args, "paymentId")
+	if paymentID == "" {
+		paymentID = strArg(args, "id")
+	}
+
+	var payment models.Payment
+	if paymentID != "" {
+		if err := te.db.Preload("Client").First(&payment, "id = ?", paymentID).Error; err != nil {
+			return map[string]interface{}{"success": false, "error": "Pago no encontrado con ID " + paymentID}
+		}
+	} else {
+		clientName := strArg(args, "clientName")
+		if clientName == "" {
+			clientName = strArg(args, "client")
+		}
+		if clientName == "" {
+			return map[string]interface{}{"success": false, "error": "Indica paymentId o el nombre del cliente"}
+		}
+		var client models.Client
+		if err := te.db.Where("id = ? OR name ILIKE ?", clientName, "%"+clientName+"%").First(&client).Error; err != nil {
+			return map[string]interface{}{"success": false, "error": "Cliente no encontrado: " + clientName}
+		}
+		if err := te.db.Where("client_id = ?", client.ID).Order("date desc, created_at desc").First(&payment).Error; err != nil {
+			return map[string]interface{}{"success": false, "error": "No se encontraron pagos previos para " + client.Name}
+		}
+		payment.Client = &client
+	}
+
+	updates := map[string]interface{}{}
+	if amt, ok := args["amount"]; ok {
+		updates["amount"] = toFloat(amt)
+	}
+	if cur := strArg(args, "currency"); cur != "" {
+		updates["currency"] = normalizeCurrency(cur)
+	}
+	if status := strArg(args, "status"); status != "" {
+		updates["status"] = status
+	}
+	if notes := strArg(args, "notes"); notes != "" {
+		updates["notes"] = notes
+	}
+
+	if len(updates) == 0 {
+		return map[string]interface{}{"success": false, "error": "Ningún cambio especificado para el pago"}
+	}
+
+	if err := te.db.Model(&payment).Updates(updates).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": "Error al actualizar pago: " + err.Error()}
+	}
+
+	te.db.Preload("Client").First(&payment, "id = ?", payment.ID)
+	clientNameStr := ""
+	if payment.Client != nil {
+		clientNameStr = payment.Client.Name
+	}
+
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Pago actualizado con éxito: %.2f %s (%s) para **%s**", payment.Amount, payment.Currency, payment.Status, clientNameStr),
+		"payment": map[string]interface{}{
+			"id": payment.ID, "amount": payment.Amount, "currency": payment.Currency,
+			"status": payment.Status, "clientId": payment.ClientID, "client": clientNameStr,
+			"date": payment.Date.Format("2006-01-02"),
+		},
+	}
+}
+
+func (te *toolExecutor) rnvDeletePayment(args map[string]interface{}) map[string]interface{} {
+	paymentID := strArg(args, "paymentId")
+	if paymentID == "" {
+		paymentID = strArg(args, "id")
+	}
+
+	var payment models.Payment
+	if paymentID != "" {
+		if err := te.db.Preload("Client").First(&payment, "id = ?", paymentID).Error; err != nil {
+			return map[string]interface{}{"success": false, "error": "Pago no encontrado con ID " + paymentID}
+		}
+	} else {
+		clientName := strArg(args, "clientName")
+		if clientName == "" {
+			clientName = strArg(args, "client")
+		}
+		if clientName == "" {
+			return map[string]interface{}{"success": false, "error": "Indica paymentId o el nombre del cliente"}
+		}
+		var client models.Client
+		if err := te.db.Where("id = ? OR name ILIKE ?", clientName, "%"+clientName+"%").First(&client).Error; err != nil {
+			return map[string]interface{}{"success": false, "error": "Cliente no encontrado: " + clientName}
+		}
+		if err := te.db.Where("client_id = ?", client.ID).Order("date desc, created_at desc").First(&payment).Error; err != nil {
+			return map[string]interface{}{"success": false, "error": "No hay pagos registrados para " + client.Name}
+		}
+		payment.Client = &client
+	}
+
+	clientNameStr := ""
+	if payment.Client != nil {
+		clientNameStr = payment.Client.Name
+	}
+	oldAmount := payment.Amount
+	oldCur := payment.Currency
+
+	if err := te.db.Delete(&payment).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": "Error al eliminar pago: " + err.Error()}
+	}
+
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Pago de %.2f %s para **%s** anulado y eliminado del sistema.", oldAmount, oldCur, clientNameStr),
+	}
 }
 
 func (te *toolExecutor) rnvScheduleTask(args map[string]interface{}) map[string]interface{} {

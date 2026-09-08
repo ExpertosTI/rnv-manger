@@ -102,22 +102,30 @@ function MetricsChartBlock({ content }: { content: string }) {
 
 function ActionButtonsBlock({ items, onAction }: { items: string[]; onAction: (cmd: string) => void }) {
     return (
-        <div className="flex flex-wrap gap-2 my-2">
+        <div className="flex flex-wrap gap-2 my-2.5">
             {items.map((item, i) => {
                 const Icon = getActionIcon(item);
                 return (
                     <motion.button
                         key={i}
-                        initial={{ opacity: 0, scale: 0.8 }}
+                        whileHover={{ scale: 1.03, y: -1 }}
+                        whileTap={{ scale: 0.96 }}
+                        initial={{ opacity: 0, scale: 0.85 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: i * 0.08 }}
+                        transition={{ delay: i * 0.05 }}
                         onClick={() => onAction(item)}
-                        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold
-                                   bg-violet-500/15 hover:bg-violet-500/25 text-violet-200 border border-violet-400/30
-                                   hover:border-violet-400/60 transition-all"
+                        className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold
+                                   bg-gradient-to-r from-violet-600/35 via-fuchsia-600/25 to-violet-600/35
+                                   hover:from-violet-500/50 hover:via-fuchsia-500/40 hover:to-violet-500/50
+                                   text-white border border-violet-400/40 hover:border-violet-300
+                                   shadow-[0_2px_14px_rgba(139,92,246,0.25)] hover:shadow-[0_4px_20px_rgba(139,92,246,0.5)]
+                                   transition-all cursor-pointer text-left group"
                     >
-                        <Icon className="w-3.5 h-3.5" />
-                        {item}
+                        <div className="w-5 h-5 rounded-lg bg-violet-500/30 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                            <Icon className="w-3.5 h-3.5 text-violet-200" />
+                        </div>
+                        <span className="font-medium tracking-tight">{item}</span>
+                        <ArrowRight className="w-3 h-3 text-violet-300/70 ml-auto opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
                     </motion.button>
                 );
             })}
@@ -193,15 +201,18 @@ function QuickActionsBlock({ items, onAction }: { items: string[]; onAction: (cm
             {items.map((item, i) => (
                 <motion.button
                     key={i}
+                    whileHover={{ scale: 1.04, y: -1 }}
+                    whileTap={{ scale: 0.95 }}
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.05 }}
                     onClick={() => onAction(item)}
-                    className="px-3 py-1.5 rounded-full text-[11px] font-medium
-                               bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-200 border border-cyan-400/25
-                               hover:border-cyan-400/50 transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium
+                               bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-100 border border-cyan-400/30
+                               hover:border-cyan-300 transition-all cursor-pointer shadow-sm"
                 >
-                    ⚡ {item}
+                    <Zap className="w-3 h-3 text-cyan-300" />
+                    <span>{item}</span>
                 </motion.button>
             ))}
         </div>

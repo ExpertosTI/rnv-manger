@@ -321,37 +321,54 @@ func toolDeclarations() []functionDeclaration {
 		},
 		{
 			Name:        "rnv_create_client",
-			Description: "Crea un nuevo cliente en RNV Manager.",
+			Description: "Crea un nuevo cliente en RNV Manager con etapa y splits de colaborador/empresa.",
 			Parameters: objectParams(map[string]interface{}{
-				"name":         map[string]interface{}{"type": "string"},
-				"email":        map[string]interface{}{"type": "string"},
-				"phone":        map[string]interface{}{"type": "string"},
-				"companyName":  map[string]interface{}{"type": "string"},
-				"monthlyFee":   map[string]interface{}{"type": "number", "description": "Cuota mensual (ciclo monthly)"},
-				"annualFee":    map[string]interface{}{"type": "number", "description": "Cuota anual (ciclo annual)"},
-				"billingCycle": map[string]interface{}{"type": "string", "description": "monthly | annual"},
-				"paymentDay":   map[string]interface{}{"type": "integer", "description": "Día de pago (1-28)"},
-				"paymentMonth": map[string]interface{}{"type": "integer", "description": "Mes de pago anual (1-12)"},
-				"notes":        map[string]interface{}{"type": "string"},
+				"name":                          map[string]interface{}{"type": "string"},
+				"email":                         map[string]interface{}{"type": "string"},
+				"phone":                         map[string]interface{}{"type": "string"},
+				"companyName":                   map[string]interface{}{"type": "string"},
+				"monthlyFee":                    map[string]interface{}{"type": "number", "description": "Cuota mensual (ciclo monthly)"},
+				"annualFee":                     map[string]interface{}{"type": "number", "description": "Cuota anual (ciclo annual)"},
+				"billingCycle":                  map[string]interface{}{"type": "string", "description": "monthly | annual"},
+				"paymentDay":                    map[string]interface{}{"type": "integer", "description": "Día de pago (1-28)"},
+				"paymentMonth":                  map[string]interface{}{"type": "integer", "description": "Mes de pago anual (1-12)"},
+				"notes":                         map[string]interface{}{"type": "string"},
+				"affiliateId":                   map[string]interface{}{"type": "string", "description": "ID o nombre del colaborador asignado"},
+				"stage":                         map[string]interface{}{"type": "string", "description": "levantamiento | implementacion | revision | entregado"},
+				"assessmentNotes":               map[string]interface{}{"type": "string", "description": "Notas del levantamiento inicial"},
+				"implementationFee":             map[string]interface{}{"type": "number", "description": "Costo total de implementación"},
+				"implementationFeeCollaborator": map[string]interface{}{"type": "number", "description": "Partida de implementación para el colaborador"},
+				"implementationFeeCompany":      map[string]interface{}{"type": "number", "description": "Partida de implementación para la empresa"},
+				"monthlyFeeCollaborator":        map[string]interface{}{"type": "number", "description": "Partida mensual para el colaborador"},
+				"monthlyFeeCompany":             map[string]interface{}{"type": "number", "description": "Partida mensual para la empresa"},
 			}, []string{"name"}),
 		},
 		{
 			Name:        "rnv_update_client",
-			Description: "Actualiza datos de un cliente existente.",
+			Description: "Actualiza datos, etapas, cuotas o splits de un cliente existente.",
 			Parameters: objectParams(map[string]interface{}{
-				"id":           map[string]interface{}{"type": "string", "description": "ID del cliente"},
-				"name":         map[string]interface{}{"type": "string"},
-				"email":        map[string]interface{}{"type": "string"},
-				"phone":        map[string]interface{}{"type": "string"},
-				"companyName":  map[string]interface{}{"type": "string"},
-				"monthlyFee":   map[string]interface{}{"type": "number"},
-				"annualFee":    map[string]interface{}{"type": "number"},
-				"billingCycle": map[string]interface{}{"type": "string", "description": "monthly | annual"},
-				"paymentDay":   map[string]interface{}{"type": "integer"},
-				"paymentMonth": map[string]interface{}{"type": "integer"},
-				"isActive":     map[string]interface{}{"type": "boolean"},
-				"notes":        map[string]interface{}{"type": "string"},
-			}, []string{"id"}),
+				"id":                            map[string]interface{}{"type": "string", "description": "ID del cliente"},
+				"clientName":                    map[string]interface{}{"type": "string", "description": "Nombre del cliente si no tienes el ID"},
+				"name":                          map[string]interface{}{"type": "string"},
+				"email":                         map[string]interface{}{"type": "string"},
+				"phone":                         map[string]interface{}{"type": "string"},
+				"companyName":                   map[string]interface{}{"type": "string"},
+				"monthlyFee":                    map[string]interface{}{"type": "number"},
+				"annualFee":                     map[string]interface{}{"type": "number"},
+				"billingCycle":                  map[string]interface{}{"type": "string", "description": "monthly | annual"},
+				"paymentDay":                    map[string]interface{}{"type": "integer"},
+				"paymentMonth":                  map[string]interface{}{"type": "integer"},
+				"isActive":                      map[string]interface{}{"type": "boolean"},
+				"notes":                         map[string]interface{}{"type": "string"},
+				"affiliateId":                   map[string]interface{}{"type": "string", "description": "ID o nombre del colaborador asignado"},
+				"stage":                         map[string]interface{}{"type": "string", "description": "levantamiento | implementacion | revision | entregado"},
+				"assessmentNotes":               map[string]interface{}{"type": "string", "description": "Notas del levantamiento inicial"},
+				"implementationFee":             map[string]interface{}{"type": "number", "description": "Costo total de implementación"},
+				"implementationFeeCollaborator": map[string]interface{}{"type": "number", "description": "Partida de implementación para el colaborador"},
+				"implementationFeeCompany":      map[string]interface{}{"type": "number", "description": "Partida de implementación para la empresa"},
+				"monthlyFeeCollaborator":        map[string]interface{}{"type": "number", "description": "Partida mensual para el colaborador"},
+				"monthlyFeeCompany":             map[string]interface{}{"type": "number", "description": "Partida mensual para la empresa"},
+			}, []string{}),
 		},
 		{
 			Name:        "rnv_list_vps",
@@ -442,16 +459,37 @@ func toolDeclarations() []functionDeclaration {
 		},
 		{
 			Name:        "rnv_record_payment",
-			Description: "Registra un cobro/pago de un cliente (mensual o anual).",
+			Description: "Registra un cobro/pago de un cliente (mensual o anual). Soporta moneda DOP (Pesos) o USD (Dólares).",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"clientId":   map[string]interface{}{"type": "string"},
 					"clientName": map[string]interface{}{"type": "string"},
 					"amount":     map[string]interface{}{"type": "number"},
+					"currency":   map[string]interface{}{"type": "string", "description": "DOP (Pesos) o USD (Dólares)"},
 					"notes":      map[string]interface{}{"type": "string"},
 				},
 			},
+		},
+		{
+			Name:        "rnv_update_payment",
+			Description: "Edita, corrige o ajusta un pago existente (monto, moneda USD/DOP, notas, estado). Si no tienes el paymentId, modifica el último pago registrado de ese cliente.",
+			Parameters: objectParams(map[string]interface{}{
+				"paymentId":  map[string]interface{}{"type": "string", "description": "ID del pago"},
+				"clientName": map[string]interface{}{"type": "string", "description": "Nombre del cliente para encontrar su último pago"},
+				"amount":     map[string]interface{}{"type": "number", "description": "Nuevo monto corregido"},
+				"currency":   map[string]interface{}{"type": "string", "description": "DOP o USD"},
+				"status":     map[string]interface{}{"type": "string", "description": "completed | pending | cancelled"},
+				"notes":      map[string]interface{}{"type": "string"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_delete_payment",
+			Description: "Anula y elimina del sistema un pago erróneo. Si no tienes paymentId, anula el último pago del cliente.",
+			Parameters: objectParams(map[string]interface{}{
+				"paymentId":  map[string]interface{}{"type": "string", "description": "ID del pago a eliminar"},
+				"clientName": map[string]interface{}{"type": "string", "description": "Nombre del cliente para anular su último pago"},
+			}, []string{}),
 		},
 		{
 			Name:        "rnv_schedule_task",
@@ -637,6 +675,16 @@ func toolDeclarations() []functionDeclaration {
 			}, []string{}),
 		},
 		{
+			Name:        "rnv_assign_collaborator",
+			Description: "Asigna directamente un cliente a un colaborador/afiliado por nombre o ID.",
+			Parameters: objectParams(map[string]interface{}{
+				"clientId":         map[string]interface{}{"type": "string", "description": "ID del cliente"},
+				"clientName":       map[string]interface{}{"type": "string", "description": "Nombre del cliente (ej. Franklin, Zav)"},
+				"collaboratorId":   map[string]interface{}{"type": "string", "description": "ID del colaborador/afiliado"},
+				"collaboratorName": map[string]interface{}{"type": "string", "description": "Nombre o email del colaborador (ej. Jean, Carlos)"},
+			}, []string{}),
+		},
+		{
 			Name:        "rnv_open_app",
 			Description: "Abre aplicaciones y herramientas nativas en macOS (Pizarra, Terminal, Calculadora, Safari, Google Chrome, Notas, Finder, Cursor, VS Code, etc.).",
 			Parameters: objectParams(map[string]interface{}{
@@ -646,58 +694,66 @@ func toolDeclarations() []functionDeclaration {
 	}
 }
 
-const systemPrompt = `Asistente RNV Manager — Centro de operaciones y control total (VPS, clientes, colaboradores, partidas, servicios, facturación, Odoo, WhatsApp, email y herramientas macOS). Responde en español, de forma concisa, proactiva y ejecutiva.
+const systemPrompt = `Asistente Ejecutivo RNV Manager — Centro de mando y control total con superpoderes de ejecución (clientes, colaboradores, partidas y comisiones, VPS, servicios, facturación y cobros, WhatsApp, email y herramientas macOS).
 
-HERRAMIENTAS COMPLETAS:
-- Datos: rnv_search, rnv_list_*, rnv_get_*, rnv_billing_summary, rnv_overdue_clients, rnv_topology, rnv_dns_lookup
-- Colaboradores y Afiliados: rnv_list_collaborators (lista colaboradores registrados, métricas y clientes asignados), rnv_create_affiliate_invite (invitaciones vía WhatsApp)
-- Partidas y Finanzas: rnv_list_partidas (desglose financiero de implementación y mensualidades divididas empresa/colaborador)
-- Servicios: rnv_probe_url (detectar URL→tipo/favicon/VPS), rnv_create_service, rnv_update_service, rnv_scan_services, rnv_assign_service, rnv_service_control
-- Clientes y Facturación: rnv_create/update_client, rnv_record_payment, rnv_create_payment, rnv_billing_remind
-- Tareas Mi Flujo: rnv_workflow, rnv_schedule_task (type=work), rnv_complete_task, rnv_list_scheduled_tasks
-- Calendario: rnv_list_calendar
-- Control de Apps en macOS: rnv_open_app (abre Pizarra, Terminal, Calculadora, Safari, etc.)
-- Email: rnv_send_email (SMTP) — alertas, notificaciones
-- WhatsApp: rnv_send_whatsapp (mensajes directos), rnv_create_affiliate_invite (invitaciones a colaboradores), rnv_billing_remind (cobros)
-- Reportes al admin: rnv_whatsapp_report → correo NOTIFICATION_EMAIL
-- Salud de servicios: rnv_service_health, rnv_list_offline_services
-- Odoo: odoo_* (si configurado)
+REGLAS SUPREMAS DE EXPERIENCIA DE USUARIO:
+1. CERO TEXTOS LARGOS O PASIVOS ("anti-wall-of-text"):
+   - Máximo 1 a 3 frases cortas, directas y resolutivas.
+   - NUNCA generes cuestionarios teóricos ni le pidas al usuario "indícame el nombre de los clientes, montos...".
+   - Si el usuario habla de actualizar clientes, cobrar o asignar, LLAMA DE INMEDIATO a tus herramientas (rnv_list_clients, rnv_overdue_clients, rnv_list_collaborators, rnv_list_partidas) para obtener los datos reales y mostrarlos con botones de acción directa.
 
-SUPERPODERES:
-- Colaboradores y métricas: Si el usuario pregunta cuántos colaboradores o afiliados hay o quiénes son, NUNCA digas que no tienes función; llama inmediatamente a rnv_list_collaborators y presenta la lista con clientes asignados y comisiones.
-- Partidas financieras: Si preguntan por partidas, divisiones de implementación o splits de clientes, usa rnv_list_partidas para mostrar exactamente cuánto corresponde a la empresa y cuánto al colaborador.
-- Abrir programas y herramientas: Si te piden abrir la Pizarra, la Terminal, la Calculadora o cualquier app de Mac, ejecuta rnv_open_app.
-- Invitación de colaboradores/afiliados: "Envía un mensaje a [número] para que se registre" → usa rnv_create_affiliate_invite con el número y envía de inmediato la invitación con enlace único.
-- Mensajes WhatsApp a nuevos destinatarios: usa rnv_send_whatsapp con force=true si el usuario te lo pide directamente o tras confirmar con :::confirm.
-- Detección de infraestructura: URL desconocida → rnv_probe_url y opcionalmente rnv_create_service.
-- Control de servidores: rnv_service_control para reiniciar/detener servicios vía SSH.
-- Flujo diario: al saludar o iniciar, revisa rnv_workflow y tareas pendientes.
+2. MATERIALIZACIÓN OBLIGATORIA DE BOTONES (:::action-buttons):
+   - En TODA respuesta donde haya una acción o decisión posible, genera SIEMPRE un bloque :::action-buttons con botones listos para pulsar.
+   - Cada botón debe ser una acción ejecutable directa y concisa que el usuario solo tenga que presionar con un dedo/clic.
 
-CONFIRMACIÓN DE ACCIONES:
-Para acciones críticas o sensibles (ej: registrar cobros monetarios, reiniciar servicios en producción, o enviar WhatsApp a números no registrados cuando no haya una orden explícita previa), solicita confirmación usando el bloque interactivo :::confirm:
-:::confirm
-¿Deseas enviar la invitación de Colaborador a +1 809 915 2622 con enlace único de registro?
-:::
-Si el usuario ya te dio una instrucción clara y directa, ejecútala inmediatamente con tus herramientas y confirma el resultado con enlaces y detalles claros.
-
-REGLAS:
-- NUNCA digas "no puedo" o "no tengo una función directa" para consultar colaboradores o partidas; usa rnv_list_collaborators o rnv_list_partidas.
-- Usa herramientas para obtener y manipular datos reales.
-- Formatea tus respuestas de forma visual con listas, negritas y bloques cuando corresponda.
-
-FORMATO (solo cuando aporte valor):
-:::summary-card
-dato: valor
-:::
+3. PAGOS Y MONEDA (DÓLARES VS PESOS):
+   - Cuando el usuario te diga que un cliente pagó o se recibió un pago y no aclare si fue en Dólares (USD) o Pesos (DOP):
+     Pregunta DE INMEDIATO con botones de acción:
 :::action-buttons
-Acción sugerida
+Registrar [monto] DOP (Pesos) para [Cliente]
+Registrar [monto] USD (Dólares) para [Cliente]
 :::
+   - Si el usuario indica "en pesos" o "DOP", usa currency='DOP'. Si indica "dólares" o "USD", usa currency='USD'.
+
+4. EDICIÓN Y ANULACIÓN DE PAGOS (CONTROL TOTAL):
+   - TIENES rnv_update_payment y rnv_delete_payment.
+   - Si el usuario pide editar, cambiar la moneda (ej. de 6000 USD a 6000 Pesos), corregir el monto o anular un pago registrado por error:
+     ¡NUNCA digas "no puedo editar el pago anterior"!
+     Ejecuta rnv_update_payment(clientName='...', currency='DOP', amount=...) o rnv_delete_payment(clientName='...') al instante.
+
+5. EDICIÓN DE COBROS Y DATOS DE CLIENTES:
+   - TIENES rnv_update_client para cambiar precios mensuales (monthlyFee), anuales (annualFee), moneda (currency), etapas (stage) y notas de cualquier cliente.
+   - TIENES rnv_assign_collaborator para asignar clientes a colaboradores al instante por nombre o ID.
+
+HERRAMIENTAS CLAVE:
+- rnv_assign_collaborator: Asigna cliente a colaborador (args: clientName, collaboratorName).
+- rnv_list_collaborators: Lista colaboradores, clientes asignados y comisiones.
+- rnv_list_partidas: Consulta splits de dinero (implementación y mensual) entre empresa y colaborador.
+- rnv_list_clients / rnv_get_client / rnv_update_client / rnv_create_client: Gestión total de clientes y cuotas.
+- rnv_overdue_clients: Lista de clientes con pagos pendientes/morosos.
+- rnv_record_payment: Registra cobros a clientes (args: clientName, amount, currency='USD'|'DOP').
+- rnv_update_payment: Corrige monto, moneda o estado de pagos existentes.
+- rnv_delete_payment: Anula y elimina pagos erróneos del sistema.
+- rnv_open_app: Abrir apps nativas en macOS (Pizarra, Calculadora, Safari, etc.).
+- rnv_send_whatsapp / rnv_create_affiliate_invite / rnv_send_email: Mensajería.
+
+BLOQUES RICOS (materializan la interfaz):
+:::action-buttons
+Registrar 6,000 DOP (Pesos) para Coca
+Registrar 6,000 USD (Dólares) para Coca
+:::
+
+:::summary-card
+Cliente: Nombre
+Monto: $50
+Colaborador: Jean
+:::
+
 :::quick-actions
-Atajo
+Atajo 1
+Atajo 2
 :::
-:::navigate
-/ruta
-:::
+
 :::confirm
 ¿Confirmar acción?
 :::`
