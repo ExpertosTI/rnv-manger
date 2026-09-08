@@ -39,6 +39,50 @@ fn hide_window(window: tauri::WebviewWindow) {
     let _ = window.hide();
 }
 
+#[tauri::command]
+fn open_app(app: tauri::AppHandle, name: String) -> Result<String, String> {
+    let trimmed = name.trim();
+    let lower = trimmed.to_lowercase();
+
+    if lower == "pizarra" || lower == "whiteboard" || lower.contains("pizarra") {
+        open_whiteboard(app);
+        return Ok("Pizarra de arquitectura abierta.".to_string());
+    }
+
+    let target = match lower.as_str() {
+        "terminal" | "iterm" | "consola" => "Terminal",
+        "calculadora" | "calculator" => "Calculator",
+        "notas" | "notes" => "Notes",
+        "safari" => "Safari",
+        "chrome" | "google chrome" => "Google Chrome",
+        "cursor" => "Cursor",
+        "vscode" | "code" | "visual studio code" => "Visual Studio Code",
+        "finder" => "Finder",
+        "calendario" | "calendar" => "Calendar",
+        "mensajes" | "messages" => "Messages",
+        "mail" | "correo" => "Mail",
+        _ => trimmed,
+    };
+
+    let status = std::process::Command::new("open")
+        .arg("-a")
+        .arg(target)
+        .status();
+
+    match status {
+        Ok(s) if s.success() => Ok(format!("Aplicación '{}' abierta correctamente.", target)),
+        _ => {
+            let status2 = std::process::Command::new("open")
+                .arg(trimmed)
+                .status();
+            match status2 {
+                Ok(s2) if s2.success() => Ok(format!("'{}' abierto.", trimmed)),
+                _ => Err(format!("No se pudo abrir '{}' en tu Mac.", trimmed)),
+            }
+        }
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -123,7 +167,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![navigate_to, show_notification, open_whiteboard, start_drag, hide_window])
+        .invoke_handler(tauri::generate_handler![navigate_to, show_notification, open_whiteboard, start_drag, hide_window, open_app])
         .run(tauri::generate_context!())
         .expect("error while running RNV Manager");
 }

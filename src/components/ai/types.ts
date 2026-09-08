@@ -30,7 +30,8 @@ export type RichBlockType =
     | "navigate"
     | "metrics-chart"
     | "animate"
-    | "theme";
+    | "theme"
+    | "open-app";
 
 export interface RichBlock {
     type: RichBlockType;

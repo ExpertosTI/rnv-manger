@@ -623,17 +623,40 @@ func toolDeclarations() []functionDeclaration {
 			Description: "Mapa de infraestructura: VPS, servicios por servidor, clientes asignados, costos y estado.",
 			Parameters:  emptyParams(),
 		},
+		{
+			Name:        "rnv_list_collaborators",
+			Description: "Lista colaboradores y afiliados registrados en RNV Manager, cantidad de clientes asignados a cada uno, comisiones mensuales y total de partidas de implementación, así como invitaciones pendientes. Úsala siempre que pregunten cuántos colaboradores o afiliados hay o quiénes son.",
+			Parameters:  emptyParams(),
+		},
+		{
+			Name:        "rnv_list_partidas",
+			Description: "Consulta y desglosa las partidas financieras acordadas con los clientes: total de implementación, partida colaborador ($), partida empresa ($), cuota mensual recurrente ($) y split mensual colaborador/empresa. Permite filtrar por nombre de cliente o nombre de colaborador.",
+			Parameters: objectParams(map[string]interface{}{
+				"client":       map[string]interface{}{"type": "string", "description": "Nombre opcional del cliente a filtrar"},
+				"collaborator": map[string]interface{}{"type": "string", "description": "Nombre opcional del colaborador a filtrar"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_open_app",
+			Description: "Abre aplicaciones y herramientas nativas en macOS (Pizarra, Terminal, Calculadora, Safari, Google Chrome, Notas, Finder, Cursor, VS Code, etc.).",
+			Parameters: objectParams(map[string]interface{}{
+				"appName": map[string]interface{}{"type": "string", "description": "Nombre de la aplicación o herramienta a abrir (ej: Pizarra, Terminal, Calculadora, Safari)"},
+			}, []string{"appName"}),
+		},
 	}
 }
 
-const systemPrompt = `Asistente RNV Manager — Centro de operaciones y control total (VPS, clientes, colaboradores, servicios, facturación, Odoo, WhatsApp, email). Responde en español, de forma concisa, proactiva y ejecutiva.
+const systemPrompt = `Asistente RNV Manager — Centro de operaciones y control total (VPS, clientes, colaboradores, partidas, servicios, facturación, Odoo, WhatsApp, email y herramientas macOS). Responde en español, de forma concisa, proactiva y ejecutiva.
 
 HERRAMIENTAS COMPLETAS:
 - Datos: rnv_search, rnv_list_*, rnv_get_*, rnv_billing_summary, rnv_overdue_clients, rnv_topology, rnv_dns_lookup
+- Colaboradores y Afiliados: rnv_list_collaborators (lista colaboradores registrados, métricas y clientes asignados), rnv_create_affiliate_invite (invitaciones vía WhatsApp)
+- Partidas y Finanzas: rnv_list_partidas (desglose financiero de implementación y mensualidades divididas empresa/colaborador)
 - Servicios: rnv_probe_url (detectar URL→tipo/favicon/VPS), rnv_create_service, rnv_update_service, rnv_scan_services, rnv_assign_service, rnv_service_control
-- Clientes y Colaboradores: rnv_create/update_client, rnv_create_affiliate_invite (invita colaboradores por WhatsApp con enlace único), rnv_record_payment, rnv_create_payment, rnv_billing_remind
+- Clientes y Facturación: rnv_create/update_client, rnv_record_payment, rnv_create_payment, rnv_billing_remind
 - Tareas Mi Flujo: rnv_workflow, rnv_schedule_task (type=work), rnv_complete_task, rnv_list_scheduled_tasks
 - Calendario: rnv_list_calendar
+- Control de Apps en macOS: rnv_open_app (abre Pizarra, Terminal, Calculadora, Safari, etc.)
 - Email: rnv_send_email (SMTP) — alertas, notificaciones
 - WhatsApp: rnv_send_whatsapp (mensajes directos), rnv_create_affiliate_invite (invitaciones a colaboradores), rnv_billing_remind (cobros)
 - Reportes al admin: rnv_whatsapp_report → correo NOTIFICATION_EMAIL
@@ -641,6 +664,9 @@ HERRAMIENTAS COMPLETAS:
 - Odoo: odoo_* (si configurado)
 
 SUPERPODERES:
+- Colaboradores y métricas: Si el usuario pregunta cuántos colaboradores o afiliados hay o quiénes son, NUNCA digas que no tienes función; llama inmediatamente a rnv_list_collaborators y presenta la lista con clientes asignados y comisiones.
+- Partidas financieras: Si preguntan por partidas, divisiones de implementación o splits de clientes, usa rnv_list_partidas para mostrar exactamente cuánto corresponde a la empresa y cuánto al colaborador.
+- Abrir programas y herramientas: Si te piden abrir la Pizarra, la Terminal, la Calculadora o cualquier app de Mac, ejecuta rnv_open_app.
 - Invitación de colaboradores/afiliados: "Envía un mensaje a [número] para que se registre" → usa rnv_create_affiliate_invite con el número y envía de inmediato la invitación con enlace único.
 - Mensajes WhatsApp a nuevos destinatarios: usa rnv_send_whatsapp con force=true si el usuario te lo pide directamente o tras confirmar con :::confirm.
 - Detección de infraestructura: URL desconocida → rnv_probe_url y opcionalmente rnv_create_service.
@@ -652,10 +678,10 @@ Para acciones críticas o sensibles (ej: registrar cobros monetarios, reiniciar 
 :::confirm
 ¿Deseas enviar la invitación de Colaborador a +1 809 915 2622 con enlace único de registro?
 :::
-Si el usuario ya te dio una instrucción clara y directa (ej: "Enviale un mensaje a 8099152622 para que se registre como colaborador"), ejecútala inmediatamente con tus herramientas y confirma el resultado con enlaces y detalles claros.
+Si el usuario ya te dio una instrucción clara y directa, ejecútala inmediatamente con tus herramientas y confirma el resultado con enlaces y detalles claros.
 
 REGLAS:
-- Nunca digas "no puedo" para tareas cubiertas por tus herramientas.
+- NUNCA digas "no puedo" o "no tengo una función directa" para consultar colaboradores o partidas; usa rnv_list_collaborators o rnv_list_partidas.
 - Usa herramientas para obtener y manipular datos reales.
 - Formatea tus respuestas de forma visual con listas, negritas y bloques cuando corresponda.
 

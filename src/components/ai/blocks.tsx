@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
     CheckCircle2, XCircle, Users, DollarSign, Server, FileText,
     Search, Trash2, Plus, CreditCard, BarChart3, ArrowRight,
     AlertTriangle, Check, Zap, RefreshCw, Eye, Download,
-    Settings, Calendar, Mail, Shield, Database, Loader2,
+    Settings, Calendar, Mail, Shield, Database, Loader2, AppWindow,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
@@ -257,6 +257,48 @@ function MarkdownBlock({ content, onAction }: { content: string; onAction: (cmd:
     );
 }
 
+function OpenAppBlock({ content }: { content: string }) {
+    const [status, setStatus] = useState<string>("Abriendo en macOS...");
+    const [isDone, setIsDone] = useState(false);
+
+    useEffect(() => {
+        const appName = content.trim();
+        (async () => {
+            try {
+                const { invoke } = await import("@tauri-apps/api/core");
+                const res = await invoke<string>("open_app", { name: appName });
+                setStatus(res || `Abierto: ${appName}`);
+                setIsDone(true);
+            } catch {
+                if (appName.toLowerCase().includes("pizarra") || appName.toLowerCase().includes("whiteboard")) {
+                    window.open("https://rnv.renace.tech/whiteboard-app/index.html", "_blank");
+                    setStatus("🎨 Pizarra de arquitectura abierta");
+                    setIsDone(true);
+                } else {
+                    setStatus(`⚠️ "${appName}" requiere la App nativa de Mac para ejecutarse`);
+                }
+            }
+        })();
+    }, [content]);
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="my-2 p-3 rounded-2xl bg-gradient-to-r from-violet-600/20 to-fuchsia-600/20 border border-violet-500/30 flex items-center gap-2.5 shadow-sm"
+        >
+            <div className="w-8 h-8 rounded-xl bg-violet-500/20 flex items-center justify-center text-violet-300 shrink-0">
+                <AppWindow className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-violet-200">{content.trim()}</p>
+                <p className="text-[11px] text-violet-300/80">{status}</p>
+            </div>
+            {isDone && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
+        </motion.div>
+    );
+}
+
 export function MessageBlocks({
     blocks,
     executedFunctions,
@@ -289,6 +331,8 @@ export function MessageBlocks({
                         return <NavigateBlock key={bi} path={block.content} />;
                     case "metrics-chart":
                         return <MetricsChartBlock key={bi} content={block.content} />;
+                    case "open-app":
+                        return <OpenAppBlock key={bi} content={block.content} />;
                     default:
                         return <MarkdownBlock key={bi} content={block.content} onAction={onAction} />;
                 }

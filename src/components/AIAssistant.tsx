@@ -18,7 +18,7 @@ const WELCOME: Message = {
     id: "welcome",
     role: "assistant",
     content:
-        "¡Hola! Soy tu asistente **RNV** con **control total** del panel: clientes, VPS, servicios, pagos, Odoo, email y tu cola de trabajo.\n\nPásame una URL y la detecto (tipo, favicon, VPS). Puedo escanear Docker, enviar emails y gestionar tareas.\n\n:::quick-actions\n¿Qué tengo pendiente?\nDetecta zavinteriorclean.com\nClientes morosos\nEscanear VPS\n:::",
+        "¡Hola! Soy tu asistente personal **RNV** con **control total**: clientes, colaboradores, partidas y comisiones, VPS, servicios, finanzas, Odoo y control de herramientas macOS.\n\nPuedes pedirme métricas de colaboradores, consultar splits de facturación o pedirme que abra herramientas de tu Mac.\n\n:::quick-actions\n¿Cuántos colaboradores hay?\nVer partidas asignadas\nAbrir Pizarra\nClientes morosos\n¿Qué tengo pendiente?\n:::",
     timestamp: new Date(),
 };
 

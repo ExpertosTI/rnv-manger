@@ -125,6 +125,12 @@ func (te *toolExecutor) execute(name string, args map[string]interface{}) execut
 		result.Result = te.rnvListOfflineServices(args)
 	case "rnv_topology":
 		result.Result = te.rnvTopology(args)
+	case "rnv_list_collaborators":
+		result.Result = te.rnvListCollaborators(args)
+	case "rnv_list_partidas":
+		result.Result = te.rnvListPartidas(args)
+	case "rnv_open_app":
+		result.Result = te.rnvOpenApp(args)
 	default:
 		result.Result = map[string]interface{}{"success": false, "error": "función desconocida: " + name}
 	}
@@ -1741,6 +1747,139 @@ func (te *toolExecutor) rnvTopology(args map[string]interface{}) map[string]inte
 			"monthlyRevenue": revenue,
 		},
 		"clusters": clusters,
+	}
+}
+
+func (te *toolExecutor) rnvListCollaborators(args map[string]interface{}) map[string]interface{} {
+	var users []models.User
+	query := te.db.Where("role IN ('affiliate', 'collaborator') AND is_active = true")
+	if err := query.Order("name asc").Find(&users).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+
+	type collabInfo struct {
+		ID                      string  `json:"id"`
+		Name                    string  `json:"name"`
+		Email                   string  `json:"email"`
+		Phone                   string  `json:"phone"`
+		Role                    string  `json:"role"`
+		AssignedClientsCount    int64   `json:"assignedClientsCount"`
+		TotalMonthlyCommission  float64 `json:"totalMonthlyCommission"`
+		TotalImplementationPart float64 `json:"totalImplementationPart"`
+	}
+
+	list := make([]collabInfo, 0, len(users))
+	for _, u := range users {
+		var clientCount int64
+		te.db.Model(&models.Client{}).Where("affiliate_id = ? AND is_active = true", u.ID).Count(&clientCount)
+
+		var totalMonthly, totalImpl float64
+		var clients []models.Client
+		te.db.Where("affiliate_id = ? AND is_active = true", u.ID).Find(&clients)
+		for _, cl := range clients {
+			if cl.MonthlyFeeCollaborator > 0 {
+				totalMonthly += cl.MonthlyFeeCollaborator
+			}
+			if cl.ImplementationFeeCollaborator > 0 {
+				totalImpl += cl.ImplementationFeeCollaborator
+			}
+		}
+
+		phone := ""
+		if u.Phone != nil {
+			phone = *u.Phone
+		}
+
+		list = append(list, collabInfo{
+			ID:                      u.ID,
+			Name:                    u.Name,
+			Email:                   u.Email,
+			Phone:                   phone,
+			Role:                    u.Role,
+			AssignedClientsCount:    clientCount,
+			TotalMonthlyCommission:  totalMonthly,
+			TotalImplementationPart: totalImpl,
+		})
+	}
+
+	var pendingInvites []models.AffiliateInvite
+	te.db.Where("used = false AND expires_at > ?", time.Now()).Order("created_at desc").Find(&pendingInvites)
+
+	return map[string]interface{}{
+		"success":             true,
+		"count":               len(list),
+		"collaborators":       list,
+		"pendingInvitesCount": len(pendingInvites),
+	}
+}
+
+func (te *toolExecutor) rnvListPartidas(args map[string]interface{}) map[string]interface{} {
+	clientName := strArg(args, "client")
+	collaboratorName := strArg(args, "collaborator")
+
+	query := te.db.Where("is_active = true").Preload("Affiliate")
+	if clientName != "" {
+		query = query.Where("name ILIKE ?", "%"+clientName+"%")
+	}
+
+	var clients []models.Client
+	if err := query.Order("name asc").Find(&clients).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+
+	type partidaRow struct {
+		ClientID                      string  `json:"clientId"`
+		ClientName                    string  `json:"clientName"`
+		Stage                         string  `json:"stage"`
+		CollaboratorName              string  `json:"collaboratorName"`
+		TotalImplementationFee        float64 `json:"totalImplementationFee"`
+		ImplementationFeeCollaborator float64 `json:"implementationFeeCollaborator"`
+		ImplementationFeeCompany      float64 `json:"implementationFeeCompany"`
+		MonthlyFee                    float64 `json:"monthlyFee"`
+		MonthlyFeeCollaborator        float64 `json:"monthlyFeeCollaborator"`
+		MonthlyFeeCompany             float64 `json:"monthlyFeeCompany"`
+	}
+
+	rows := make([]partidaRow, 0, len(clients))
+	for _, c := range clients {
+		collabName := "Sin asignar"
+		if c.Affiliate != nil && c.Affiliate.Name != "" {
+			collabName = c.Affiliate.Name
+		}
+		if collaboratorName != "" && !strings.Contains(strings.ToLower(collabName), strings.ToLower(collaboratorName)) {
+			continue
+		}
+
+		rows = append(rows, partidaRow{
+			ClientID:                      c.ID,
+			ClientName:                    c.Name,
+			Stage:                         c.Stage,
+			CollaboratorName:              collabName,
+			TotalImplementationFee:        c.ImplementationFee,
+			ImplementationFeeCollaborator: c.ImplementationFeeCollaborator,
+			ImplementationFeeCompany:      c.ImplementationFeeCompany,
+			MonthlyFee:                    c.MonthlyFee,
+			MonthlyFeeCollaborator:        c.MonthlyFeeCollaborator,
+			MonthlyFeeCompany:             c.MonthlyFeeCompany,
+		})
+	}
+
+	return map[string]interface{}{
+		"success":  true,
+		"count":    len(rows),
+		"partidas": rows,
+	}
+}
+
+func (te *toolExecutor) rnvOpenApp(args map[string]interface{}) map[string]interface{} {
+	appName := strArg(args, "appName")
+	if appName == "" {
+		appName = "Pizarra"
+	}
+	return map[string]interface{}{
+		"success": true,
+		"appName": appName,
+		"message": fmt.Sprintf(":::open-app\n%s\n:::\n\nAbriendo **%s** en tu Mac...", appName, appName),
 	}
 }
 
