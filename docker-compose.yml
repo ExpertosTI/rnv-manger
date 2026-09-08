@@ -54,7 +54,7 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       NOTIFICATION_EMAIL: ${NOTIFICATION_EMAIL:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
       EVOLUTION_API_URL: ${EVOLUTION_API_URL:-https://evoapi.renace.tech}
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
       EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-renace}

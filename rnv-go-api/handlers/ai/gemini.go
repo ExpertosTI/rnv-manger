@@ -85,8 +85,8 @@ type geminiResponse struct {
 }
 
 func newGeminiClient(apiKey, model string) *geminiClient {
-	if model == "" || strings.Contains(model, "2.0") {
-		model = "gemini-2.5-flash"
+	if model == "" || strings.Contains(model, "2.0") || strings.Contains(model, "2.5") {
+		model = "gemini-3.6-flash"
 	}
 	return &geminiClient{
 		apiKey: apiKey,
@@ -98,11 +98,11 @@ func newGeminiClient(apiKey, model string) *geminiClient {
 func (g *geminiClient) generate(req geminiRequest) (*geminiResponse, error) {
 	primary := g.model
 	if primary == "" || strings.Contains(primary, "2.0") {
-		primary = "gemini-2.5-flash"
+		primary = "gemini-3.6-flash"
 	}
 
 	models := []string{primary}
-	for _, fb := range []string{"gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"} {
+	for _, fb := range []string{"gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"} {
 		found := false
 		for _, m := range models {
 			if m == fb {

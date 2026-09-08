@@ -67,7 +67,7 @@ func Load() *Config {
 		VaultMasterKeyOld: getEnv("VAULT_MASTER_KEY_OLD", ""),
 		NotificationEmail: getEnv("NOTIFICATION_EMAIL", ""),
 		GeminiAPIKey:      getEnv("GEMINI_API_KEY", ""),
-		GeminiModel:       getEnv("GEMINI_MODEL", "gemini-2.5-flash"),
+		GeminiModel:       getEnv("GEMINI_MODEL", "gemini-3.6-flash"),
 		EvolutionAPIURL:   getEnv("EVOLUTION_API_URL", ""),
 		EvolutionAPIKey:   getEnv("EVOLUTION_API_KEY", ""),
 		EvolutionInstance: getEnv("EVOLUTION_INSTANCE", "renace"),
