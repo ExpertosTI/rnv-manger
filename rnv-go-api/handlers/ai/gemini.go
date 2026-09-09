@@ -357,6 +357,8 @@ func toolDeclarations() []functionDeclaration {
 				"implementationFeeCompany":      map[string]interface{}{"type": "number", "description": "Partida de implementación para la empresa"},
 				"monthlyFeeCollaborator":        map[string]interface{}{"type": "number", "description": "Partida mensual para el colaborador"},
 				"monthlyFeeCompany":             map[string]interface{}{"type": "number", "description": "Partida mensual para la empresa"},
+				"serviceName":                   map[string]interface{}{"type": "string", "description": "Nombre del servicio/app a crear y vincular automáticamente (ej: Odoo ERP, Web Corporativa, POS)"},
+				"serviceType":                   map[string]interface{}{"type": "string", "description": "Tipo de servicio (web, odoo, n8n, api, db, bot)"},
 			}, []string{"name"}),
 		},
 		{
@@ -707,10 +709,26 @@ func toolDeclarations() []functionDeclaration {
 				"appName": map[string]interface{}{"type": "string", "description": "Nombre de la aplicación o herramienta a abrir (ej: Pizarra, Terminal, Calculadora, Safari)"},
 			}, []string{"appName"}),
 		},
+		{
+			Name:        "rnv_search_whatsapp_contacts",
+			Description: "Busca contactos y chats activos en la cuenta de WhatsApp conectada (Evolution API) por nombre, apodo o número de teléfono.",
+			Parameters: objectParams(map[string]interface{}{
+				"query": map[string]interface{}{"type": "string", "description": "Nombre, apodo o parte del número a buscar. Si está vacío lista contactos y chats recientes."},
+				"limit": map[string]interface{}{"type": "integer", "description": "Máximo de contactos (default 15)"},
+			}, []string{}),
+		},
+		{
+			Name:        "rnv_link_whatsapp_contact",
+			Description: "Vincula un número de WhatsApp a un cliente. Si no se especifica el teléfono, lo busca automáticamente en los contactos de WhatsApp por el nombre del cliente.",
+			Parameters: objectParams(map[string]interface{}{
+				"clientName": map[string]interface{}{"type": "string", "description": "Nombre o ID del cliente"},
+				"phone":      map[string]interface{}{"type": "string", "description": "Número de teléfono opcional. Si se omite, se autodetecta de WhatsApp."},
+			}, []string{"clientName"}),
+		},
 	}
 }
 
-const systemPrompt = `Asistente Ejecutivo RNV Manager — Centro de mando y control total con superpoderes de ejecución (clientes, colaboradores, partidas y comisiones, VPS, servicios, facturación y cobros, WhatsApp, email y herramientas macOS).
+const systemPrompt = `Asistente Ejecutivo RNV Manager — Centro de mando y control total con superpoderes de ejecución (clientes, colaboradores, partidas y comisiones, VPS, servicios, facturación y cobros, WhatsApp contactos y mensajería, email y herramientas macOS).
 
 REGLAS SUPREMAS DE EXPERIENCIA DE USUARIO:
 1. CERO TEXTOS LARGOS O PASIVOS ("anti-wall-of-text"):
@@ -741,11 +759,20 @@ Registrar [monto] USD (Dólares) para [Cliente]
    - TIENES rnv_update_client para cambiar precios mensuales (monthlyFee), anuales (annualFee), moneda (currency), etapas (stage) y notas de cualquier cliente.
    - TIENES rnv_assign_collaborator para asignar clientes a colaboradores al instante por nombre o ID.
 
+6. INTEGRACIÓN Y ACCESO A CONTACTOS DE WHATSAPP:
+   - TIENES ACCESO TOTAL a los contactos de WhatsApp mediante rnv_search_whatsapp_contacts y rnv_link_whatsapp_contact.
+   - Cuando el usuario te pida crear un nuevo cliente (y/o con un nuevo servicio), rnv_create_client BUSCA AUTOMÁTICAMENTE en WhatsApp si el contacto existe y le vincula su número de teléfono. Si el usuario te dio el nombre del servicio (ej. "con Odoo", "con POS"), rnv_create_client lo crea y lo asocia de inmediato mediante serviceName.
+   - Si necesitas explorar los contactos o chats de WhatsApp, usa rnv_search_whatsapp_contacts(query='...').
+   - Puedes vincular o actualizar el WhatsApp de cualquier cliente con rnv_link_whatsapp_contact(clientName='...', phone='...').
+   - Al crear un cliente con servicio, muestra siempre botones de acción (ej: enviar WhatsApp de bienvenida, ver servicio, registrar pago).
+
 HERRAMIENTAS CLAVE:
+- rnv_search_whatsapp_contacts: Busca contactos o chats en la libreta de WhatsApp.
+- rnv_link_whatsapp_contact: Vincula el teléfono de WhatsApp a un cliente.
 - rnv_assign_collaborator: Asigna cliente a colaborador (args: clientName, collaboratorName).
 - rnv_list_collaborators: Lista colaboradores, clientes asignados y comisiones.
 - rnv_list_partidas: Consulta splits de dinero (implementación y mensual) entre empresa y colaborador.
-- rnv_list_clients / rnv_get_client / rnv_update_client / rnv_create_client: Gestión total de clientes y cuotas.
+- rnv_list_clients / rnv_get_client / rnv_update_client / rnv_create_client: Gestión total de clientes, cuotas y creación directa de servicios asociados.
 - rnv_overdue_clients: Lista de clientes con pagos pendientes/morosos.
 - rnv_record_payment: Registra cobros a clientes (args: clientName, amount, currency='USD'|'DOP').
 - rnv_update_payment: Corrige monto, moneda o estado de pagos existentes.

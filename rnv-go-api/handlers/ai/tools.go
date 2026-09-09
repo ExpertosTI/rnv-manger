@@ -137,6 +137,10 @@ func (te *toolExecutor) execute(name string, args map[string]interface{}) execut
 		result.Result = te.rnvOpenApp(args)
 	case "rnv_assign_collaborator":
 		result.Result = te.rnvAssignCollaborator(args)
+	case "rnv_search_whatsapp_contacts":
+		result.Result = te.rnvSearchWhatsAppContacts(args)
+	case "rnv_link_whatsapp_contact":
+		result.Result = te.rnvLinkWhatsAppContact(args)
 	default:
 		result.Result = map[string]interface{}{"success": false, "error": "función desconocida: " + name}
 	}
@@ -405,8 +409,15 @@ func (te *toolExecutor) rnvCreateClient(args map[string]interface{}) map[string]
 	if v := strArg(args, "email"); v != "" {
 		client.Email = &v
 	}
-	if v := strArg(args, "phone"); v != "" {
-		client.Phone = &v
+	phone := strArg(args, "phone")
+	if phone == "" {
+		// Buscar automáticamente en WhatsApp si existe el contacto
+		if contacts, err := serviceslayer.FetchWhatsAppContacts(te.db, te.cfg, name, 3); err == nil && len(contacts) > 0 {
+			phone = contacts[0].Number
+		}
+	}
+	if phone != "" {
+		client.Phone = &phone
 	}
 	if v := strArg(args, "companyName"); v != "" {
 		client.CompanyName = &v
@@ -451,9 +462,41 @@ func (te *toolExecutor) rnvCreateClient(args map[string]interface{}) map[string]
 	if err := te.db.Create(&client).Error; err != nil {
 		return map[string]interface{}{"success": false, "error": err.Error()}
 	}
+
+	createdServiceMsg := ""
+	serviceName := strArg(args, "serviceName")
+	if serviceName == "" {
+		serviceName = strArg(args, "service")
+	}
+	if serviceName != "" {
+		var vps models.VPS
+		te.db.Order("created_at asc").First(&vps)
+		svc := models.Service{
+			Name:        serviceName,
+			Type:        strArg(args, "serviceType"),
+			Status:      "running",
+			ClientID:    &client.ID,
+			MonthlyCost: client.MonthlyFee,
+		}
+		if svc.Type == "" {
+			svc.Type = "web"
+		}
+		if vps.ID != "" {
+			svc.VpsID = &vps.ID
+		}
+		if err := te.db.Create(&svc).Error; err == nil {
+			createdServiceMsg = fmt.Sprintf(" con servicio **%s**", svc.Name)
+		}
+	}
+
+	msg := fmt.Sprintf("Cliente **%s** creado%s.", client.Name, createdServiceMsg)
+	if client.Phone != nil && *client.Phone != "" {
+		msg += fmt.Sprintf(" Teléfono WhatsApp vinculado: **%s**.", *client.Phone)
+	}
+
 	return map[string]interface{}{
 		"success": true,
-		"message": "Cliente creado: " + client.Name,
+		"message": msg,
 		"client":  simplifyClient(client),
 	}
 }
@@ -598,6 +641,75 @@ func (te *toolExecutor) rnvAssignCollaborator(args map[string]interface{}) map[s
 		"clientName":       client.Name,
 		"collaboratorId":   collab.ID,
 		"collaboratorName": collab.Name,
+	}
+}
+
+func (te *toolExecutor) rnvSearchWhatsAppContacts(args map[string]interface{}) map[string]interface{} {
+	query := strArg(args, "query")
+	limit := intArg(args, "limit", 15)
+	if limit <= 0 || limit > 50 {
+		limit = 15
+	}
+	contacts, err := serviceslayer.FetchWhatsAppContacts(te.db, te.cfg, query, limit)
+	if err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "Error al consultar contactos de WhatsApp: " + err.Error(),
+		}
+	}
+	return map[string]interface{}{
+		"success":  true,
+		"count":    len(contacts),
+		"contacts": contacts,
+	}
+}
+
+func (te *toolExecutor) rnvLinkWhatsAppContact(args map[string]interface{}) map[string]interface{} {
+	clientQuery := strArg(args, "client")
+	if clientQuery == "" {
+		clientQuery = strArg(args, "clientName")
+	}
+	if clientQuery == "" {
+		clientQuery = strArg(args, "clientId")
+	}
+	phone := strArg(args, "phone")
+
+	if clientQuery == "" {
+		return map[string]interface{}{"success": false, "error": "Debes especificar el cliente (nombre o ID)"}
+	}
+
+	var client models.Client
+	if err := te.db.Where("id = ? OR name ILIKE ?", clientQuery, "%"+clientQuery+"%").First(&client).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": "Cliente no encontrado: " + clientQuery}
+	}
+
+	if phone == "" {
+		contacts, err := serviceslayer.FetchWhatsAppContacts(te.db, te.cfg, client.Name, 5)
+		if err != nil || len(contacts) == 0 {
+			return map[string]interface{}{
+				"success": false,
+				"error":   fmt.Sprintf("No se encontró ningún contacto en WhatsApp con el nombre '%s'. Proporciona el número manualmente.", client.Name),
+			}
+		}
+		phone = contacts[0].Number
+	}
+
+	phone = serviceslayer.FormatWhatsAppRecipient(phone)
+	if phone == "" {
+		return map[string]interface{}{"success": false, "error": "Número de teléfono inválido"}
+	}
+
+	formatted := "+" + phone
+	if err := te.db.Model(&client).Update("phone", formatted).Error; err != nil {
+		return map[string]interface{}{"success": false, "error": "Error al actualizar teléfono: " + err.Error()}
+	}
+
+	return map[string]interface{}{
+		"success":    true,
+		"message":    fmt.Sprintf("Número de WhatsApp **%s** vinculado exitosamente al cliente **%s**.", formatted, client.Name),
+		"clientId":   client.ID,
+		"clientName": client.Name,
+		"phone":      formatted,
 	}
 }
 

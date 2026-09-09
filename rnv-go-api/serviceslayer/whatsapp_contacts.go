@@ -8,9 +8,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// WhatsAppContact is an explicitly registered RNV recipient.
-// Evolution's generic contact book is deliberately never imported.
-type WhatsAppContact struct {
+// WhatsAppDirectoryContact is an explicitly registered RNV recipient.
+type WhatsAppDirectoryContact struct {
 	ID          string `json:"id,omitempty"`
 	RemoteJid   string `json:"remoteJid,omitempty"`
 	PushName    string `json:"pushName,omitempty"`
@@ -27,19 +26,18 @@ type WhatsAppContact struct {
 }
 
 type WhatsAppDirectory struct {
-	Instance string            `json:"instance"`
-	State    string            `json:"state"`
-	Total    int               `json:"total"`
-	Matched  int               `json:"matched"`
-	Contacts []WhatsAppContact `json:"contacts"`
+	Instance string                     `json:"instance"`
+	State    string                     `json:"state"`
+	Total    int                        `json:"total"`
+	Matched  int                        `json:"matched"`
+	Contacts []WhatsAppDirectoryContact `json:"contacts"`
 }
 
-// FetchWhatsAppContacts builds a safe directory only from numbers explicitly
-// stored in RNV. It never calls Evolution findContacts and never imports a
-// generic instance's contacts/chats.
-func FetchWhatsAppContacts(db *gorm.DB, cfg *config.Config) (WhatsAppDirectory, error) {
+// FetchWhatsAppDirectory builds a safe directory only from numbers explicitly
+// stored in RNV (clients & services).
+func FetchWhatsAppDirectory(db *gorm.DB, cfg *config.Config) (WhatsAppDirectory, error) {
 	wc := ResolveWhatsAppConfig(db, cfg)
-	dir := WhatsAppDirectory{Instance: wc.Instance, Contacts: []WhatsAppContact{}}
+	dir := WhatsAppDirectory{Instance: wc.Instance, Contacts: []WhatsAppDirectoryContact{}}
 	if !wc.IsConfigured() {
 		return dir, fmt.Errorf("WhatsApp/Evolution API no configurado")
 	}
@@ -51,13 +49,13 @@ func FetchWhatsAppContacts(db *gorm.DB, cfg *config.Config) (WhatsAppDirectory, 
 	db.Find(&clients)
 	db.Preload("Client").Preload("VPS").Find(&services)
 
-	byPhone := map[string]*WhatsAppContact{}
+	byPhone := map[string]*WhatsAppDirectoryContact{}
 	for _, cl := range clients {
 		if cl.Phone == nil {
 			continue
 		}
 		if p := FormatWhatsAppRecipient(*cl.Phone); p != "" {
-			byPhone[p] = &WhatsAppContact{
+			byPhone[p] = &WhatsAppDirectoryContact{
 				Phone: p, PushName: cl.Name, MatchedKind: "client",
 				ClientID: cl.ID, ClientName: cl.Name,
 			}
@@ -70,7 +68,7 @@ func FetchWhatsAppContacts(db *gorm.DB, cfg *config.Config) (WhatsAppDirectory, 
 		if p := FormatWhatsAppRecipient(*svc.WhatsAppPhone); p != "" {
 			contact, exists := byPhone[p]
 			if !exists {
-				contact = &WhatsAppContact{Phone: p, PushName: svc.Name}
+				contact = &WhatsAppDirectoryContact{Phone: p, PushName: svc.Name}
 				byPhone[p] = contact
 			}
 			if contact.ClientID != "" {
@@ -91,7 +89,7 @@ func FetchWhatsAppContacts(db *gorm.DB, cfg *config.Config) (WhatsAppDirectory, 
 		}
 	}
 
-	contacts := make([]WhatsAppContact, 0, len(byPhone))
+	contacts := make([]WhatsAppDirectoryContact, 0, len(byPhone))
 	for _, contact := range byPhone {
 		contacts = append(contacts, *contact)
 	}

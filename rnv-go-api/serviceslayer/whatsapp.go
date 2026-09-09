@@ -620,3 +620,97 @@ func WhatsAppStatus(db *gorm.DB, cfg *config.Config) map[string]interface{} {
 		"ownerWarning":  ownerWarning,
 	}
 }
+
+// WhatsAppContact represents a contact or chat retrieved from Evolution API.
+type WhatsAppContact struct {
+	ID        string `json:"id"`
+	Number    string `json:"number"`
+	Name      string `json:"name"`
+	PushName  string `json:"pushName,omitempty"`
+	AvatarURL string `json:"avatarUrl,omitempty"`
+}
+
+// FetchWhatsAppContacts retrieves contacts and recent chats from Evolution API, optionally filtering by query.
+func FetchWhatsAppContacts(db *gorm.DB, cfg *config.Config, query string, limit int) ([]WhatsAppContact, error) {
+	wc := ResolveWhatsAppConfig(db, cfg)
+	if !wc.IsConfigured() {
+		return nil, fmt.Errorf("WhatsApp/Evolution API no configurado")
+	}
+
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+
+	queryLow := strings.ToLower(strings.TrimSpace(query))
+
+	// Consultar contactos: POST /chat/findContacts/{instance} con body {}
+	url := fmt.Sprintf("%s/chat/findContacts/%s", wc.APIURL, instancePath(wc.Instance))
+	raw, code, err := evolutionHTTP(http.MethodPost, url, wc.APIKey, []byte("{}"))
+	if err != nil || code < 200 || code >= 300 {
+		urlGet := fmt.Sprintf("%s/chat/findContacts/%s", wc.APIURL, instancePath(wc.Instance))
+		rawGet, codeGet, errGet := evolutionHTTP(http.MethodGet, urlGet, wc.APIKey, nil)
+		if errGet == nil && codeGet >= 200 && codeGet < 300 {
+			raw = rawGet
+		}
+	}
+
+	var rawList []map[string]interface{}
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &rawList)
+	}
+
+	// También consultar chats recientes en /chat/findChats/{instance} para capturar números activos no guardados en agenda
+	urlChats := fmt.Sprintf("%s/chat/findChats/%s", wc.APIURL, instancePath(wc.Instance))
+	rawChats, codeChats, errChats := evolutionHTTP(http.MethodPost, urlChats, wc.APIKey, []byte("{}"))
+	if errChats == nil && codeChats >= 200 && codeChats < 300 {
+		var chatList []map[string]interface{}
+		if json.Unmarshal(rawChats, &chatList) == nil {
+			rawList = append(rawList, chatList...)
+		}
+	}
+
+	seen := make(map[string]bool)
+	var contacts []WhatsAppContact
+
+	for _, item := range rawList {
+		rawJid := stringField(item, "id", "remoteJid", "jid")
+		if rawJid == "" || strings.HasSuffix(rawJid, "@g.us") || strings.HasSuffix(rawJid, "@broadcast") {
+			continue
+		}
+
+		num := NormalizeWhatsAppNumber(rawJid)
+		if num == "" || seen[num] {
+			continue
+		}
+
+		name := stringField(item, "pushName", "name", "verifiedName", "formattedName", "shortName")
+		avatar := stringField(item, "profilePictureUrl", "profilePicture", "avatar")
+
+		if name == "" {
+			name = "+" + num
+		}
+
+		if queryLow != "" {
+			matchName := strings.Contains(strings.ToLower(name), queryLow)
+			matchNum := strings.Contains(num, queryLow)
+			if !matchName && !matchNum {
+				continue
+			}
+		}
+
+		seen[num] = true
+		contacts = append(contacts, WhatsAppContact{
+			ID:        rawJid,
+			Number:    "+" + num,
+			Name:      name,
+			PushName:  stringField(item, "pushName"),
+			AvatarURL: avatar,
+		})
+
+		if len(contacts) >= limit {
+			break
+		}
+	}
+
+	return contacts, nil
+}

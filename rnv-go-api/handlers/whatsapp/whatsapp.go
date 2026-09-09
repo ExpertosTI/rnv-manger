@@ -122,7 +122,7 @@ func Logout(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 // Contacts returns only recipients explicitly stored in RNV.
 func Contacts(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		dir, err := serviceslayer.FetchWhatsAppContacts(db, cfg)
+		dir, err := serviceslayer.FetchWhatsAppDirectory(db, cfg)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error(), "data": dir})
 			return
