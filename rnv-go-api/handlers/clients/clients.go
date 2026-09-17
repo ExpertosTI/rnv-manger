@@ -185,6 +185,19 @@ func Create(db *gorm.DB) gin.HandlerFunc {
 		// If created by an affiliate, auto-assign to themselves
 		if role == "affiliate" || role == "collaborator" {
 			client.AffiliateID = &currentUserID
+		} else {
+			// Sanitize: convert empty string affiliateId to nil to avoid FK violation
+			if client.AffiliateID != nil && *client.AffiliateID == "" {
+				client.AffiliateID = nil
+			}
+			// Validate that the affiliateId actually exists in users table
+			if client.AffiliateID != nil {
+				var count int64
+				db.Model(&models.User{}).Where("id = ?", *client.AffiliateID).Count(&count)
+				if count == 0 {
+					client.AffiliateID = nil
+				}
+			}
 		}
 
 		if err := db.Create(&client).Error; err != nil {
@@ -250,9 +263,25 @@ func Update(db *gorm.DB) gin.HandlerFunc {
 		// Prevent affiliate from re-assigning ownership
 		if role == "affiliate" || role == "collaborator" {
 			client.AffiliateID = existing.AffiliateID
+		} else {
+			// Sanitize: convert empty string affiliateId to nil to avoid FK violation
+			if client.AffiliateID != nil && *client.AffiliateID == "" {
+				client.AffiliateID = nil
+			}
+			// Validate that the affiliateId actually exists in users table
+			if client.AffiliateID != nil {
+				var count int64
+				db.Model(&models.User{}).Where("id = ?", *client.AffiliateID).Count(&count)
+				if count == 0 {
+					client.AffiliateID = nil
+				}
+			}
 		}
 
-		db.Save(&client)
+		if err := db.Save(&client).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+			return
+		}
 		serviceslayer.RecalculateClientCost(db, id)
 		userID := middleware.GetUserID(c)
 		ip := middleware.GetClientIP(c)
