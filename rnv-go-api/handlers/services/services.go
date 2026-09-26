@@ -195,7 +195,16 @@ func Delete(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		clientID := svc.ClientID
-		db.Delete(&svc)
+
+		// Limpiar referencias foráneas que puedan bloquear la eliminación en PostgreSQL
+		db.Model(&models.ScheduledTask{}).Where("service_id = ?", id).Update("service_id", nil)
+		db.Model(&models.Credential{}).Where("service_id = ?", id).Update("service_id", nil)
+
+		if err := db.Delete(&svc).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Error al eliminar servicio: " + err.Error()})
+			return
+		}
+
 		if clientID != nil {
 			serviceslayer.RecalculateClientCost(db, *clientID)
 		}

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Database, Settings, Search, Play, Pause, RotateCw, Plus, Server, Globe, ExternalLink, Radar, Users, ListTodo, AlertTriangle, HeartPulse } from "lucide-react";
+import { Database, Settings, Search, Play, Pause, RotateCw, Plus, Server, Globe, ExternalLink, Radar, Users, ListTodo, AlertTriangle, HeartPulse, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { services as servicesApi, type ServiceOverviewGroup } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
@@ -28,7 +28,26 @@ export default function ServicesPage() {
     const [controllingId, setControllingId] = useState<string | null>(null);
     const [taskTarget, setTaskTarget] = useState<ServiceTaskTarget | null>(null);
     const [offlineCount, setOfflineCount] = useState(0);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
     const { addToast } = useToast();
+
+    const handleDeleteService = async (serviceId: string, serviceName: string) => {
+        if (!confirm(`¿Eliminar definitivamente el servicio "${serviceName}" del sistema? Esta acción no se puede deshacer.`)) return;
+        setDeletingId(serviceId);
+        try {
+            const res = await servicesApi.delete(serviceId);
+            if (res.success) {
+                addToast(`Servicio "${serviceName}" eliminado`, "success");
+                fetchServices();
+            } else {
+                addToast(res.message || "Error al eliminar servicio", "error");
+            }
+        } catch (e) {
+            addToast(e instanceof Error ? e.message : "Error al eliminar servicio", "error");
+        } finally {
+            setDeletingId(null);
+        }
+    };
 
     const handleServiceControl = async (serviceId: string, action: "start" | "stop" | "restart") => {
         setControllingId(serviceId);
@@ -439,6 +458,16 @@ export default function ServicesPage() {
                                                             <ExternalLink size={14} />
                                                         </a>
                                                     )}
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                        title="Eliminar servicio"
+                                                        disabled={deletingId === service.id}
+                                                        onClick={() => handleDeleteService(service.id, service.name)}
+                                                    >
+                                                        <Trash2 size={14} className={deletingId === service.id ? "animate-spin" : ""} />
+                                                    </Button>
                                                 </div>
                                             </div>
                                         </motion.div>

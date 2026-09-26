@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
     Users, ArrowLeft, Edit, Save, X, Mail, Phone, Building, DollarSign,
     Calendar, Server, Database, FileText, ExternalLink, Trash2, RefreshCw, Receipt,
-    MessageSquare, Send, Check, Plus, AlertTriangle, Layers
+    MessageSquare, Send, Check, Plus, AlertTriangle, Layers, Unlink, Edit3, Search, Sparkles
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useToast } from "@/components/ui/toast";
@@ -50,10 +50,43 @@ export default function ClientDetailPage() {
     const clientId = params.id as string;
 
     const [client, setClient] = useState<ClientDetail | null>(null);
+    const [allServices, setAllServices] = useState<Service[]>([]);
     const [orphanServices, setOrphanServices] = useState<Service[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+
+    // Service Assignment & Management Modals
+    const [isAssignServiceModalOpen, setIsAssignServiceModalOpen] = useState(false);
+    const [assignTab, setAssignTab] = useState<"link" | "create">("link");
+    const [assignSearch, setAssignSearch] = useState("");
+    const [selectedServiceId, setSelectedServiceId] = useState("");
+    const [assignBillingCycle, setAssignBillingCycle] = useState<"monthly" | "annual">("monthly");
+    const [assignCost, setAssignCost] = useState<string>("0");
+    const [isSubmittingService, setIsSubmittingService] = useState(false);
+
+    // Create Service Form state
+    const [newServiceForm, setNewServiceForm] = useState({
+        name: "",
+        type: "web",
+        url: "",
+        billingCycle: "monthly" as "monthly" | "annual",
+        monthlyCost: "0",
+        annualCost: "0",
+        vpsId: "",
+    });
+
+    // Edit Service Price Modal
+    const [editingServicePrice, setEditingServicePrice] = useState<{
+        id: string;
+        name: string;
+        billingCycle: "monthly" | "annual";
+        cost: string;
+    } | null>(null);
+
+    // Delete confirmation modal state
+    const [serviceToDelete, setServiceToDelete] = useState<{ id: string; name: string } | null>(null);
+    const [isDeletingService, setIsDeletingService] = useState(false);
 
     // Modals
     const [isQuickPayOpen, setIsQuickPayOpen] = useState(false);
@@ -86,7 +119,7 @@ export default function ClientDetailPage() {
         setIsLoading(true);
         try {
             const [clientRes, allServicesRes] = await Promise.all([
-                fetch(`/api/clients/${clientId}`).then(r => r.json()),
+                clientsApi.get(clientId).catch((err) => ({ success: false, data: null, error: err instanceof Error ? err.message : "Error" })),
                 servicesApi.list().catch(() => ({ data: [] })),
             ]);
 
@@ -120,6 +153,7 @@ export default function ClientDetailPage() {
             }
 
             const allSvcs = Array.isArray(allServicesRes.data) ? allServicesRes.data : [];
+            setAllServices(allSvcs);
             setOrphanServices(allSvcs.filter(s => !s.clientId || s.clientId === ""));
         } catch (error) {
             addToast("Error de conexión", "error");
@@ -281,51 +315,139 @@ export default function ClientDetailPage() {
         }
     };
 
-    // Link Orphan Service to this Client
-    const handleLinkService = async (serviceId: string) => {
+    // Link Existing Service to this Client
+    const handleLinkServiceSubmit = async () => {
+        if (!selectedServiceId) {
+            addToast("Por favor selecciona un servicio de la lista", "error");
+            return;
+        }
+        setIsSubmittingService(true);
         try {
+            const costNum = parseFloat(assignCost) || 0;
             const res = await servicesApi.bulkOrganize([{
-                id: serviceId,
+                id: selectedServiceId,
                 clientId: client?.id,
-                monthlyCost: 10,
+                billingCycle: assignBillingCycle,
+                monthlyCost: assignBillingCycle === "monthly" ? costNum : 0,
+                annualCost: assignBillingCycle === "annual" ? costNum : 0,
+                amount: costNum,
             }]);
             if (res.success) {
-                addToast("Servicio vinculado al cliente", "success");
+                addToast("Servicio asignado correctamente al cliente", "success");
+                setIsAssignServiceModalOpen(false);
+                setSelectedServiceId("");
                 fetchClient();
+            } else {
+                addToast(res.message || "Error al asignar servicio", "error");
             }
-        } catch {
-            addToast("Error al vincular servicio", "error");
+        } catch (e) {
+            addToast(e instanceof Error ? e.message : "Error al vincular servicio", "error");
+        } finally {
+            setIsSubmittingService(false);
         }
     };
 
-    // Unlink Service from this Client
-    const handleUnlinkService = async (serviceId: string) => {
-        if (!confirm("¿Desvincular este servicio del cliente?")) return;
+    // Create and Assign New Service
+    const handleCreateServiceSubmit = async () => {
+        if (!newServiceForm.name.trim()) {
+            addToast("El nombre del servicio es obligatorio", "error");
+            return;
+        }
+        setIsSubmittingService(true);
+        try {
+            const mCost = parseFloat(newServiceForm.monthlyCost) || 0;
+            const aCost = parseFloat(newServiceForm.annualCost) || 0;
+            const res = await servicesApi.create({
+                name: newServiceForm.name.trim(),
+                type: newServiceForm.type,
+                url: newServiceForm.url.trim() || undefined,
+                clientId: client?.id,
+                vpsId: newServiceForm.vpsId || undefined,
+                billingCycle: newServiceForm.billingCycle,
+                monthlyCost: newServiceForm.billingCycle === "monthly" ? mCost : 0,
+                annualCost: newServiceForm.billingCycle === "annual" ? aCost : 0,
+                status: "active",
+            });
+            if (res.success) {
+                addToast("Servicio creado y asignado al cliente con éxito", "success");
+                setIsAssignServiceModalOpen(false);
+                setNewServiceForm({
+                    name: "",
+                    type: "web",
+                    url: "",
+                    billingCycle: "monthly",
+                    monthlyCost: "0",
+                    annualCost: "0",
+                    vpsId: "",
+                });
+                fetchClient();
+            } else {
+                addToast("Error al crear servicio", "error");
+            }
+        } catch (e) {
+            addToast(e instanceof Error ? e.message : "Error al crear servicio", "error");
+        } finally {
+            setIsSubmittingService(false);
+        }
+    };
+
+    // Unlink Service from this Client (leaves service in DB as orphan)
+    const handleUnlinkService = async (serviceId: string, serviceName: string) => {
+        if (!confirm(`¿Desvincular "${serviceName}" de este cliente? El servicio permanecerá registrado pero sin cliente asignado.`)) return;
         try {
             const res = await servicesApi.bulkOrganize([{
                 id: serviceId,
                 clientId: "",
-                monthlyCost: 0,
             }]);
             if (res.success) {
-                addToast("Servicio desvinculado", "success");
+                addToast(`Servicio "${serviceName}" desvinculado`, "success");
                 fetchClient();
+            } else {
+                addToast(res.message || "Error al desvincular servicio", "error");
             }
         } catch {
             addToast("Error al desvincular servicio", "error");
         }
     };
 
-    // Update Service Price
-    const handleUpdateServicePrice = async (serviceId: string, cost: number) => {
+    // Delete Service permanently from database
+    const handleConfirmDeleteService = async () => {
+        if (!serviceToDelete) return;
+        setIsDeletingService(true);
         try {
+            const res = await servicesApi.delete(serviceToDelete.id);
+            if (res.success) {
+                addToast(`Servicio "${serviceToDelete.name}" eliminado definitivamente`, "success");
+                setServiceToDelete(null);
+                fetchClient();
+            } else {
+                addToast(res.message || "Error al eliminar servicio", "error");
+            }
+        } catch (e) {
+            addToast(e instanceof Error ? e.message : "Error al eliminar servicio", "error");
+        } finally {
+            setIsDeletingService(false);
+        }
+    };
+
+    // Save Updated Service Price
+    const handleSaveServicePrice = async () => {
+        if (!editingServicePrice) return;
+        try {
+            const costNum = parseFloat(editingServicePrice.cost) || 0;
             const res = await servicesApi.bulkOrganize([{
-                id: serviceId,
-                monthlyCost: cost,
+                id: editingServicePrice.id,
+                billingCycle: editingServicePrice.billingCycle,
+                monthlyCost: editingServicePrice.billingCycle === "monthly" ? costNum : 0,
+                annualCost: editingServicePrice.billingCycle === "annual" ? costNum : 0,
+                amount: costNum,
             }]);
             if (res.success) {
                 addToast("Tarifa de servicio actualizada", "success");
+                setEditingServicePrice(null);
                 fetchClient();
+            } else {
+                addToast(res.message || "Error al actualizar tarifa", "error");
             }
         } catch {
             addToast("Error al actualizar tarifa", "error");
@@ -639,82 +761,119 @@ export default function ClientDetailPage() {
                                     <Database className="w-5 h-5 text-purple-600" />
                                     Servicios del Cliente ({client.services.length})
                                 </CardTitle>
+                                <Button
+                                    size="sm"
+                                    onClick={() => {
+                                        setIsAssignServiceModalOpen(true);
+                                        setAssignTab("link");
+                                        setSelectedServiceId(orphanServices.length > 0 ? orphanServices[0].id : (allServices[0]?.id || ""));
+                                        if (orphanServices.length > 0) {
+                                            const s = orphanServices[0];
+                                            setAssignCost(String(s.monthlyCost || 0));
+                                            setAssignBillingCycle((s.billingCycle as "monthly" | "annual") || "monthly");
+                                        }
+                                    }}
+                                    className="bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs h-8 px-3 flex items-center gap-1.5 shadow-sm shadow-violet-200 transition-all font-semibold"
+                                >
+                                    <Plus size={14} /> Asignar Servicio
+                                </Button>
                             </div>
                         </CardHeader>
                         <CardContent className="p-4 space-y-3">
-                            {/* Attach Orphan Service Selector */}
-                            {orphanServices.length > 0 && (
-                                <div className="p-3 bg-violet-50/70 border border-violet-200 rounded-2xl flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2 text-xs font-semibold text-violet-900">
-                                        <Plus size={14} className="text-violet-600" />
-                                        Asignar Servicio Huérfano:
-                                    </div>
-                                    <select
-                                        defaultValue=""
-                                        onChange={(e) => {
-                                            if (e.target.value) handleLinkService(e.target.value);
-                                        }}
-                                        className="h-8 px-2.5 rounded-xl border border-violet-300 text-xs bg-white text-gray-800 font-medium"
-                                    >
-                                        <option value="" disabled>Seleccionar servicio...</option>
-                                        {orphanServices.map(s => (
-                                            <option key={s.id} value={s.id}>
-                                                {s.name} ({s.type})
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-
                             {client.services.length === 0 ? (
-                                <p className="text-xs text-gray-400 text-center py-6">Sin servicios asignados a este cliente.</p>
+                                <div className="text-center py-8 px-4 bg-gray-50/60 rounded-2xl border border-dashed border-gray-200">
+                                    <Database className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                    <p className="text-xs text-gray-600 font-medium">Sin servicios asignados a este cliente</p>
+                                    <p className="text-[11px] text-gray-400 mt-0.5">Vincula un servicio existente o crea uno nuevo</p>
+                                    <Button
+                                        size="sm"
+                                        onClick={() => {
+                                            setIsAssignServiceModalOpen(true);
+                                            setAssignTab("link");
+                                        }}
+                                        className="mt-3 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs h-7 px-3"
+                                    >
+                                        <Plus size={13} className="mr-1" /> Asignar Servicio
+                                    </Button>
+                                </div>
                             ) : (
                                 <div className="space-y-2.5">
-                                    {client.services.map((service) => (
-                                        <div
-                                            key={service.id}
-                                            className="flex items-center justify-between p-3.5 rounded-2xl bg-gray-50/80 border border-gray-200/80 hover:bg-violet-50/30 transition-colors"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <ServiceIcon type={service.type} name={service.name} size="sm" />
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <Link href={`/services/${service.id}`} className="font-bold text-gray-900 text-xs hover:text-violet-600">
-                                                            {service.name}
-                                                        </Link>
-                                                        <Badge variant="outline" className="text-[10px] uppercase font-semibold">
-                                                            {service.type}
-                                                        </Badge>
-                                                        {service.url && (
-                                                            <a href={service.url} target="_blank" rel="noopener noreferrer" className="text-cyan-600 hover:text-cyan-700">
-                                                                <ExternalLink size={12} />
-                                                            </a>
-                                                        )}
+                                    {client.services.map((service) => {
+                                        const isAnnual = service.billingCycle === "annual";
+                                        const displayCost = isAnnual ? (service.annualCost ?? service.monthlyCost) : service.monthlyCost;
+                                        return (
+                                            <div
+                                                key={service.id}
+                                                className="flex items-center justify-between p-3.5 rounded-2xl bg-gray-50/80 border border-gray-200/80 hover:bg-violet-50/20 transition-all"
+                                            >
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <ServiceIcon type={service.type} name={service.name} size="sm" />
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <Link href={`/services/${service.id}`} className="font-bold text-gray-900 text-xs hover:text-violet-600 truncate">
+                                                                {service.name}
+                                                            </Link>
+                                                            <Badge variant="outline" className="text-[10px] uppercase font-semibold">
+                                                                {service.type}
+                                                            </Badge>
+                                                            {service.url && (
+                                                                <a href={service.url} target="_blank" rel="noopener noreferrer" className="text-cyan-600 hover:text-cyan-700" title="Visitar URL">
+                                                                    <ExternalLink size={12} />
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
+                                                            <span>Estado: <span className="font-semibold text-emerald-600">{service.status}</span></span>
+                                                            <span>•</span>
+                                                            <span className="text-gray-400 capitalize">{isAnnual ? "Anual" : "Mensual"}</span>
+                                                        </div>
                                                     </div>
-                                                    <p className="text-[11px] text-gray-500 mt-0.5">
-                                                        Estado: <span className="font-semibold text-emerald-600">{service.status}</span>
-                                                    </p>
                                                 </div>
-                                            </div>
 
-                                            {/* Price & Action */}
-                                            <div className="flex items-center gap-2">
-                                                <div className="text-right">
-                                                    <span className="text-xs font-black text-gray-900">${service.monthlyCost}</span>
-                                                    <span className="text-[10px] text-gray-400">/mes</span>
+                                                {/* Price & Actions */}
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    <div
+                                                        onClick={() => setEditingServicePrice({
+                                                            id: service.id,
+                                                            name: service.name,
+                                                            billingCycle: (service.billingCycle as "monthly" | "annual") || "monthly",
+                                                            cost: String(displayCost || 0),
+                                                        })}
+                                                        className="text-right cursor-pointer group/price px-2.5 py-1 rounded-xl hover:bg-violet-100/60 transition-colors border border-transparent hover:border-violet-200"
+                                                        title="Clic para editar tarifa y ciclo"
+                                                    >
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <span className="text-xs font-black text-gray-900">${displayCost}</span>
+                                                            <Edit3 size={11} className="text-violet-600 opacity-60 group-hover/price:opacity-100 transition-opacity" />
+                                                        </div>
+                                                        <span className="text-[10px] text-gray-400">/{isAnnual ? "año" : "mes"}</span>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-1 border-l border-gray-200 pl-2">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() => handleUnlinkService(service.id, service.name)}
+                                                            className="text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-xl text-xs h-7 w-7 p-0 flex items-center justify-center"
+                                                            title="Desvincular servicio (quitar del cliente)"
+                                                        >
+                                                            <Unlink size={13} />
+                                                        </Button>
+
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() => setServiceToDelete({ id: service.id, name: service.name })}
+                                                            className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl text-xs h-7 w-7 p-0 flex items-center justify-center"
+                                                            title="Eliminar servicio definitivamente de la base de datos"
+                                                        >
+                                                            <Trash2 size={13} />
+                                                        </Button>
+                                                    </div>
                                                 </div>
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    onClick={() => handleUnlinkService(service.id)}
-                                                    className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl text-xs h-7 px-2"
-                                                    title="Desvincular servicio"
-                                                >
-                                                    <X size={13} />
-                                                </Button>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </CardContent>
@@ -971,6 +1130,366 @@ export default function ClientDetailPage() {
                         >
                             <Send size={14} />
                             Abrir WhatsApp
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── MODAL: ASIGNAR O CREAR SERVICIO ── */}
+            <Dialog open={isAssignServiceModalOpen} onOpenChange={setIsAssignServiceModalOpen}>
+                <DialogContent className="max-w-xl rounded-3xl p-6">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-lg font-bold text-gray-900">
+                            <Database className="w-5 h-5 text-violet-600" />
+                            Gestionar Servicios para {client.name}
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-gray-500">
+                            Vincula un servicio existente en la plataforma o crea uno nuevo configurado para este cliente.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {/* Tabs */}
+                    <div className="flex rounded-xl bg-gray-100 p-1 mt-2">
+                        <button
+                            type="button"
+                            onClick={() => setAssignTab("link")}
+                            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                                assignTab === "link"
+                                    ? "bg-white text-violet-700 shadow-sm"
+                                    : "text-gray-500 hover:text-gray-900"
+                            }`}
+                        >
+                            Vincular Servicio Existente
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setAssignTab("create")}
+                            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                                assignTab === "create"
+                                    ? "bg-white text-violet-700 shadow-sm"
+                                    : "text-gray-500 hover:text-gray-900"
+                            }`}
+                        >
+                            Crear Nuevo Servicio
+                        </button>
+                    </div>
+
+                    {assignTab === "link" ? (
+                        <div className="space-y-4 my-3">
+                            <div className="relative">
+                                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                <Input
+                                    value={assignSearch}
+                                    onChange={(e) => setAssignSearch(e.target.value)}
+                                    placeholder="Buscar por nombre, tipo o URL..."
+                                    className="pl-9 rounded-xl border-gray-200 text-xs h-9"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-gray-700">Seleccionar Servicio</label>
+                                <div className="max-h-48 overflow-y-auto space-y-1.5 p-1 border border-gray-200 rounded-2xl bg-gray-50/50">
+                                    {(() => {
+                                        const filtered = allServices.filter(s => {
+                                            const matchesSearch = !assignSearch ||
+                                                s.name.toLowerCase().includes(assignSearch.toLowerCase()) ||
+                                                s.type.toLowerCase().includes(assignSearch.toLowerCase()) ||
+                                                (s.url && s.url.toLowerCase().includes(assignSearch.toLowerCase()));
+                                            const isAlreadyInClient = client.services.some(cs => cs.id === s.id);
+                                            return matchesSearch && !isAlreadyInClient;
+                                        });
+
+                                        if (filtered.length === 0) {
+                                            return (
+                                                <div className="text-center py-6 text-xs text-gray-400">
+                                                    No hay servicios disponibles que coincidan con la búsqueda.
+                                                </div>
+                                            );
+                                        }
+
+                                        return filtered.map((s) => {
+                                            const isSelected = selectedServiceId === s.id;
+                                            const isOrphan = !s.clientId || s.clientId === "";
+                                            return (
+                                                <div
+                                                    key={s.id}
+                                                    onClick={() => {
+                                                        setSelectedServiceId(s.id);
+                                                        setAssignCost(String(s.monthlyCost || s.annualCost || 0));
+                                                        setAssignBillingCycle((s.billingCycle as "monthly" | "annual") || "monthly");
+                                                    }}
+                                                    className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all border ${
+                                                        isSelected
+                                                            ? "bg-violet-50 border-violet-400 text-violet-900 shadow-xs"
+                                                            : "bg-white border-gray-100 hover:bg-gray-100/70 text-gray-800"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <ServiceIcon type={s.type} name={s.name} size="sm" />
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="font-bold text-xs truncate">{s.name}</span>
+                                                                <Badge variant="outline" className="text-[9px] uppercase px-1 py-0">
+                                                                    {s.type}
+                                                                </Badge>
+                                                                {isOrphan ? (
+                                                                    <Badge variant="success" className="text-[9px] px-1 py-0 bg-emerald-50 text-emerald-700 border-emerald-200">
+                                                                        Huérfano
+                                                                    </Badge>
+                                                                ) : (
+                                                                    <span className="text-[10px] text-gray-400 truncate">
+                                                                        (En otro cliente)
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {s.url && (
+                                                                <span className="text-[10px] text-gray-400 truncate block">
+                                                                    {s.url}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right shrink-0">
+                                                        <span className="text-xs font-bold text-gray-700">${s.monthlyCost || 0}</span>
+                                                        <span className="text-[10px] text-gray-400">/mes</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        });
+                                    })()}
+                                </div>
+                            </div>
+
+                            {/* Billing & Rate Customization */}
+                            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-700">Ciclo de Facturación</label>
+                                    <select
+                                        value={assignBillingCycle}
+                                        onChange={(e) => setAssignBillingCycle(e.target.value as "monthly" | "annual")}
+                                        className="w-full mt-1 h-9 px-3 rounded-xl border border-gray-200 text-xs font-medium bg-white"
+                                    >
+                                        <option value="monthly">Mensual</option>
+                                        <option value="annual">Anual</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-700">
+                                        Tarifa a Cobrar ($ USD {assignBillingCycle === "annual" ? "al año" : "al mes"})
+                                    </label>
+                                    <Input
+                                        type="number"
+                                        step="0.01"
+                                        value={assignCost}
+                                        onChange={(e) => setAssignCost(e.target.value)}
+                                        className="mt-1 rounded-xl border-gray-200 text-xs h-9 font-bold"
+                                    />
+                                </div>
+                            </div>
+
+                            <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                                <Button variant="outline" onClick={() => setIsAssignServiceModalOpen(false)} className="rounded-xl">
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    onClick={handleLinkServiceSubmit}
+                                    disabled={!selectedServiceId || isSubmittingService}
+                                    className="bg-violet-600 hover:bg-violet-700 text-white rounded-xl gap-1.5"
+                                >
+                                    {isSubmittingService ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                                    Vincular Servicio
+                                </Button>
+                            </DialogFooter>
+                        </div>
+                    ) : (
+                        <div className="space-y-3.5 my-3">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-700">Nombre del Servicio *</label>
+                                    <Input
+                                        value={newServiceForm.name}
+                                        onChange={(e) => setNewServiceForm({ ...newServiceForm, name: e.target.value })}
+                                        placeholder="Ej: ERP Odoo, Web Store"
+                                        className="mt-1 rounded-xl border-gray-200 text-xs h-9"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-700">Tipo de Servicio</label>
+                                    <select
+                                        value={newServiceForm.type}
+                                        onChange={(e) => setNewServiceForm({ ...newServiceForm, type: e.target.value })}
+                                        className="w-full mt-1 h-9 px-3 rounded-xl border border-gray-200 text-xs font-medium bg-white"
+                                    >
+                                        <option value="web">Web Application</option>
+                                        <option value="odoo">Odoo ERP</option>
+                                        <option value="api">API / Backend</option>
+                                        <option value="database">Database</option>
+                                        <option value="other">Otro</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-semibold text-gray-700">URL / Dominio (Opcional)</label>
+                                <Input
+                                    value={newServiceForm.url}
+                                    onChange={(e) => setNewServiceForm({ ...newServiceForm, url: e.target.value })}
+                                    placeholder="https://app.midominio.com"
+                                    className="mt-1 rounded-xl border-gray-200 text-xs h-9"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-700">VPS Asociado (Opcional)</label>
+                                    <select
+                                        value={newServiceForm.vpsId}
+                                        onChange={(e) => setNewServiceForm({ ...newServiceForm, vpsId: e.target.value })}
+                                        className="w-full mt-1 h-9 px-3 rounded-xl border border-gray-200 text-xs font-medium bg-white"
+                                    >
+                                        <option value="">Sin VPS asociado</option>
+                                        {client.vpsList.map((v) => (
+                                            <option key={v.id} value={v.id}>
+                                                {v.name} ({v.ipAddress})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-700">Ciclo de Cobro</label>
+                                    <select
+                                        value={newServiceForm.billingCycle}
+                                        onChange={(e) => setNewServiceForm({ ...newServiceForm, billingCycle: e.target.value as "monthly" | "annual" })}
+                                        className="w-full mt-1 h-9 px-3 rounded-xl border border-gray-200 text-xs font-medium bg-white"
+                                    >
+                                        <option value="monthly">Mensual</option>
+                                        <option value="annual">Anual</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-semibold text-gray-700">
+                                    Tarifa ($ USD {newServiceForm.billingCycle === "annual" ? "al año" : "al mes"})
+                                </label>
+                                <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={newServiceForm.billingCycle === "annual" ? newServiceForm.annualCost : newServiceForm.monthlyCost}
+                                    onChange={(e) => {
+                                        if (newServiceForm.billingCycle === "annual") {
+                                            setNewServiceForm({ ...newServiceForm, annualCost: e.target.value });
+                                        } else {
+                                            setNewServiceForm({ ...newServiceForm, monthlyCost: e.target.value });
+                                        }
+                                    }}
+                                    className="mt-1 rounded-xl border-gray-200 text-xs h-9 font-bold"
+                                />
+                            </div>
+
+                            <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                                <Button variant="outline" onClick={() => setIsAssignServiceModalOpen(false)} className="rounded-xl">
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    onClick={handleCreateServiceSubmit}
+                                    disabled={!newServiceForm.name.trim() || isSubmittingService}
+                                    className="bg-violet-600 hover:bg-violet-700 text-white rounded-xl gap-1.5"
+                                >
+                                    {isSubmittingService ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                                    Crear y Asignar
+                                </Button>
+                            </DialogFooter>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* ── MODAL: EDITAR TARIFA DE SERVICIO ── */}
+            <Dialog open={!!editingServicePrice} onOpenChange={(open) => !open && setEditingServicePrice(null)}>
+                <DialogContent className="max-w-md rounded-3xl p-6">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-lg font-bold text-gray-900">
+                            <DollarSign className="w-5 h-5 text-emerald-600" />
+                            Editar Tarifa: {editingServicePrice?.name}
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-gray-500">
+                            Ajusta el ciclo de facturación y el precio a cobrar por este servicio.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {editingServicePrice && (
+                        <div className="space-y-4 my-3">
+                            <div>
+                                <label className="text-xs font-semibold text-gray-700">Ciclo de Facturación</label>
+                                <select
+                                    value={editingServicePrice.billingCycle}
+                                    onChange={(e) => setEditingServicePrice({ ...editingServicePrice, billingCycle: e.target.value as "monthly" | "annual" })}
+                                    className="w-full mt-1 h-9 px-3 rounded-xl border border-gray-200 text-xs font-medium bg-white"
+                                >
+                                    <option value="monthly">Mensual</option>
+                                    <option value="annual">Anual</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-gray-700">
+                                    Tarifa ($ USD {editingServicePrice.billingCycle === "annual" ? "al año" : "al mes"})
+                                </label>
+                                <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={editingServicePrice.cost}
+                                    onChange={(e) => setEditingServicePrice({ ...editingServicePrice, cost: e.target.value })}
+                                    className="mt-1 rounded-xl border-gray-200 text-xs h-9 font-bold"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                        <Button variant="outline" onClick={() => setEditingServicePrice(null)} className="rounded-xl">
+                            Cancelar
+                        </Button>
+                        <Button
+                            onClick={handleSaveServicePrice}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl gap-1.5"
+                        >
+                            <Save className="w-4 h-4" />
+                            Guardar Tarifa
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── MODAL: CONFIRMAR ELIMINACIÓN DEFINITIVA DE SERVICIO ── */}
+            <Dialog open={!!serviceToDelete} onOpenChange={(open) => !open && setServiceToDelete(null)}>
+                <DialogContent className="max-w-md rounded-3xl p-6">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-lg font-bold text-red-600">
+                            <AlertTriangle className="w-5 h-5 text-red-600" />
+                            Eliminar Servicio Definitivamente
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-gray-600 pt-1">
+                            ¿Estás seguro de que deseas eliminar permanentemente el servicio <span className="font-bold text-gray-900">{serviceToDelete?.name}</span>?
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="p-3 bg-red-50/80 border border-red-200 rounded-2xl text-xs text-red-800 space-y-1 my-2">
+                        <p className="font-semibold">⚠️ Esta acción no se puede deshacer.</p>
+                        <p className="text-[11px] text-red-700">El servicio se borrará de la base de datos y se desvinculará de cualquier tarea programada o credencial asociada.</p>
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                        <Button variant="outline" onClick={() => setServiceToDelete(null)} className="rounded-xl">
+                            Cancelar
+                        </Button>
+                        <Button
+                            onClick={handleConfirmDeleteService}
+                            disabled={isDeletingService}
+                            className="bg-red-600 hover:bg-red-700 text-white rounded-xl gap-1.5"
+                        >
+                            {isDeletingService ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            Eliminar Definitivamente
                         </Button>
                     </DialogFooter>
                 </DialogContent>
