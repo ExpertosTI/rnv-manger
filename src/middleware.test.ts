@@ -3,7 +3,7 @@ import test from "node:test";
 import { NextRequest } from "next/server";
 import { middleware } from "./middleware";
 
-test("el redirect de login es relativo y no usa el host interno", () => {
+test("un visitante sin sesión recibe 307 al host público", () => {
     const request = new NextRequest("http://127.0.0.1:3000/addons", {
         headers: {
             host: "127.0.0.1:3000",
@@ -14,8 +14,7 @@ test("el redirect de login es relativo y no usa el host interno", () => {
     const response = middleware(request);
     const location = response.headers.get("location");
     assert.equal(response.status, 307);
-    assert.equal(location, "/login?redirect=%2Faddons");
-    assert.ok(location && !location.startsWith("http"));
+    assert.equal(location, "https://rnv.renace.tech/login?redirect=%2Faddons");
 });
 
 test("una cookie con forma de sesión no redirige", () => {
