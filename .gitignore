@@ -32,6 +32,7 @@ rnv-go-api/rnv-api
 
 # env files
 .env*
+!.env.example
 .evolution.local
 scripts/seed.local.sh
 

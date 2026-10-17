@@ -3,35 +3,38 @@ package config
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	DatabaseURL       string
-	JWTSecret         string
-	Port              string
-	AppURL            string
-	HostingerAPIToken string
-	OdooURL           string
-	OdooDB            string
-	OdooUsername      string
-	OdooAPIKey        string
-	SMTPHost          string
-	SMTPPort          string
-	SMTPUser          string
-	SMTPPass          string
-	SMTPFrom          string
-	MasterPassword    string
-	GinMode           string
-	VaultMasterKey    string
-	VaultMasterKeyOld string
-	NotificationEmail string
-	GeminiAPIKey      string
-	GeminiModel       string
-	EvolutionAPIURL   string
-	EvolutionAPIKey   string
-	EvolutionInstance string
+	DatabaseURL string
+	JWTSecret   string
+	Port        string
+	// Host is the interface to bind. Empty listens on all interfaces.
+	Host                  string
+	AppURL                string
+	HostingerAPIToken     string
+	OdooURL               string
+	OdooDB                string
+	OdooUsername          string
+	OdooAPIKey            string
+	SMTPHost              string
+	SMTPPort              string
+	SMTPUser              string
+	SMTPPass              string
+	SMTPFrom              string
+	MasterPassword        string
+	GinMode               string
+	VaultMasterKey        string
+	VaultMasterKeyOld     string
+	NotificationEmail     string
+	GeminiAPIKey          string
+	GeminiModel           string
+	EvolutionAPIURL       string
+	EvolutionAPIKey       string
+	EvolutionInstance     string
 	WhatsAppNotifyNumbers string
 	WhatsAppSenderLabel   string
 	// WhatsAppOwnerNumber is the ONLY phone allowed as Evolution session owner for RNV.
@@ -47,30 +50,31 @@ func Load() *Config {
 	}
 
 	cfg := &Config{
-		DatabaseURL:       getEnv("DATABASE_URL", "postgresql://rnvadmin:rnv_secure_password_2025@localhost:5432/rnv_manager?sslmode=disable"),
-		JWTSecret:         getEnv("JWT_SECRET", "change-me-in-production-use-32-chars-min"),
-		Port:              getEnv("PORT", "8080"),
-		AppURL:            getEnv("APP_URL", "https://rnv.renace.tech"),
-		HostingerAPIToken: getEnv("HOSTINGER_API_TOKEN", ""),
-		OdooURL:           getEnv("ODOO_URL", ""),
-		OdooDB:            getEnv("ODOO_DB", ""),
-		OdooUsername:      getEnv("ODOO_USERNAME", ""),
-		OdooAPIKey:        getEnv("ODOO_API_KEY", ""),
-		SMTPHost:          getEnv("SMTP_HOST", ""),
-		SMTPPort:          getEnv("SMTP_PORT", "465"),
-		SMTPUser:          getEnv("SMTP_USER", ""),
-		SMTPPass:          getEnv("SMTP_PASS", ""),
-		SMTPFrom:          getEnv("SMTP_FROM", ""),
-		MasterPassword:    getEnv("MASTER_PASSWORD", ""),
-		GinMode:           getEnv("GIN_MODE", "debug"),
-		VaultMasterKey:    getEnv("VAULT_MASTER_KEY", ""),
-		VaultMasterKeyOld: getEnv("VAULT_MASTER_KEY_OLD", ""),
-		NotificationEmail: getEnv("NOTIFICATION_EMAIL", ""),
-		GeminiAPIKey:      getEnv("GEMINI_API_KEY", ""),
-		GeminiModel:       getEnv("GEMINI_MODEL", "gemini-3.6-flash"),
-		EvolutionAPIURL:   getEnv("EVOLUTION_API_URL", ""),
-		EvolutionAPIKey:   getEnv("EVOLUTION_API_KEY", ""),
-		EvolutionInstance: getEnv("EVOLUTION_INSTANCE", "renace"),
+		DatabaseURL:           getEnv("DATABASE_URL", "postgresql://rnvadmin:rnv_secure_password_2025@localhost:5432/rnv_manager?sslmode=disable"),
+		JWTSecret:             getEnv("JWT_SECRET", "change-me-in-production-use-32-chars-min"),
+		Port:                  getEnv("PORT", "8080"),
+		Host:                  bindHost(),
+		AppURL:                getEnv("APP_URL", "https://rnv.renace.tech"),
+		HostingerAPIToken:     getEnv("HOSTINGER_API_TOKEN", ""),
+		OdooURL:               getEnv("ODOO_URL", ""),
+		OdooDB:                getEnv("ODOO_DB", ""),
+		OdooUsername:          getEnv("ODOO_USERNAME", ""),
+		OdooAPIKey:            getEnv("ODOO_API_KEY", ""),
+		SMTPHost:              getEnv("SMTP_HOST", ""),
+		SMTPPort:              getEnv("SMTP_PORT", "465"),
+		SMTPUser:              getEnv("SMTP_USER", ""),
+		SMTPPass:              getEnv("SMTP_PASS", ""),
+		SMTPFrom:              getEnv("SMTP_FROM", ""),
+		MasterPassword:        getEnv("MASTER_PASSWORD", ""),
+		GinMode:               getEnv("GIN_MODE", "debug"),
+		VaultMasterKey:        getEnv("VAULT_MASTER_KEY", ""),
+		VaultMasterKeyOld:     getEnv("VAULT_MASTER_KEY_OLD", ""),
+		NotificationEmail:     getEnv("NOTIFICATION_EMAIL", ""),
+		GeminiAPIKey:          getEnv("GEMINI_API_KEY", ""),
+		GeminiModel:           getEnv("GEMINI_MODEL", "gemini-3.6-flash"),
+		EvolutionAPIURL:       getEnv("EVOLUTION_API_URL", ""),
+		EvolutionAPIKey:       getEnv("EVOLUTION_API_KEY", ""),
+		EvolutionInstance:     getEnv("EVOLUTION_INSTANCE", "renace"),
 		WhatsAppNotifyNumbers: getEnv("WHATSAPP_NOTIFY_NUMBERS", ""),
 		WhatsAppSenderLabel:   getEnv("WHATSAPP_SENDER_LABEL", "Renace"),
 		// Default: línea empresa Renace (849 Adderly). Nunca un número de cliente.
@@ -86,6 +90,15 @@ func Load() *Config {
 	}
 
 	return cfg
+}
+
+// bindHost reads BIND_ADDR, then HOST. Empty keeps the historical
+// all-interfaces listen address (":PORT").
+func bindHost() string {
+	if v := strings.TrimSpace(os.Getenv("BIND_ADDR")); v != "" {
+		return v
+	}
+	return strings.TrimSpace(os.Getenv("HOST"))
 }
 
 func getEnv(key, defaultVal string) string {

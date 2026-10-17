@@ -39,6 +39,9 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
       PORT: "8080"
+      # Vacío = todas las interfaces. 127.0.0.1 solo si el proxy está en el mismo contenedor.
+      HOST: ${HOST:-}
+      BIND_ADDR: ${BIND_ADDR:-}
       GIN_MODE: ${GIN_MODE:-release}
       APP_URL: ${APP_URL:-https://rnv.renace.tech}
       MASTER_PASSWORD: ${MASTER_PASSWORD:-}

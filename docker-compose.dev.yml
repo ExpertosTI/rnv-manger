@@ -28,6 +28,8 @@ services:
       DATABASE_URL: postgresql://${DB_USER:-rnvadmin}:${DB_PASSWORD:-rnv_secure_password_2025}@db:5432/${DB_NAME:-rnv_manager}?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-rnv-super-secret-jwt-key-change-in-production-2025}
       PORT: "8080"
+      HOST: ${HOST:-}
+      BIND_ADDR: ${BIND_ADDR:-}
       GIN_MODE: ${GIN_MODE:-debug}
       APP_URL: ${APP_URL:-http://localhost:4200}
       MASTER_PASSWORD: ${MASTER_PASSWORD:-}
