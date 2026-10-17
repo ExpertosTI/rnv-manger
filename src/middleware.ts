@@ -11,6 +11,7 @@ const PROTECTED_PREFIXES = [
   "/settings",
   "/whiteboard",
   "/config-editor",
+  "/addons",
 ];
 
 export function middleware(request: NextRequest) {
