@@ -1,4 +1,5 @@
-export const DEFAULT_ADDONS_ROOT = "/Volumes/Extreme SSD/Odoo/organizado";
+/** Optional build-time hint. Empty means the server's first RNV_ADDONS_ROOTS entry. */
+export const DEFAULT_ADDONS_ROOT = (process.env.NEXT_PUBLIC_ADDONS_DEFAULT_ROOT || "").trim();
 export const ADDONS_ROOT_STORAGE_KEY = "rnv.addons.root";
 
 export const DESKTOP_ONLY_MESSAGE =
@@ -118,6 +119,7 @@ export type ScanResponse = {
     tipos?: string[];
     clientes?: string[];
     warnings?: string[];
+    defaultRoot?: string;
 };
 
 export type ModuleDetail = {

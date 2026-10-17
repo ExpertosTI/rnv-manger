@@ -43,11 +43,16 @@ export function AddonsRootSetting() {
                     id="addons-root"
                     value={path}
                     onChange={(event) => setPath(event.target.value)}
-                    placeholder={DEFAULT_ADDONS_ROOT}
+                    placeholder={DEFAULT_ADDONS_ROOT || "/ruta/permitida/por/el/servidor"}
                     spellCheck={false}
                 />
                 <p className="text-xs text-muted-foreground">
-                    Por defecto <code className="text-violet-700">{DEFAULT_ADDONS_ROOT}</code>. En el sitio web la sección indica que solo está disponible en escritorio.
+                    {DEFAULT_ADDONS_ROOT ? (
+                        <>Por defecto <code className="text-violet-700">{DEFAULT_ADDONS_ROOT}</code>. </>
+                    ) : (
+                        <>Si está vacío, el servidor usa la primera ruta de <code className="text-violet-700">RNV_ADDONS_ROOTS</code>. </>
+                    )}
+                    En el sitio web la sección indica que solo está disponible en escritorio. El servidor solo acepta raíces de esa lista.
                 </p>
                 <div className="flex flex-wrap gap-2">
                     <Button type="button" onClick={save} className="rounded-xl bg-violet-600 hover:bg-violet-700">

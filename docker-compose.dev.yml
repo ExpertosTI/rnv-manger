@@ -54,6 +54,8 @@ services:
     environment:
       NODE_ENV: production
       API_INTERNAL_URL: http://go-api:8080
+      RNV_ADDONS_LOCAL: ${RNV_ADDONS_LOCAL:-}
+      RNV_ADDONS_ROOTS: ${RNV_ADDONS_ROOTS:-}
     depends_on:
       - go-api
 

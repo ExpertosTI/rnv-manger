@@ -78,6 +78,8 @@ test("parsea el manifest y decide la insignia git", () => {
 test("escanea el árbol de ejemplo, el detalle y las acciones", () => {
     const root = copyFixture();
     seedGit(root);
+    const previousRoots = process.env.RNV_ADDONS_ROOTS;
+    process.env.RNV_ADDONS_ROOTS = root;
     const scan = scanAddons(root);
     assert.equal(scan.available, true);
     assert.equal(scan.stats?.totalModules, 7);
@@ -171,4 +173,11 @@ test("escanea el árbol de ejemplo, el detalle y las acciones", () => {
         () => runAction({ root, action: "push", relativePath: "comunes/fiscal_rd/ncf", remote: "https://user:ghp_secret@github.com/renace/ncf.git", confirm: true }),
         /sin token|GitHub/
     );
+    assert.throws(() => detailAddons(root, "comunes/../../etc"), /sale de la carpeta/);
+    assert.throws(
+        () => runAction({ root, action: "move", relativePath: "comunes/pos/pos_min_price", destination: "../.ssh", confirm: true }),
+        /Destino inválido|no está permitida|sale de la carpeta/
+    );
+    if (previousRoots === undefined) delete process.env.RNV_ADDONS_ROOTS;
+    else process.env.RNV_ADDONS_ROOTS = previousRoots;
 });

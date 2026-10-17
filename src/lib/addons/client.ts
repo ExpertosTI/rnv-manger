@@ -19,7 +19,7 @@ export async function fetchAddonsScan(root: string): Promise<ScanResponse> {
     if (isTauriRuntime()) {
         return tauriInvoke<ScanResponse>("addons_scan", { root });
     }
-    const res = await fetch(`/api/addons?root=${encodeURIComponent(root)}`, { cache: "no-store" });
+    const res = await fetch(`/api/addons?root=${encodeURIComponent(root)}`, { cache: "no-store", credentials: "include" });
     return res.json() as Promise<ScanResponse>;
 }
 
@@ -28,7 +28,7 @@ export async function fetchAddonsDetail(root: string, relativePath: string): Pro
         return tauriInvoke<DetailResponse>("addons_detail", { root, relativePath });
     }
     const params = new URLSearchParams({ root, path: relativePath });
-    const res = await fetch(`/api/addons?${params.toString()}`, { cache: "no-store" });
+    const res = await fetch(`/api/addons?${params.toString()}`, { cache: "no-store", credentials: "include" });
     return res.json() as Promise<DetailResponse>;
 }
 
@@ -43,6 +43,7 @@ export async function runAddonsAction(
     const res = await fetch("/api/addons", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ root, action, ...payload }),
     });
     return res.json() as Promise<ActionResponse>;
@@ -59,6 +60,7 @@ export async function downloadAddonsZip(root: string, relativePath: string): Pro
     const res = await fetch("/api/addons", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ root, action: "export", relativePath, confirm: true }),
     });
     if (!res.ok || (res.headers.get("content-type") || "").includes("application/json")) {

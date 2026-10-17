@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { defaultConfiguredRoot, resolveAllowedRoot } from "./roots";
 import {
     DESKTOP_ONLY_MESSAGE,
     GITIGNORE_LINES,
@@ -93,22 +94,7 @@ function toPosix(value: string): string {
 }
 
 function assertAbsoluteRoot(root: string): string {
-    const trimmed = root.trim();
-    if (!trimmed || trimmed.includes("\0")) {
-        throw new Error("La ruta raíz no es válida");
-    }
-    if (!path.isAbsolute(trimmed)) {
-        throw new Error("La ruta raíz tiene que ser absoluta");
-    }
-    if (!fs.existsSync(trimmed)) {
-        throw new Error(`No existe la carpeta: ${trimmed}`);
-    }
-    const real = fs.realpathSync(trimmed);
-    const stat = fs.statSync(real);
-    if (!stat.isDirectory()) {
-        throw new Error("La ruta raíz no es una carpeta");
-    }
-    return real;
+    return resolveAllowedRoot(root);
 }
 
 function insideRoot(rootReal: string, candidate: string): string {
@@ -122,10 +108,12 @@ function insideRoot(rootReal: string, candidate: string): string {
 }
 
 function resolveExisting(rootReal: string, relativePath: string): string {
+    if (relativePath.includes("\0")) throw new Error("La ruta no es válida");
     const cleaned = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
-    if (cleaned.split("/").includes("..")) {
+    if (cleaned.split("/").includes("..") || (cleaned.length > 0 && path.posix.isAbsolute(cleaned))) {
         throw new Error("La ruta sale de la carpeta raíz");
     }
+    if (!cleaned) return rootReal;
     return insideRoot(rootReal, path.resolve(rootReal, cleaned));
 }
 
@@ -741,6 +729,7 @@ export function scanAddons(rootInput: string): ScanResponse {
         tipos,
         clientes,
         warnings,
+        defaultRoot: defaultConfiguredRoot(),
     };
 }
 
@@ -1032,8 +1021,9 @@ function updateMapaLocation(
 }
 
 function destinationFor(root: string, moduleName: string, categoryPath: string): string {
+    if (categoryPath.includes("\0")) throw new Error("Destino inválido");
     const cleaned = categoryPath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-    if (!cleaned || cleaned.split("/").includes("..")) {
+    if (!cleaned || cleaned.split("/").includes("..") || path.posix.isAbsolute(cleaned)) {
         throw new Error("Destino inválido");
     }
     const allowed =

@@ -101,7 +101,12 @@ function AddonsScreen() {
         setLoading(true);
         fetchAddonsScan(root)
             .then((data) => {
-                if (!cancelled) setScan(data);
+                if (cancelled) return;
+                setScan(data);
+                if (data.available && data.root) {
+                    setRoot((current) => current || data.root || current);
+                    setDraft((current) => current || data.root || current);
+                }
             })
             .catch(() => {
                 if (!cancelled) setScan({ available: false, message: DESKTOP_ONLY_MESSAGE });
@@ -162,8 +167,14 @@ function AddonsScreen() {
                     <h2 className="text-xl font-semibold">Disponible solo en escritorio</h2>
                     <p className="text-sm text-muted-foreground mt-2">{scan.message || DESKTOP_ONLY_MESSAGE}</p>
                     <p className="text-sm mt-4">
-                        Abre la app de escritorio de RNV Manager. La raíz por defecto es{" "}
-                        <code className="text-violet-700">{DEFAULT_ADDONS_ROOT}</code> y se puede cambiar en Configuración.
+                        Abre la app de escritorio de RNV Manager. La raíz se guarda en Configuración
+                        {DEFAULT_ADDONS_ROOT ? (
+                            <>
+                                {" "}y por defecto es <code className="text-violet-700">{DEFAULT_ADDONS_ROOT}</code>
+                            </>
+                        ) : (
+                            ". En el servidor la define RNV_ADDONS_ROOTS."
+                        )}
                     </p>
                 </div>
             </div>

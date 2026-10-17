@@ -89,6 +89,10 @@ services:
     environment:
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: 1
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://go-api:8080}
+      # Vacío en producción: Addons no lee el disco. Si se activa, RNV_ADDONS_ROOTS es obligatorio.
+      RNV_ADDONS_LOCAL: ${RNV_ADDONS_LOCAL:-}
+      RNV_ADDONS_ROOTS: ${RNV_ADDONS_ROOTS:-}
     networks:
       - rnv_net
       - RenaceNet

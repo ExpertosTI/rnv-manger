@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { NextRequest, NextResponse } from "next/server";
+import { hasValidSession } from "@/lib/addons/auth";
 import {
     addonsLocalEnabled,
     detailAddons,
@@ -9,6 +10,7 @@ import {
     unavailableDetail,
     unavailableScan,
 } from "@/lib/addons/engine";
+import { defaultConfiguredRoot } from "@/lib/addons/roots";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +19,21 @@ function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : "No se pudo completar la operación";
 }
 
+async function requireSession(request: NextRequest): Promise<NextResponse | null> {
+    const ok = await hasValidSession({
+        cookie: request.cookies.get("rnv_session")?.value,
+        authorization: request.headers.get("authorization"),
+    });
+    if (ok) return null;
+    return NextResponse.json(
+        { available: false, ok: false, message: "No autorizado" },
+        { status: 401 }
+    );
+}
+
 export async function GET(request: NextRequest) {
+    const denied = await requireSession(request);
+    if (denied) return denied;
     const modulePath = request.nextUrl.searchParams.get("path");
     if (!addonsLocalEnabled()) {
         return NextResponse.json(modulePath ? unavailableDetail() : unavailableScan());
@@ -28,13 +44,15 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(scanAddons(root));
     } catch (error) {
         return NextResponse.json(
-            { available: true, ok: false, message: errorMessage(error) },
+            { available: true, ok: false, message: errorMessage(error), defaultRoot: defaultConfiguredRoot() },
             { status: 400 }
         );
     }
 }
 
 export async function POST(request: NextRequest) {
+    const denied = await requireSession(request);
+    if (denied) return denied;
     if (!addonsLocalEnabled()) {
         return NextResponse.json(unavailableAction());
     }
@@ -75,7 +93,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(result);
     } catch (error) {
         return NextResponse.json(
-            { available: true, ok: false, message: errorMessage(error) },
+            { available: true, ok: false, message: errorMessage(error), defaultRoot: defaultConfiguredRoot() },
             { status: 400 }
         );
     }
