@@ -1,0 +1,8 @@
+module,area_or_client,tipo_negocio,versions,clients_using,ubicaciones_encontradas,estado,reemplazado_por,clientes_a_migrar,familia_duplicados,instalado_en_clientes
+ncf,comunes/fiscal_rd,,18.0;16.0,altamar;bloke,altamar@85.31.224.232;blokecom@157.173.210.205,keeper,,,NCF facturación (base fiscal RD),altamar;bloke
+pos_min_price,comunes/pos,,18.0,bloke;keisy,blokecom@157.173.210.205,keeper,,,Alerta precio mínimo,bloke
+stock_last_purchase_price,comunes/inventario,,18.0,cueromacho;naje,opt-odoo-custom-addons@157.173.210.205,keeper,,,,cueromacho
+pos_all_orders,clientes/licoreria/mojo,licoreria,16.0,mojo,mojo@86.38.204.237,keeper,,,,mojo
+petty_cash_management,clientes/restaurante_bar/altamar,restaurante_bar,18.0,altamar,altamar@85.31.224.232,keeper,,,,altamar
+custom_receipts_for_pos,_revisar,,18.0,cueromacho,icloud:RENACE/18.0/CUEROMACHO,keeper,,,Diseño de recibo POS,cueromacho
+custompos_receipt,_archivados/custompos_receipt,boutique_ropa,18.0,cueromacho,opt-odoo-custom-addons@157.173.210.205,archivado,custom_receipts_for_pos,cueromacho,Diseño de recibo POS,cueromacho

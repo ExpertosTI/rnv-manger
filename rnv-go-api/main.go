@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/renace/rnv-go-api/config"
 	"github.com/renace/rnv-go-api/database"
-	aiHandler "github.com/renace/rnv-go-api/handlers/ai"
 	affiliatesHandler "github.com/renace/rnv-go-api/handlers/affiliates"
+	aiHandler "github.com/renace/rnv-go-api/handlers/ai"
 	auditHandler "github.com/renace/rnv-go-api/handlers/audit"
 	authHandler "github.com/renace/rnv-go-api/handlers/auth"
 	backupHandler "github.com/renace/rnv-go-api/handlers/backup"
@@ -274,8 +274,9 @@ func main() {
 		auth.POST("/ai/chat", aiHandler.Chat(db, cfg))
 	}
 
-	log.Printf("[RNV Go API] Starting on :%s (mode: %s)", cfg.Port, cfg.GinMode)
-	if err := r.Run(":" + cfg.Port); err != nil {
+	addr := config.ListenAddr(cfg.Host, cfg.Port)
+	log.Printf("[RNV Go API] Starting on %s (mode: %s)", addr, cfg.GinMode)
+	if err := r.Run(addr); err != nil {
 		log.Fatalf("[RNV Go API] Failed to start: %v", err)
 	}
 }

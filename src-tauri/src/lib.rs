@@ -1,3 +1,5 @@
+mod addons;
+
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -167,7 +169,17 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![navigate_to, show_notification, open_whiteboard, start_drag, hide_window, open_app])
+        .invoke_handler(tauri::generate_handler![
+            navigate_to,
+            show_notification,
+            open_whiteboard,
+            start_drag,
+            hide_window,
+            open_app,
+            addons::addons_scan,
+            addons::addons_detail,
+            addons::addons_action
+        ])
         .run(tauri::generate_context!())
         .expect("error while running RNV Manager");
 }

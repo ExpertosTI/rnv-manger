@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { loginRedirectURL } from "@/lib/login-redirect";
 
 const PROTECTED_PREFIXES = [
   "/clients",
@@ -11,6 +12,7 @@ const PROTECTED_PREFIXES = [
   "/settings",
   "/whiteboard",
   "/config-editor",
+  "/addons",
 ];
 
 export function middleware(request: NextRequest) {
@@ -42,10 +44,7 @@ export function middleware(request: NextRequest) {
     sessionValue.split(".").length === 3;
 
   if (!isAuthenticated) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(loginRedirectURL(request), 307);
   }
 
   return NextResponse.next();

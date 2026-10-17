@@ -1,0 +1,4 @@
+Motivo: duplicado de custom_receipts_for_pos.
+Reemplazado por: custom_receipts_for_pos
+Clientes a migrar: cueromacho
+Restaurar: mover esta carpeta a clientes/boutique_ropa/cueromacho/custompos_receipt.

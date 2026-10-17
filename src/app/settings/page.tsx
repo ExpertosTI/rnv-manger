@@ -6,6 +6,7 @@ import {
     Save, Mail, Key, Bell, Server, RefreshCw,
     CheckCircle, AlertTriangle, Eye, EyeOff, Shield, Sparkles, MessageCircle, Copy, Trash2
 } from "lucide-react";
+import { AddonsRootSetting } from "@/components/addons/AddonsRootSetting";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -512,6 +513,8 @@ export default function SettingsPage() {
                         </div>
                     </CardContent>
                 </Card>
+
+                <AddonsRootSetting />
 
                 {SETTINGS_SECTIONS.map((section) => (
                     <Card key={section.id} className="rounded-2xl border-2 border-gray-100 shadow-sm overflow-hidden">
